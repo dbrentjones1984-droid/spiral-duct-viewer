@@ -1,7 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+// Self-hosted fonts (latin subset) so the installed app looks right offline.
+import "@fontsource/barlow-condensed/latin-500.css";
+import "@fontsource/barlow-condensed/latin-600.css";
+import "@fontsource/barlow-condensed/latin-700.css";
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
 import "./styles.css";
+import { registerServiceWorker } from "./pwa";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -24,3 +32,5 @@ void Promise.all([painted, fonts]).then(() => {
     setTimeout(() => splash.remove(), 1000);
   }, wait);
 });
+
+registerServiceWorker();

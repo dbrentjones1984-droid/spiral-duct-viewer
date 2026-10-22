@@ -8,6 +8,9 @@ Product catalog + 3D double-wall spiral duct viewer (shell/liner finishes, AccuF
 - Repo root = the built static site served by GitHub Pages (branch `main`, folder `/`).
 - `app-source/` = the React + Vite + three.js source.
 
+## PWA
+Installable app (manifest.webmanifest, sw.js, icons/). `sw.js` is generated at build time from `app-source/sw-template.js` with a precache list and a content-hash version, so every rebuild ships a new cache version and the app shows a "Reload" toast for updates.
+
 ## Rebuild
 ```
 cd app-source

@@ -8,7 +8,7 @@ function loadPdf() {
   if (pdfPromise) return pdfPromise;
   const pending = import("pdfjs-dist").then((pdfjs) => {
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-    return pdfjs.getDocument({ url: `${import.meta.env.BASE_URL}catalogue.pdf` }).promise;
+    return pdfjs.getDocument({ url: `${import.meta.env.BASE_URL}catalogue.pdf`, disableRange: true, disableAutoFetch: true }).promise;
   });
   pending.catch(() => {
     if (pdfPromise === pending) pdfPromise = null;

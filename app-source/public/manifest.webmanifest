@@ -1,0 +1,22 @@
+{
+  "id": "/spiral-duct-viewer/",
+  "name": "Spiral Duct Viewer",
+  "short_name": "Spiral Duct",
+  "description": "Spiral Systems product catalog: spiral pipe and fittings sheets, and a 3D double-wall spiral duct viewer with finishes and AccuFlange info.",
+  "lang": "en-US",
+  "dir": "ltr",
+  "start_url": "/spiral-duct-viewer/",
+  "scope": "/spiral-duct-viewer/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#033b82",
+  "background_color": "#f4f6f8",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

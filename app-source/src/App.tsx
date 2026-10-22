@@ -3,6 +3,7 @@ import { ArrowLeft, Boxes, ChevronRight, Cylinder, Layers, Spline } from "lucide
 import { BrandLogo } from "@/components/brand-logo";
 import { CatalogSheet } from "@/components/catalog-sheet";
 import { DuctStudio } from "@/components/duct-studio";
+import { InstallButton } from "@/components/install-button";
 import { findSheet, HOME_BUTTONS, sheetsForHome, type HomeButtonId } from "@/lib/catalog";
 
 
@@ -40,6 +41,7 @@ export default function CatalogPage() {
         <p className="py-2 text-center text-xs font-medium tracking-widest text-accent">
           ROUND · OVAL · FITTINGS · ACCESSORIES
         </p>
+        <InstallButton />
       </header>
       <div className="grid grid-cols-4 gap-2 px-3 pt-1 pb-4 sm:gap-3 sm:px-6">
         {HOME_BUTTONS.map((button) => {

@@ -8,14 +8,28 @@
     <meta name="theme-color" content="#033b82" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Spiral Systems" />
+    <meta name="apple-mobile-web-app-title" content="Spiral Duct" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="application-name" content="Spiral Duct Viewer" />
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1320x2868.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1206x2622.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1290x2796.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1179x2556.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1284x2778.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1170x2532.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1125x2436.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1242x2688.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/icons/startup/apple-startup-828x1792.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1242x2208.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/icons/startup/apple-startup-750x1334.png" />
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/icons/startup/apple-startup-640x1136.png" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
     <meta property="og:title" content="Spiral Systems" />
     <meta property="og:image" content="/og.jpg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
     <style>
       #splash {
         position: fixed; inset: 0; z-index: 9999;
@@ -44,6 +58,15 @@
       @keyframes splash-rot { to { transform: rotate(360deg); } }
       @keyframes splash-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
       @keyframes splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      #pwa-toast {
+        position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10000;
+        transform: translate(-50%, 140%); opacity: 0; transition: transform 250ms ease, opacity 250ms ease;
+        display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px); width: max-content;
+        padding: 12px 14px; border-radius: 0.9rem; background: #033b82; color: #fff;
+        font: 500 14px/1.35 "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; box-shadow: 0 8px 24px rgba(0,30,70,.25);
+      }
+      #pwa-toast.show { transform: translate(-50%, 0); opacity: 1; }
+      #pwa-toast button { flex: none; min-height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: #fff; color: #033b82; font: inherit; font-weight: 600; cursor: pointer; }
       @media (prefers-reduced-motion: reduce) {
         #splash *, #splash *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; }
       }
