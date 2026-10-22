@@ -92,26 +92,27 @@ export function registerServiceWorker() {
   };
   const register = () => {
     navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
+      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL, updateViaCache: "none" })
       .then((reg) => {
         reg.addEventListener("updatefound", () => {
           const nw = reg.installing;
           if (!nw) return;
           nw.addEventListener("statechange", () => {
-            if (nw.state === "installed" && navigator.serviceWorker.controller) {
-              toast("A new version of the app is ready.", { label: "Reload", run: () => nw.postMessage("skipWaiting") }, 0);
-            } else if (nw.state === "installed") {
-              toast("Ready to work offline.", undefined, 3000);
-            }
+            if (nw.state === "activated" && !hadController) toast("Ready to work offline.", undefined, 3000);
           });
+        });
+        // Look for a new version whenever the app comes back to the foreground.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update().catch(() => {});
         });
       })
       .catch((err) => console.warn("Service worker registration failed", err));
-    let reloading = false;
+    // A new version took over by itself (self-healing SW). Page loads are network-first, so this page is
+    // normally current already; offer a refresh, and do it automatically if the app is in the background.
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloading || !hadController) return;
-      reloading = true;
-      location.reload();
+      if (!hadController) return;
+      if (document.visibilityState === "hidden") location.reload();
+      else toast("The app was updated.", { label: "Refresh", run: () => location.reload() }, 8000);
     });
   };
   const hadController = !!navigator.serviceWorker.controller;

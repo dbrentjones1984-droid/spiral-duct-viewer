@@ -1,9 +1,50 @@
-import { lazy, Suspense, useEffect, useRef, useState, type RefObject } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { RotateCcw } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { PIECE_MENUS, shellFinishById, type PieceId } from "@/lib/piece-menus";
 
 const DuctStage = lazy(() => import("@/components/duct-stage"));
+
+/** True when this browser can create a WebGL context (some phones / in-app viewers can't). */
+function webglAvailable() {
+  try {
+    const c = document.createElement("canvas");
+    const gl = c.getContext("webgl2") || c.getContext("webgl") || c.getContext("experimental-webgl");
+    return !!gl;
+  } catch {
+    return false;
+  }
+}
+
+/** Keeps a 3D failure (WebGL lost, chunk failed to download, driver error) inside the stage instead of blanking the app. */
+class StageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.warn("3D view failed", error);
+  }
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="grid h-full place-items-center px-6 text-center">
+          <div>
+            <p className="text-sm text-muted">The 3D view could not start on this device.</p>
+            <button
+              type="button"
+              onClick={() => this.setState({ failed: false })}
+              className="mt-3 h-11 rounded-card border border-line bg-surface px-4 text-sm font-medium text-ink"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export function DuctStudio({ embedded = false }: { embedded?: boolean }) {
   const [exploded, setExploded] = useState(false);
@@ -27,7 +68,9 @@ export function DuctStudio({ embedded = false }: { embedded?: boolean }) {
   const stageRef = useRef<HTMLElement>(null);
   const justOpened = useRef(false);
 
+  const [webgl, setWebgl] = useState(true);
   useEffect(() => {
+    setWebgl(webglAvailable());
     setReady(true);
   }, []);
 
@@ -82,7 +125,10 @@ export function DuctStudio({ embedded = false }: { embedded?: boolean }) {
         }
       >
         <section ref={stageRef} className="relative order-1 h-[46svh] min-w-0 touch-none overflow-hidden bg-paper lg:order-2 lg:h-full">
-          {ready ? (
+          {ready && !webgl ? (
+            <StageNote label="3D needs WebGL, which this browser has turned off. Try opening the page in Chrome." />
+          ) : ready ? (
+            <StageBoundary>
             <Suspense fallback={<StageNote label="Loading the piece…" />}>
               <DuctStage
                 exploded={exploded}
@@ -104,6 +150,7 @@ export function DuctStudio({ embedded = false }: { embedded?: boolean }) {
                 focus={focus}
               />
             </Suspense>
+            </StageBoundary>
           ) : (
             <StageNote label="Loading the piece…" />
           )}
@@ -361,7 +408,7 @@ function FlangeSheet({ onClose }: { onClose: () => void }) {
 
 function StageNote({ label }: { label: string }) {
   return (
-    <div className="grid h-full place-items-center">
+    <div className="grid h-full place-items-center px-6 text-center">
       <p className="text-sm text-muted">{label}</p>
     </div>
   );

@@ -30,9 +30,65 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/spiral-duct-viewer/icons/favicon-32.png" />
     <meta property="og:title" content="Spiral Systems" />
     <meta property="og:image" content="/spiral-duct-viewer/og.jpg" />
-    <style>#splash{z-index:9999;padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));color:#033b82;background:radial-gradient(120% 80% at 50% 30%,#fff 0%,#f4f6f8 60%,#e6ebf1 100%);flex-direction:column;justify-content:center;align-items:center;gap:28px;font-family:IBM Plex Sans,ui-sans-serif,system-ui,sans-serif;transition:opacity .45s,visibility 0s linear .45s;display:flex;position:fixed;inset:0}#splash.splash-hide{opacity:0;visibility:hidden;pointer-events:none}#splash .splash-logo{width:min(64vw,260px);height:auto;animation:.6s ease-out both splash-in}#splash .splash-duct{width:88px;height:88px;animation:.6s ease-out .12s both splash-in}#splash .splash-spin{transform-origin:50px 50px;animation:1.1s linear infinite splash-rot}#splash .splash-seams{transform-origin:50px 50px;animation:3.2s linear infinite reverse splash-rot}#splash .splash-band{text-align:center;letter-spacing:.18em;color:#033b82;width:100%;max-width:320px;font-family:Barlow Condensed,ui-sans-serif,system-ui,sans-serif;font-size:15px;font-weight:600;animation:.6s ease-out .2s both splash-in}#splash .splash-bar{background:#d5dde6;border-radius:4px;width:min(60vw,220px);height:4px;margin:12px auto 0;overflow:hidden}#splash .splash-bar:after{content:"";background:#033b82;border-radius:4px;width:40%;height:100%;animation:1.2s ease-in-out infinite splash-bar;display:block}@keyframes splash-rot{to{transform:rotate(360deg)}}@keyframes splash-bar{0%{transform:translate(-100%)}to{transform:translate(250%)}}@keyframes splash-in{0%{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}#pwa-toast{left:50%;bottom:max(16px, env(safe-area-inset-bottom));z-index:10000;opacity:0;color:#fff;background:#033b82;border-radius:.9rem;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 24px);padding:12px 14px;font:500 14px/1.35 IBM Plex Sans,ui-sans-serif,system-ui,sans-serif;transition:transform .25s,opacity .25s;display:flex;position:fixed;transform:translate(-50%,140%);box-shadow:0 8px 24px #001e4640}#pwa-toast.show{opacity:1;transform:translate(-50%)}#pwa-toast button{color:#033b82;min-height:36px;font:inherit;cursor:pointer;background:#fff;border:0;border-radius:8px;flex:none;padding:0 12px;font-weight:600}@media (prefers-reduced-motion:reduce){#splash *,#splash :after{animation-duration:0s!important;animation-iteration-count:1!important}}</style>
-    <script type="module" crossorigin src="/spiral-duct-viewer/assets/index-khnVpSA8.js"></script>
-    <link rel="stylesheet" crossorigin href="/spiral-duct-viewer/assets/index-d1Cb7aNe.css">
+    <style>#splash{z-index:9999;padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));color:#033b82;background:radial-gradient(120% 80% at 50% 30%,#fff 0%,#f4f6f8 60%,#e6ebf1 100%);flex-direction:column;justify-content:center;align-items:center;gap:28px;font-family:IBM Plex Sans,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;transition:opacity .45s,visibility 0s linear .45s;display:flex;position:fixed;top:0;bottom:0;left:0;right:0}#splash.splash-hide{opacity:0;visibility:hidden;pointer-events:none}#splash .splash-logo{width:min(64vw,260px);height:auto;animation:.6s ease-out both splash-in}#splash .splash-duct{width:88px;height:88px;animation:.6s ease-out .12s both splash-in}#splash .splash-spin{transform-origin:50px 50px;animation:1.1s linear infinite splash-rot}#splash .splash-seams{transform-origin:50px 50px;animation:3.2s linear infinite reverse splash-rot}#splash .splash-band{text-align:center;letter-spacing:.18em;color:#033b82;width:100%;max-width:320px;font-family:Barlow Condensed,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;font-size:15px;font-weight:600;animation:.6s ease-out .2s both splash-in}#splash .splash-bar{background:#d5dde6;border-radius:4px;width:min(60vw,220px);height:4px;margin:12px auto 0;overflow:hidden}#splash .splash-bar:after{content:"";background:#033b82;border-radius:4px;width:40%;height:100%;animation:1.2s ease-in-out infinite splash-bar;display:block}@keyframes splash-rot{to{transform:rotate(360deg)}}@keyframes splash-bar{0%{transform:translate(-100%)}to{transform:translate(250%)}}@keyframes splash-in{0%{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}#splash .splash-msg{text-align:center;color:#14181c;max-width:320px;font-size:14px;line-height:1.45;display:none}#splash.splash-error .splash-msg{display:block}#splash.splash-error .splash-duct,#splash.splash-error .splash-band{display:none}#splash .splash-msg p{margin:0 0 14px}#splash .splash-msg small{color:#5c6770;word-break:break-word;margin-top:10px;font-size:12px;display:block}#splash .splash-msg button{width:100%;min-height:44px;font:inherit;cursor:pointer;color:#14181c;background:#fff;border:1px solid #d5dde6;border-radius:.9rem;margin-top:10px;font-weight:600;display:block}#splash .splash-msg button.primary{color:#fff;background:#033b82;border-color:#033b82}#pwa-toast{left:50%;bottom:max(16px, env(safe-area-inset-bottom));z-index:10000;opacity:0;color:#fff;background:#033b82;border-radius:.9rem;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 24px);padding:12px 14px;font:500 14px/1.35 IBM Plex Sans,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;transition:transform .25s,opacity .25s;display:flex;position:fixed;transform:translate(-50%,140%);box-shadow:0 8px 24px #001e4640}#pwa-toast.show{opacity:1;transform:translate(-50%)}#pwa-toast button{color:#033b82;min-height:36px;font:inherit;cursor:pointer;background:#fff;border:0;border-radius:8px;flex:none;padding:0 12px;font-weight:600}@media (prefers-reduced-motion:reduce){#splash *,#splash :after{animation-duration:0s!important;animation-iteration-count:1!important}}</style>
+    <script>
+      /* Boot guard: if the app's code can't load or start (stale cached page pointing at old files, a network
+         hiccup, an unsupported browser), never leave the splash spinning forever. Retry once automatically with
+         a cache-busting reload, then show a readable message with Reload / Reset buttons. */
+      (function () {
+        var base = location.pathname.replace(/[^/]*$/, "");
+        var S = (window.__sdvBoot = { mounted: false, failed: false });
+        function store(k, v) { try { return v === undefined ? sessionStorage.getItem(k) : sessionStorage.setItem(k, v); } catch (e) { return null; } }
+        function hardReload(reset) {
+          var go = function () { location.replace(base + "?r=" + Date.now()); };
+          if (!reset) return go();
+          var jobs = [];
+          try { if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.filter(function (r) { return r.scope.indexOf(location.origin + base) === 0; }).map(function (r) { return r.unregister(); })); })); } catch (e) {}
+          try { if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sdv-") === 0; }).map(function (k) { return caches.delete(k); })); })); } catch (e) {}
+          Promise.all(jobs).then(go, go);
+          setTimeout(go, 3000);
+        }
+        S.reload = hardReload;
+        function show(title, detail) {
+          if (S.mounted || S.failed) return;
+          S.failed = true;
+          var el = document.getElementById("splash"), box = document.getElementById("splash-msg");
+          if (!el || !box) return;
+          box.innerHTML = "";
+          var p = document.createElement("p"); p.textContent = title; box.appendChild(p);
+          var b1 = document.createElement("button"); b1.type = "button"; b1.className = "primary"; b1.textContent = "Reload";
+          b1.onclick = function () { hardReload(false); }; box.appendChild(b1);
+          var b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Reset app & reload";
+          b2.onclick = function () { hardReload(true); }; box.appendChild(b2);
+          if (detail) { var sm = document.createElement("small"); sm.textContent = detail; box.appendChild(sm); }
+          el.classList.add("splash-error");
+        }
+        S.show = show;
+        function assetFailed(url) {
+          if (S.mounted) return;
+          if (!store("sdv-retried")) { store("sdv-retried", "1"); hardReload(true); return; }
+          show("The app couldn’t download all of its files. Check your connection and tap Reload.", "Missing: " + url.replace(/^.*\//, ""));
+        }
+        window.addEventListener("error", function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+            var u = t.src || t.href || "";
+            if (u.indexOf("/assets/") !== -1) assetFailed(u);
+            return;
+          }
+          show("Something went wrong while starting the app.", e.message || "");
+        }, true);
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason; var m = (r && (r.message || r)) + "";
+          if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(m)) assetFailed(m);
+        });
+        setTimeout(function () {
+          if (!S.mounted) show("This is taking longer than usual. Your connection may be slow.", "");
+        }, 15000);
+      })();
+    </script>
+    <script type="module" crossorigin src="/spiral-duct-viewer/assets/index-BajaCxlG.js"></script>
+    <link rel="stylesheet" crossorigin href="/spiral-duct-viewer/assets/index-BtIw4uk1.css">
   </head>
   <body>
     <div id="splash" role="status" aria-label="Loading Spiral Systems catalog">
@@ -49,6 +105,7 @@
           <circle cx="50" cy="50" r="44" fill="none" stroke="#033b82" stroke-width="7" stroke-linecap="round" stroke-dasharray="70 207" />
         </g>
       </svg>
+      <div class="splash-msg" id="splash-msg" role="alert"></div>
       <div class="splash-band">
         ROUND · OVAL · FITTINGS · ACCESSORIES
         <div class="splash-bar"></div>

@@ -66,3 +66,15 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Older Chrome / Android WebView (< 108) has no svh units: fall back to vh so the layout doesn't collapse. */
+@supports not (height: 1svh) {
+  @layer utilities {
+    .h-svh { height: 100vh; }
+    .min-h-svh { min-height: 100vh; }
+    @media (width < 64rem) {
+      .h-\[46svh\] { height: 46vh; }
+      .h-\[70svh\] { height: 70vh; }
+    }
+  }
+}

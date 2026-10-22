@@ -58,6 +58,16 @@
       @keyframes splash-rot { to { transform: rotate(360deg); } }
       @keyframes splash-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
       @keyframes splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      #splash .splash-msg { display: none; max-width: 320px; text-align: center; font-size: 14px; line-height: 1.45; color: #14181c; }
+      #splash.splash-error .splash-msg { display: block; }
+      #splash.splash-error .splash-duct, #splash.splash-error .splash-band { display: none; }
+      #splash .splash-msg p { margin: 0 0 14px; }
+      #splash .splash-msg small { display: block; margin-top: 10px; color: #5c6770; font-size: 12px; word-break: break-word; }
+      #splash .splash-msg button {
+        display: block; width: 100%; min-height: 44px; margin-top: 10px; border-radius: 0.9rem; font: inherit; font-weight: 600; cursor: pointer;
+        border: 1px solid #d5dde6; background: #fff; color: #14181c;
+      }
+      #splash .splash-msg button.primary { border-color: #033b82; background: #033b82; color: #fff; }
       #pwa-toast {
         position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 10000;
         transform: translate(-50%, 140%); opacity: 0; transition: transform 250ms ease, opacity 250ms ease;
@@ -71,6 +81,62 @@
         #splash *, #splash *::after { animation-duration: 0s !important; animation-iteration-count: 1 !important; }
       }
     </style>
+    <script>
+      /* Boot guard: if the app's code can't load or start (stale cached page pointing at old files, a network
+         hiccup, an unsupported browser), never leave the splash spinning forever. Retry once automatically with
+         a cache-busting reload, then show a readable message with Reload / Reset buttons. */
+      (function () {
+        var base = location.pathname.replace(/[^/]*$/, "");
+        var S = (window.__sdvBoot = { mounted: false, failed: false });
+        function store(k, v) { try { return v === undefined ? sessionStorage.getItem(k) : sessionStorage.setItem(k, v); } catch (e) { return null; } }
+        function hardReload(reset) {
+          var go = function () { location.replace(base + "?r=" + Date.now()); };
+          if (!reset) return go();
+          var jobs = [];
+          try { if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.filter(function (r) { return r.scope.indexOf(location.origin + base) === 0; }).map(function (r) { return r.unregister(); })); })); } catch (e) {}
+          try { if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k.indexOf("sdv-") === 0; }).map(function (k) { return caches.delete(k); })); })); } catch (e) {}
+          Promise.all(jobs).then(go, go);
+          setTimeout(go, 3000);
+        }
+        S.reload = hardReload;
+        function show(title, detail) {
+          if (S.mounted || S.failed) return;
+          S.failed = true;
+          var el = document.getElementById("splash"), box = document.getElementById("splash-msg");
+          if (!el || !box) return;
+          box.innerHTML = "";
+          var p = document.createElement("p"); p.textContent = title; box.appendChild(p);
+          var b1 = document.createElement("button"); b1.type = "button"; b1.className = "primary"; b1.textContent = "Reload";
+          b1.onclick = function () { hardReload(false); }; box.appendChild(b1);
+          var b2 = document.createElement("button"); b2.type = "button"; b2.textContent = "Reset app & reload";
+          b2.onclick = function () { hardReload(true); }; box.appendChild(b2);
+          if (detail) { var sm = document.createElement("small"); sm.textContent = detail; box.appendChild(sm); }
+          el.classList.add("splash-error");
+        }
+        S.show = show;
+        function assetFailed(url) {
+          if (S.mounted) return;
+          if (!store("sdv-retried")) { store("sdv-retried", "1"); hardReload(true); return; }
+          show("The app couldn’t download all of its files. Check your connection and tap Reload.", "Missing: " + url.replace(/^.*\//, ""));
+        }
+        window.addEventListener("error", function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+            var u = t.src || t.href || "";
+            if (u.indexOf("/assets/") !== -1) assetFailed(u);
+            return;
+          }
+          show("Something went wrong while starting the app.", e.message || "");
+        }, true);
+        window.addEventListener("unhandledrejection", function (e) {
+          var r = e.reason; var m = (r && (r.message || r)) + "";
+          if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(m)) assetFailed(m);
+        });
+        setTimeout(function () {
+          if (!S.mounted) show("This is taking longer than usual. Your connection may be slow.", "");
+        }, 15000);
+      })();
+    </script>
   </head>
   <body>
     <div id="splash" role="status" aria-label="Loading Spiral Systems catalog">
@@ -87,6 +153,7 @@
           <circle cx="50" cy="50" r="44" fill="none" stroke="#033b82" stroke-width="7" stroke-linecap="round" stroke-dasharray="70 207" />
         </g>
       </svg>
+      <div class="splash-msg" id="splash-msg" role="alert"></div>
       <div class="splash-band">
         ROUND · OVAL · FITTINGS · ACCESSORIES
         <div class="splash-bar"></div>

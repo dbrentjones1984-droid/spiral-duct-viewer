@@ -1,8 +1,12 @@
-/* Spiral Duct Viewer · service worker (mirrors the NWCC Campus Map approach).
-   - App shell (HTML, JS chunks incl. the 3D viewer + PDF worker, CSS, PDFs, images, icons): precached, cache-first.
-   - Fonts are self-hosted and precached like everything else.
+/* Spiral Duct Viewer · service worker (mirrors the NWCC Campus Map approach, made self-healing).
+   - Page loads (navigations): NETWORK-FIRST with a short timeout, so a new deploy is picked up right away;
+     the cached shell is only used when offline / the network is too slow.
+   - Hashed build files, PDFs, images, icons, fonts: precached, cache-first (they never change under the same URL).
+   - Self-healing: a new version installs, takes over immediately (skipWaiting + clients.claim) and deletes every
+     older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
+     on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = '5d8b78a0e0';
+const VERSION = '369797f149';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -15,17 +19,17 @@ const PRECACHE = [
   "assets/barlow-condensed-latin-600-normal-DepVgxBB.woff2",
   "assets/barlow-condensed-latin-700-normal-Dmwat-ge.woff",
   "assets/barlow-condensed-latin-700-normal-v1xN8_Wq.woff2",
-  "assets/duct-stage--Rl_ur0H.js",
+  "assets/duct-stage-CaQDvdCJ.js",
   "assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2",
   "assets/ibm-plex-sans-latin-400-normal-CYLoc0-x.woff",
   "assets/ibm-plex-sans-latin-500-normal-6ng42L7E.woff2",
   "assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff",
   "assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff",
   "assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2",
-  "assets/index-d1Cb7aNe.css",
-  "assets/index-khnVpSA8.js",
-  "assets/pdf-DZw16B5N.js",
-  "assets/pdf.worker.min-CjEcRF4W.mjs",
+  "assets/index-BajaCxlG.js",
+  "assets/index-BtIw4uk1.css",
+  "assets/pdf-Di6LdGDq.js",
+  "assets/pdf.worker.min-Dkey6ZUl.mjs",
   "blueprint.png",
   "catalogue.pdf",
   "double-wall.jpg",
@@ -38,47 +42,55 @@ const PRECACHE = [
   "icons/icon-maskable-512.png",
   "index.html",
   "logo.png",
+  "logo.webp",
   "manifest.webmanifest",
   "og.jpg",
   "splash-logo.png"
 ];
-const CDN_HOSTS = []; // fonts are self-hosted; no third-party requests
+const NAV_TIMEOUT_MS = 4000;
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(SHELL).then(c => c.addAll(PRECACHE.map(u => new Request(u, { cache: 'reload' })))));
-  // First install activates right away; updates wait until the page asks (the "Reload" toast).
-  if (!self.registration.active) self.skipWaiting();
+  self.skipWaiting();
+  event.waitUntil(caches.open(SHELL).then(cache => {
+    // Shell first (needed to open offline), then everything else; individual failures are ignored.
+    const put = u => fetch(new Request(u, { cache: 'reload' })).then(r => { if (r.ok) return cache.put(u, r); }).catch(() => {});
+    const shell = ['./', 'index.html'];
+    return Promise.all(shell.map(put)).then(() => Promise.all(PRECACHE.filter(u => !shell.includes(u)).map(put)));
+  }));
 });
 self.addEventListener('message', e => { if (e.data === 'skipWaiting') self.skipWaiting(); });
 self.addEventListener('activate', event => {
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('sdv-') && k !== SHELL && k !== RUNTIME).map(k => caches.delete(k))))
+  event.waitUntil(caches.keys()
+    .then(keys => Promise.all(keys.filter(k => k.startsWith('sdv-') && k !== SHELL && k !== RUNTIME).map(k => caches.delete(k))))
+    .then(() => self.registration.navigationPreload ? self.registration.navigationPreload.disable().catch(() => {}) : null)
     .then(() => self.clients.claim()));
 });
+
+function networkFirstPage(req) {
+  const fresh = fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' })).then(r => {
+    if (r.ok) { const copy = r.clone(); caches.open(SHELL).then(c => c.put('index.html', copy)).catch(() => {}); }
+    return r;
+  });
+  const timeout = new Promise(resolve => setTimeout(resolve, NAV_TIMEOUT_MS));
+  const cached = () => caches.match('index.html', { cacheName: SHELL }).then(c => c || caches.match('./', { cacheName: SHELL }));
+  return Promise.race([fresh.catch(() => null), timeout]).then(r => r || cached().then(c => c || fresh));
+}
 
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return; // nothing third-party is used; let the browser handle it
+  if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
+  if (url.pathname.endsWith('/sw.js')) return;
 
-  if (url.origin === self.location.origin) {
-    if (!url.pathname.startsWith(new URL(self.registration.scope).pathname)) return;
-    if (req.mode === 'navigate') {
-      // Every page load in scope gets the precached shell, so the installed app opens offline.
-      event.respondWith(caches.match('./index.html', { cacheName: SHELL }).then(cached => cached || fetch(req)));
-      return;
-    }
-    if (req.headers.has('range')) return; // let the browser stream partial PDF requests itself
-    event.respondWith(caches.match(req, { ignoreSearch: true }).then(cached => cached || fetch(req).then(r => {
-      if (r.ok && r.type === 'basic') { const copy = r.clone(); caches.open(RUNTIME).then(c => c.put(req, copy)); }
-      return r;
-    })));
+  if (req.mode === 'navigate') {
+    event.respondWith(networkFirstPage(req).catch(() => fetch(req)));
     return;
   }
-
-  if (CDN_HOSTS.includes(url.hostname)) {
-    event.respondWith(fetch(req).then(r => {
-      if (r.ok || r.type === 'opaque') { const copy = r.clone(); caches.open(RUNTIME).then(c => c.put(req, copy)); }
-      return r;
-    }).catch(() => caches.match(req).then(c => c || Response.error())));
-  }
+  if (req.headers.has('range')) return;
+  event.respondWith(caches.match(req, { ignoreSearch: true }).then(cached => cached || fetch(req).then(r => {
+    if (r.ok && r.type === 'basic') { const copy = r.clone(); caches.open(RUNTIME).then(c => c.put(req, copy)).catch(() => {}); }
+    return r;
+  })).catch(() => fetch(req)));
 });
