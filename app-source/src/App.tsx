@@ -40,15 +40,6 @@ export default function CatalogPage() {
         <p className="py-2 text-center text-xs font-medium tracking-widest text-accent">
           ROUND · OVAL · FITTINGS · ACCESSORIES
         </p>
-        <div className="flex justify-center pb-3">
-          <a
-            href={`${import.meta.env.BASE_URL}spiral-systems-catalog.zip`}
-            download="spiral-systems-catalog.zip"
-            className="inline-flex h-11 items-center rounded-card bg-accent px-4 text-sm font-medium text-accent-ink"
-          >
-            Download app copy
-          </a>
-        </div>
       </header>
       <div className="grid grid-cols-4 gap-2 px-3 pt-1 pb-4 sm:gap-3 sm:px-6">
         {HOME_BUTTONS.map((button) => {
