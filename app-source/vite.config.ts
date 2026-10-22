@@ -44,5 +44,6 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   plugins: [tailwindcss(), react(), serviceWorkerPlugin()],
   // Wider browser support (older Android Chrome / Samsung Internet / in-app WebViews).
+  worker: { format: "es" },
   build: { outDir: "dist", chunkSizeWarningLimit: 2000, target: ["es2020", "chrome87", "edge88", "firefox78", "safari14"] },
 });

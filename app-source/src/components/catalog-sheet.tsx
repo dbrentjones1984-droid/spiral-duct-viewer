@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import "@/polyfills";
 
 let pdfPromise: Promise<PDFDocumentProxy> | null = null;
 
 function loadPdf() {
   if (pdfPromise) return pdfPromise;
   const pending = import("pdfjs-dist/legacy/build/pdf.mjs").then((pdfjs) => {
-    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+    // Our own module worker (polyfills + pdf.js worker) so sheets also open on older Android Chrome / WebView.
+    if (!pdfjs.GlobalWorkerOptions.workerPort) {
+      pdfjs.GlobalWorkerOptions.workerPort = new Worker(new URL("../pdf-worker.ts", import.meta.url), { type: "module" });
+    }
     return pdfjs.getDocument({ url: `${import.meta.env.BASE_URL}catalogue.pdf`, disableRange: true, disableAutoFetch: true }).promise;
   });
   pending.catch(() => {
