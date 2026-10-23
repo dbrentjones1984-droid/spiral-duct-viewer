@@ -12,7 +12,7 @@ export const CONNECTIONS: { id: Connection; label: string }[] = [
 export const CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
     title: "Slip coupling",
-    text: "Slides inside both pipe ends (male × male); the center bead stops each pipe. Shown pulled apart.",
+    text: "Slides inside both pipe ends (male × male); the center bead stops each pipe. Fastened with sheet-metal screws. Shown pulled apart.",
   },
   flange: {
     title: "Flange",
@@ -90,7 +90,73 @@ export type BuiltConnection = {
    * end (to) of the assembly. `parts` are objects inside `group`; `piece` is the 12" pipe piece.
    */
   motion: { parts: { obj: THREE.Object3D; from: number; to: number }[]; piece: { from: number; to: number } };
+  /**
+   * Play, after the parts are together: sheet-metal screws driven in around both pipe ends (coupling only).
+   * `group` is in model coordinates (add it to the model). Each screw shows from `start` and is seated at `end`
+   * (0..1 of the screw phase); `drive` moves out along its local +Y (radially out) by `lift` and spins about Y.
+   */
+  screws?: { group: THREE.Group; items: { obj: THREE.Object3D; drive: THREE.Object3D; start: number; end: number; lift: number }[] };
 };
+
+/** Screws per pipe end around the coupling joint, by diameter. */
+export function screwCount(d: number) {
+  return d <= 6 ? 3 : d <= 10 ? 4 : d <= 14 ? 5 : d <= 18 ? 6 : 8;
+}
+
+/**
+ * Hex-washer-head sheet-metal screw (#10 x 3/4" self-tapper at k = 1; drawn oversized so it reads on screen).
+ * Local frame: +Y points out of the pipe; y = 0 is the underside of the washer (sits on the pipe surface),
+ * the threaded shank and point go down -Y into the pipe and coupling.
+ */
+function screwMesh(k: number, mat: THREE.Material) {
+  const g = new THREE.Group();
+  const washer = new THREE.CylinderGeometry(0.21 * k, 0.21 * k, 0.04 * k, 20);
+  washer.translate(0, 0.02 * k, 0);
+  const head = new THREE.CylinderGeometry(0.15 * k, 0.15 * k, 0.13 * k, 6);
+  head.translate(0, (0.04 + 0.065) * k, 0);
+  const shankL = 0.6 * k;
+  const shank = new THREE.CylinderGeometry(0.075 * k, 0.075 * k, shankL, 10);
+  shank.translate(0, -shankL / 2, 0);
+  const tip = new THREE.ConeGeometry(0.075 * k, 0.15 * k, 10);
+  tip.rotateX(Math.PI);
+  tip.translate(0, -shankL - 0.075 * k, 0);
+  for (const geo of [washer, head, shank, tip]) g.add(new THREE.Mesh(geo, mat));
+  // Thread hint: a few thin rings on the shank.
+  for (let i = 1; i <= 4; i++) {
+    const t = new THREE.TorusGeometry(0.075 * k, 0.018 * k, 4, 12);
+    t.rotateX(Math.PI / 2);
+    t.translate(0, -i * 0.12 * k, 0);
+    g.add(new THREE.Mesh(t, mat));
+  }
+  return { obj: g, length: shankL + 0.15 * k };
+}
+
+/** Screws around both pipe ends, 1" back from the coupling bead on each side, in the assembled pose. */
+function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
+  const r = d / 2;
+  const n = screwCount(d);
+  // Drawn ~2x real size (more on big pipes, which are seen from farther away) so the screws read on a phone.
+  const k = 1.5 + d / 16;
+  const group = new THREE.Group();
+  const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
+  // Main pipe side first, then the 12" piece; within a side they go one after another (overlapping) around the pipe.
+  [mainX, pieceX].forEach((x, side) => {
+    for (let i = 0; i < n; i++) {
+      const a = ((i + side * 0.5) / n) * Math.PI * 2 + Math.PI / 4;
+      const obj = new THREE.Group();
+      obj.position.set(x, r * Math.cos(a), r * Math.sin(a));
+      obj.rotation.x = a; // local +Y -> radial (0, cos a, sin a)
+      const s = screwMesh(k, mat);
+      obj.add(s.obj);
+      group.add(obj);
+      const win = 0.5; // each side gets half the phase
+      const each = win * 0.55; // one screw's drive time
+      const start = side * win + (i / Math.max(1, n - 1)) * (win - each);
+      items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+    }
+  });
+  return { group, items };
+}
 
 /** Length of the short pipe piece joined on with the connection (Brent: "maybe a foot long"). */
 export const JOIN_LENGTH = 12;
@@ -108,7 +174,7 @@ function jointFocus(d: number, from: number, to: number, outerR: number) {
  * Slip coupling: sleeve that fits inside the pipe, raised center bead, corrugated (crimped) ends.
  * Shown pulled most of the way out of the pipe end so the bead and both crimped ends read.
  */
-export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material, uvScale: number): BuiltConnection {
+export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material, uvScale: number, screwMat: THREE.Material): BuiltConnection {
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);
   const rc = r - wall - 0.03; // sleeve just inside the pipe
@@ -147,6 +213,8 @@ export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material,
     group,
     joinStart,
     motion: { parts: [{ obj: coupling, from: 0, to: coupleShift }], piece: { from: 0, to: pieceShift } },
+    // Assembled: main pipe ends at pipeEnd, bead pipeEnd..pipeEnd+bw, 12" piece starts at pipeEnd+bw. Screws 1" back each side.
+    screws: buildScrews(d, pipeEnd - 1, pipeEnd + bw + 1, screwMat),
     ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, r + 0.1),
   };
 }

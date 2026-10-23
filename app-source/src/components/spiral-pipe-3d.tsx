@@ -13,8 +13,11 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * "View 3D Model" button is pressed, to keep the main app light. Units are inches.
  */
 
-/** Play (assembly) animation length, ms. */
-const PLAY_MS = 2300;
+/** Play (assembly) animation: slide-together time, then (coupling) a short pause and the screw-driving phase, ms. */
+const SLIDE_MS = 2300;
+const SCREW_PAUSE_MS = 200;
+const SCREW_MS = 2300;
+const SCREW_TURNS = 4; // spin while driving in
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
@@ -92,7 +95,7 @@ function scaleV(g: THREE.BufferGeometry, k: number) {
 
 type PipeMats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material; rim: THREE.Material };
 
-function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: PipeMats, L = SECTION_LENGTH, ghost = false) {
+function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: PipeMats, L = SECTION_LENGTH) {
   const group = new THREE.Group();
   const r = diameter / 2;
   const wall = Math.max(0.05, diameter * 0.006); // drawn a little thicker than 26 ga (0.022") so the rim shows
@@ -124,8 +127,6 @@ function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: Pipe
     ring.translate(x, 0, 0);
     group.add(new THREE.Mesh(ring, rim));
   }
-  // See-through pipe (coupling view): draw after the opaque coupling so blending is stable.
-  if (ghost) group.traverse((o) => (o.renderOrder = 2));
   return group;
 }
 
@@ -186,21 +187,9 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
     sheet.side = THREE.DoubleSide;
     // Coupling: a touch brighter and smoother than the pipe so the sleeve reads as its own part at the joint.
     const couplingMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, metalness: 0.8, roughness: 0.24, envMapIntensity: 1.25, side: THREE.DoubleSide });
-    // See-through versions of the pipe, used while Coupling is picked so the sleeve inside the pipe ends shows.
-    // No depth writes (no flicker / hidden coupling); the seam and cut-end rims stay stronger so it still reads as pipe.
-    const ghost = (m: THREE.MeshStandardMaterial, opacity: number) => {
-      const g = m.clone();
-      g.transparent = true;
-      g.opacity = opacity;
-      g.depthWrite = false;
-      return g;
-    };
-    const metalGhost = ghost(metal, 0.65);
-    const insideGhost = ghost(inside, 0.25);
-    const seamGhost = ghost(seamMat, 0.9);
-    const rimGhost = ghost(seamMat, 0.95);
+    // Sheet-metal screws (darker steel than the pipe so they stand out), driven in around the coupling joint at the end of Play.
+    const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
     const solidPipe: PipeMats = { metal, inside, seam: seamMat, rim: metal };
-    const ghostPipe: PipeMats = { metal: metalGhost, inside: insideGhost, seam: seamGhost, rim: rimGhost };
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(
@@ -267,15 +256,29 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       camera.updateProjectionMatrix();
       controls.update();
     };
-    // ---- Play: slide the parts together (offsets along the pipe axis from each part's static position) ----
+    // ---- Play: slide the parts together (offsets along the pipe axis from each part's static position),
+    // then (coupling) drive the screws in. playT is elapsed ms. ----
     let moving: { obj: THREE.Object3D; base: number; from: number; to: number }[] = [];
+    let screws: NonNullable<BuiltConnection["screws"]>["items"] = [];
+    let playMs = SLIDE_MS;
     let playT = 0;
     let playing = false;
     let lastTime = 0;
     const pose = (t: number | null) => {
-      // t = null: the static view (no offsets); 0..1: assembly progress.
-      const k = t === null ? 0 : easeInOut(t);
+      // t = null: the static view (no offsets, no screws); otherwise ms into the assembly.
+      const k = t === null ? 0 : easeInOut(Math.min(1, t / SLIDE_MS));
       for (const m of moving) m.obj.position.x = m.base + (t === null ? 0 : m.from + (m.to - m.from) * k);
+      const s = t === null ? -1 : (t - SLIDE_MS - SCREW_PAUSE_MS) / SCREW_MS;
+      for (const sc of screws) {
+        const shown = s >= sc.start;
+        sc.obj.visible = shown;
+        if (!shown) continue;
+        const u = Math.min(1, (s - sc.start) / (sc.end - sc.start));
+        const e = easeInOut(u);
+        sc.drive.position.y = sc.lift * (1 - e);
+        sc.drive.rotation.y = -e * SCREW_TURNS * Math.PI * 2;
+        sc.drive.scale.setScalar(Math.min(1, 0.4 + u * 4)); // quick pop-in as it appears
+      }
     };
     const stopPlay = () => {
       playing = false;
@@ -290,7 +293,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         setPlay("paused");
         return;
       }
-      if (playT === 0 || playT >= 1) {
+      if (playT === 0 || playT >= playMs) {
         playT = 0;
         pose(0);
       }
@@ -300,10 +303,10 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
     };
     const stepPlay = (now: number) => {
       if (!playing) return;
-      playT = Math.min(1, playT + (now - lastTime) / PLAY_MS);
+      playT = Math.min(playMs, playT + (now - lastTime));
       lastTime = now;
       pose(playT);
-      if (playT >= 1) {
+      if (playT >= playMs) {
         playing = false;
         setPlay("done");
       }
@@ -315,28 +318,31 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         disposeGroup(model);
       }
       model = new THREE.Group();
-      const see = c === "coupling";
-      const mats = see ? ghostPipe : solidPipe;
-      model.add(buildPipe(d, mats, SECTION_LENGTH, see));
+      const mats = solidPipe;
+      model.add(buildPipe(d, mats));
       const uvScale = 1 / SECTION_LENGTH; // same spangle scale as the pipe
       conn =
         c === "coupling"
-          ? buildCoupling(d, SECTION_LENGTH / 2, couplingMat, uvScale)
+          ? buildCoupling(d, SECTION_LENGTH / 2, couplingMat, uvScale, screwMat)
           : c === "flange"
             ? buildFlange(d, SECTION_LENGTH / 2, metal, sheet, uvScale)
             : null;
       if (conn) {
         model.add(conn.group);
         // Short 12" piece joined on with the connection, so the joint reads as two pipes going together.
-        const piece = buildPipe(d, mats, JOIN_LENGTH, see);
+        const piece = buildPipe(d, mats, JOIN_LENGTH);
         piece.position.x = conn.joinStart + JOIN_LENGTH / 2;
         model.add(piece);
         moving = [
           ...conn.motion.parts.map((m) => ({ ...m, base: m.obj.position.x })),
           { obj: piece, base: piece.position.x, ...conn.motion.piece },
         ];
+        screws = conn.screws?.items ?? [];
+        if (conn.screws) model.add(conn.screws.group);
+        playMs = conn.screws ? SLIDE_MS + SCREW_PAUSE_MS + SCREW_MS : SLIDE_MS;
       } else {
         moving = [];
+        screws = [];
       }
       stopPlay();
       scene.add(model);
@@ -396,7 +402,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seamMat, inside, sheet, couplingMat, metalGhost, insideGhost, seamGhost, rimGhost].forEach((m) => m.dispose());
+      [metal, seamMat, inside, sheet, couplingMat, screwMat].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
