@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallButton } from "@/components/install-button";
+import { SubmittalSheetsButton } from "@/components/submittal-sheets";
 import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
@@ -106,6 +107,13 @@ function CatalogPage({
             className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70"
           />
           <BrandLogo className="relative h-auto w-48 max-w-full sm:w-56" />
+          {/* Header buttons on the blueprint, either side of the logo (Brent's sketch): install left, submittals right. */}
+          <div className="absolute top-3 left-2 sm:top-4 sm:left-4">
+            <InstallButton />
+          </div>
+          <div className="absolute top-3 right-2 sm:top-4 sm:right-4">
+            <SubmittalSheetsButton />
+          </div>
         </div>
         <div className="bg-accent px-4 py-2.5 text-center">
           <p className="font-display text-3xl leading-none tracking-wide text-accent-ink">PRODUCT CATALOG</p>
@@ -113,7 +121,6 @@ function CatalogPage({
         <p className="py-2 text-center text-xs font-medium tracking-widest text-accent">
           ROUND · OVAL · FITTINGS · ACCESSORIES
         </p>
-        <InstallButton />
       </header>
       <div ref={tabRow} className="grid grid-cols-4 gap-2 px-3 pt-1 pb-4 sm:gap-3 sm:px-6">
         {HOME_BUTTONS.map((button) => {

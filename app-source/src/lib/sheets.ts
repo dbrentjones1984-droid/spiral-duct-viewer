@@ -61,3 +61,21 @@ export function stockGauge(diameter: number) {
   if (diameter <= 18) return { pipe: 26, fitting: 24 };
   return { pipe: 24, fitting: 22 };
 }
+
+/** Downloadable submittal sheets (header button). Not precached, same as the catalog PDF (docs/ is skipped). */
+export const SUBMITTAL_SHEETS = [
+  {
+    id: "single-wall",
+    title: "Single Wall Submittal",
+    href: `${base}docs/Single-Wall-Submittal.pdf`,
+    fileName: "Single Wall Submittal.pdf",
+    sizeLabel: "333 KB",
+  },
+  {
+    id: "double-wall",
+    title: "Double Wall Submittal",
+    href: `${base}docs/Double-Wall-Submittal.pdf`,
+    fileName: "Double Wall Submittal.pdf",
+    sizeLabel: "320 KB",
+  },
+] as const;

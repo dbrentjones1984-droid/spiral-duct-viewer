@@ -97,6 +97,44 @@
   .shape-menu {
     animation: shape-menu-in 140ms ease-out;
   }
+
+  /* Compact header buttons (Install App / Submittal Sheets): same raised look as the home tabs, icon above the
+     label, narrow enough to sit beside the centered logo on a 360 px phone. */
+  .header-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    width: 4.25rem;
+    min-height: 3.75rem;
+    padding: 0.4rem 0.25rem;
+    border-radius: 0.65rem;
+    text-align: center;
+  }
+
+  .header-btn:active {
+    transform: translateY(3px);
+  }
+
+  @media (width >= 40rem) {
+    .header-btn {
+      width: 5.5rem;
+      min-height: 4.5rem;
+      border-radius: var(--radius-card);
+    }
+  }
+
+  .submittal-sheet {
+    animation: submittal-in 180ms ease-out;
+  }
+}
+
+@keyframes submittal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
 }
 
 @keyframes shape-menu-in {
@@ -108,7 +146,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .btn-raised,
-  .shape-menu {
+  .shape-menu,
+  .submittal-sheet {
     transition: none;
     animation: none;
   }
