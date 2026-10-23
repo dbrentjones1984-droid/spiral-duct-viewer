@@ -3,7 +3,7 @@ import { RotateCcw, X } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { buildCoupling, buildFlange, CONNECTION_INFO, CONNECTIONS, type BuiltConnection, type Connection } from "@/components/duct-connections";
+import { buildCoupling, buildFlange, CONNECTION_INFO, CONNECTIONS, JOIN_LENGTH, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -78,15 +78,24 @@ class Helix extends THREE.Curve<THREE.Vector3> {
   }
 }
 
-function buildPipe(diameter: number, metal: THREE.Material, inside: THREE.Material, seamMat: THREE.Material) {
+/** Scale a cylinder's V texture coordinate so a shorter piece keeps the same spangle size as the 4 ft section. */
+function scaleV(g: THREE.BufferGeometry, k: number) {
+  if (k === 1) return;
+  const uv = g.getAttribute("uv") as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * k);
+}
+
+type PipeMats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material; rim: THREE.Material };
+
+function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: PipeMats, L = SECTION_LENGTH, ghost = false) {
   const group = new THREE.Group();
   const r = diameter / 2;
   const wall = Math.max(0.05, diameter * 0.006); // drawn a little thicker than 26 ga (0.022") so the rim shows
-  const L = SECTION_LENGTH;
   const radial = Math.min(160, 64 + Math.round(diameter * 4));
 
   const outer = new THREE.CylinderGeometry(r, r, L, radial, 1, true);
   outer.rotateZ(-Math.PI / 2);
+  scaleV(outer, L / SECTION_LENGTH);
   group.add(new THREE.Mesh(outer, metal));
 
   const inner = new THREE.CylinderGeometry(r - wall, r - wall, L, radial, 1, true);
@@ -108,8 +117,10 @@ function buildPipe(diameter: number, metal: THREE.Material, inside: THREE.Materi
     const ring = new THREE.RingGeometry(r - wall, r + 0.005, radial);
     ring.rotateY(Math.PI / 2);
     ring.translate(x, 0, 0);
-    group.add(new THREE.Mesh(ring, metal));
+    group.add(new THREE.Mesh(ring, rim));
   }
+  // See-through pipe (coupling view): draw after the opaque coupling so blending is stable.
+  if (ghost) group.traverse((o) => (o.renderOrder = 2));
   return group;
 }
 
@@ -162,6 +173,23 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
     const inside = new THREE.MeshStandardMaterial({ color: 0x9aa3ac, metalness: 0.7, roughness: 0.5, side: THREE.BackSide, envMapIntensity: 0.6 });
     const sheet = metal.clone(); // same galvanized finish, both sides (thin coupling / collar seen from inside too)
     sheet.side = THREE.DoubleSide;
+    // Coupling: a touch brighter and smoother than the pipe so the sleeve reads as its own part at the joint.
+    const couplingMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, metalness: 0.8, roughness: 0.24, envMapIntensity: 1.25, side: THREE.DoubleSide });
+    // See-through versions of the pipe, used while Coupling is picked so the sleeve inside the pipe ends shows.
+    // No depth writes (no flicker / hidden coupling); the seam and cut-end rims stay stronger so it still reads as pipe.
+    const ghost = (m: THREE.MeshStandardMaterial, opacity: number) => {
+      const g = m.clone();
+      g.transparent = true;
+      g.opacity = opacity;
+      g.depthWrite = false;
+      return g;
+    };
+    const metalGhost = ghost(metal, 0.3);
+    const insideGhost = ghost(inside, 0.12);
+    const seamGhost = ghost(seamMat, 0.6);
+    const rimGhost = ghost(seamMat, 0.8);
+    const solidPipe: PipeMats = { metal, inside, seam: seamMat, rim: metal };
+    const ghostPipe: PipeMats = { metal: metalGhost, inside: insideGhost, seam: seamGhost, rim: rimGhost };
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(
@@ -234,15 +262,23 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         disposeGroup(model);
       }
       model = new THREE.Group();
-      model.add(buildPipe(d, metal, inside, seamMat));
+      const see = c === "coupling";
+      const mats = see ? ghostPipe : solidPipe;
+      model.add(buildPipe(d, mats, SECTION_LENGTH, see));
       const uvScale = 1 / SECTION_LENGTH; // same spangle scale as the pipe
       conn =
         c === "coupling"
-          ? buildCoupling(d, SECTION_LENGTH / 2, sheet, uvScale)
+          ? buildCoupling(d, SECTION_LENGTH / 2, couplingMat, uvScale)
           : c === "flange"
             ? buildFlange(d, SECTION_LENGTH / 2, metal, sheet, uvScale)
             : null;
-      if (conn) model.add(conn.group);
+      if (conn) {
+        model.add(conn.group);
+        // Short 12" piece joined on with the connection, so the joint reads as two pipes going together.
+        const piece = buildPipe(d, mats, JOIN_LENGTH, see);
+        piece.position.x = conn.joinStart + JOIN_LENGTH / 2;
+        model.add(piece);
+      }
       scene.add(model);
       spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), SECTION_LENGTH / 10);
       frame(d);
@@ -297,7 +333,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seamMat, inside, sheet].forEach((m) => m.dispose());
+      [metal, seamMat, inside, sheet, couplingMat, metalGhost, insideGhost, seamGhost, rimGhost].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();

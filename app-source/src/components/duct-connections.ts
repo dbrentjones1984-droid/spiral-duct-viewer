@@ -12,11 +12,11 @@ export const CONNECTIONS: { id: Connection; label: string }[] = [
 export const CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
     title: "Slip coupling",
-    text: "Slides inside both pipe ends (male × male). The center bead stops each pipe; crimped ends start easily. Shown pulled out slightly.",
+    text: "Slides inside both pipe ends (male × male); the center bead stops each pipe. Pipe shown see-through so the coupling shows.",
   },
   flange: {
     title: "Flange",
-    text: "Collar slips into the pipe end; the flat ring fastens to a matching flange or equipment. Shown pulled out slightly.",
+    text: "Each pipe end gets a flange. The two flat rings are screwed together face to face (shown slightly apart).",
   },
 };
 
@@ -83,7 +83,18 @@ export type BuiltConnection = {
   /** Point on the axis to frame and the radius of the region to keep in view. */
   focusX: number;
   focusR: number;
+  /** X where the short (12") joined pipe piece starts; it runs from here in +X. */
+  joinStart: number;
 };
+
+/** Length of the short pipe piece joined on with the connection (Brent: "maybe a foot long"). */
+export const JOIN_LENGTH = 12;
+
+/** Frame the joint plus the whole short piece and a little of the main pipe. */
+function jointFocus(d: number, from: number, to: number, outerR: number) {
+  const half = (to - from) / 2;
+  return { focusX: (from + to) / 2, focusR: Math.hypot(half, outerR * 1.1) + 1 + d * 0.05 };
+}
 
 /**
  * Slip coupling: sleeve that fits inside the pipe, raised center bead, corrugated (crimped) ends.
@@ -95,7 +106,7 @@ export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material,
   const rc = r - wall - 0.03; // sleeve just inside the pipe
   const C = d <= 12 ? 4 : 6; // overall length
   const bw = 0.5; // bead width
-  const bh = r + 0.1 - rc; // bead stands a little proud of the pipe (it's the stop)
+  const bh = r + 0.14 - rc; // bead stands a little proud of the pipe (it's the stop)
   const cl = Math.min(1.25, C * 0.3); // crimped length at each end
   const flutes = Math.max(24, Math.round((Math.PI * 2 * rc) / 0.42));
   const cd = 0.1 + d * 0.003; // crimp depth (a touch deep so the flutes read on screen)
@@ -114,25 +125,16 @@ export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material,
   );
   const group = new THREE.Group();
   group.add(new THREE.Mesh(geo, sheet));
-  const center = pipeEnd + C / 2 - cl * 0.5; // pulled out of the pipe: only part of one crimp still inside
-  group.position.x = center;
-  return { group, focusX: center, focusR: r * 1.05 + C * 0.5 + 1 };
+  // Both pipes pushed all the way on, their ends against the bead (the pipe is drawn see-through for the
+  // coupling, so the sleeve inside both ends shows).
+  group.position.x = pipeEnd + bw / 2;
+  const joinStart = pipeEnd + bw;
+  return { group, joinStart, ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, r + 0.1) };
 }
 
-/**
- * Flange: plain flat ring (rolled outer edge) and a short collar that slips into the pipe end.
- * Shown pulled out 1" so the collar shows.
- */
-export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sheet: THREE.Material, uvScale: number): BuiltConnection {
-  const r = d / 2;
-  const wall = Math.max(0.05, d * 0.006);
-  const rc = r - wall - 0.03; // collar just inside the pipe
-  const fw = d <= 12 ? 1.25 : 1.5; // ring width beyond the pipe
-  const ro = r + fw;
-  const t = 0.075; // ring thickness
+/** One flange: plain flat ring (rolled outer edge) facing +X (thickness 0..t), collar going back into the pipe (-X). */
+function flangePart(rc: number, ro: number, t: number, segs: number, ring: THREE.Material, sheet: THREE.Material, uvScale: number) {
   const collar = 2;
-  const segs = Math.min(200, 72 + 5 * d);
-
   const shape = new THREE.Shape(circle(ro, segs));
   shape.holes.push(new THREE.Path(circle(rc, segs).reverse()));
   const plate = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 1 });
@@ -157,7 +159,31 @@ export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sh
   bead.rotateY(Math.PI / 2);
   bead.translate(-0.4, 0, 0);
   group.add(new THREE.Mesh(bead, sheet));
+  return group;
+}
 
-  group.position.x = pipeEnd + 1;
-  return { group, focusX: pipeEnd + 0.6, focusR: ro * 1.3 + 1 };
+/**
+ * Flanged joint (Brent's sketch): a flange on the main pipe end and one on the 12" piece, the two plain flat rings
+ * face to face, shown 5/8 in. apart (they are screwed together; no screws or holes drawn, per Brent). Collars are inside the pipes.
+ */
+export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sheet: THREE.Material, uvScale: number): BuiltConnection {
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const rc = r - wall - 0.03; // collar just inside the pipe
+  const fw = d <= 12 ? 1.25 : 1.5; // ring width beyond the pipe
+  const ro = r + fw;
+  const t = 0.075; // ring thickness
+  const segs = Math.min(200, 72 + 5 * d);
+
+  const group = new THREE.Group();
+  const a = flangePart(rc, ro, t, segs, ring, sheet, uvScale);
+  a.position.x = pipeEnd;
+  const b = flangePart(rc, ro, t, segs, ring, sheet, uvScale);
+  b.rotation.y = Math.PI; // mirrored: faces -X, collar goes into the 12" piece
+  const gap = 0.625; // 5/8" between the rings: shown slightly apart (Brent), each flange stays on its own pipe
+  const joinStart = pipeEnd + 2 * t + gap;
+  b.position.x = joinStart;
+  group.add(a, b);
+
+  return { group, joinStart, ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, ro + 0.1) };
 }
