@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallButton } from "@/components/install-button";
 import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
-import { HOME_BUTTONS, type HomeButtonId } from "@/lib/catalog";
-
+import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -20,6 +19,43 @@ const HOME_ICONS = {
 
 export default function CatalogPage() {
   const [group, setGroup] = useState<HomeButtonId | null>(null);
+  const [shape, setShape] = useState<Shape | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const tabRow = useRef<HTMLDivElement>(null);
+
+  // Closing the drop-down keeps the tab selected only if a shape was picked for it.
+  const closeMenu = () => {
+    setMenuOpen(false);
+    if (!shape) setGroup(null);
+  };
+
+  const onTab = (id: HomeButtonId) => {
+    if (group === id) {
+      if (menuOpen) closeMenu();
+      else setMenuOpen(true);
+    } else {
+      setGroup(id);
+      setShape(null);
+      setMenuOpen(true);
+    }
+  };
+
+  // Tap anywhere outside the tab row (or press Escape) to close the drop-down.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!tabRow.current?.contains(e.target as Node)) closeMenu();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  });
 
   return (
     <main className="flex min-h-svh flex-col bg-paper text-ink">
@@ -40,33 +76,64 @@ export default function CatalogPage() {
         </p>
         <InstallButton />
       </header>
-      <div className="grid grid-cols-4 gap-2 px-3 pt-1 pb-4 sm:gap-3 sm:px-6">
+      <div ref={tabRow} className="grid grid-cols-4 gap-2 px-3 pt-1 pb-4 sm:gap-3 sm:px-6">
         {HOME_BUTTONS.map((button) => {
           const on = group === button.id;
+          const open = on && menuOpen;
           const Icon = HOME_ICONS[button.id];
+          const menuId = `shape-menu-${button.id}`;
           return (
-            <button
-              key={button.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setGroup(on ? null : button.id)}
-              className="btn-raised flex min-h-24 flex-col items-center justify-center gap-1 rounded-card px-1 py-2 text-center"
-            >
-              <span className="flex h-8 items-center justify-center" aria-hidden="true">
-                <Icon className="h-8 w-auto shrink-0" />
-              </span>
-              <span className="font-display text-sm leading-none sm:text-base">
-                {button.label.map((line) => (
-                  <span key={line} className="block whitespace-nowrap">
-                    {line}
-                  </span>
-                ))}
-              </span>
-            </button>
+            <div key={button.id} className="relative flex">
+              <button
+                type="button"
+                aria-pressed={on}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                aria-controls={open ? menuId : undefined}
+                onClick={() => onTab(button.id)}
+                className="btn-raised flex min-h-24 w-full flex-col items-center justify-center gap-1 rounded-card px-1 py-2 text-center"
+              >
+                <span className="flex h-8 items-center justify-center" aria-hidden="true">
+                  <Icon className="h-8 w-auto shrink-0" />
+                </span>
+                <span className="font-display text-sm leading-none sm:text-base">
+                  {button.label.map((line) => (
+                    <span key={line} className="block whitespace-nowrap">
+                      {line}
+                    </span>
+                  ))}
+                </span>
+              </button>
+              {open && (
+                // Drop-down under the tab (Brent's sketch): a short connector line, then Round / Oval stacked.
+                // Absolutely positioned, same width as the tab, so the tab row never shifts.
+                <div className="shape-menu absolute inset-x-0 top-full z-20 flex flex-col items-center">
+                  <span className="mt-1.5 h-3 w-0.5 rounded-full bg-accent" aria-hidden="true" />
+                  <div
+                    id={menuId}
+                    role="menu"
+                    aria-label={`${button.label.join(" ")}: shape`}
+                    className="flex w-full flex-col gap-3"
+                  >
+                    {SHAPES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={shape === s}
+                        onClick={() => setShape(s)}
+                        className="btn-raised btn-raised-sm flex min-h-11 w-full items-center justify-center rounded-[0.65rem] px-1 font-display text-base leading-none whitespace-nowrap sm:text-lg"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
-      {/* Drop-down menu for the selected group goes here (planned). */}
     </main>
   );
 }

@@ -9,3 +9,8 @@ export const HOME_BUTTONS = [
 ] as const;
 
 export type HomeButtonId = (typeof HOME_BUTTONS)[number]["id"];
+
+/** Choices in the drop-down under each tab (Brent's sketch: "Round" / "Oval"). */
+export const SHAPES = ["Round", "Oval"] as const;
+
+export type Shape = (typeof SHAPES)[number];

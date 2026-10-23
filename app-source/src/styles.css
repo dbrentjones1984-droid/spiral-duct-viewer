@@ -46,7 +46,8 @@
       background 140ms ease;
   }
 
-  .btn-raised[aria-pressed="true"] {
+  .btn-raised[aria-pressed="true"],
+  .btn-raised[aria-checked="true"] {
     background: linear-gradient(180deg, #0a4ea6 0%, #033b82 58%, #002961 100%);
     color: var(--color-accent-ink);
     border-color: #002961;
@@ -57,9 +58,40 @@
   }
 }
 
+@layer components {
+  /* Smaller raised button for the Round / Oval drop-down (same look as the tabs, shallower edge). */
+  .btn-raised-sm {
+    box-shadow:
+      inset 0 2px 0 #ffffff,
+      inset 0 -2px 0 #a9b6c4,
+      0 4px 0 #6e7c8c,
+      0 7px 12px rgb(0 28 64 / 0.25);
+  }
+
+  .btn-raised-sm[aria-checked="true"] {
+    box-shadow:
+      inset 0 3px 6px rgb(0 18 46 / 0.5),
+      0 1px 0 #001a3d;
+    transform: translateY(3px);
+  }
+
+  .shape-menu {
+    animation: shape-menu-in 140ms ease-out;
+  }
+}
+
+@keyframes shape-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .btn-raised {
+  .btn-raised,
+  .shape-menu {
     transition: none;
+    animation: none;
   }
 
   * {
