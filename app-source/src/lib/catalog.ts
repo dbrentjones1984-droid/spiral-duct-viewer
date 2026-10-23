@@ -640,7 +640,7 @@ export function findSheet(id: string) {
 }
 
 export const HOME_BUTTONS = [
-  { id: "single-duct", label: ["Single", "wall Duct"] },
+  { id: "single-duct", label: ["Single Wall", "Duct"] },
   { id: "single-fitting", label: ["Single", "Fitting"] },
   { id: "double-duct", label: ["Double", "Duct"] },
   { id: "double-fitting", label: ["Double", "Fitting"] },

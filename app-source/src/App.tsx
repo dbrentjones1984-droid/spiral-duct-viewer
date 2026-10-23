@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { ArrowLeft, Boxes, ChevronRight, Cylinder, Layers, Spline } from "lucide-react";
+import { ArrowLeft, Boxes, ChevronRight, Layers, Spline } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { CatalogSheet } from "@/components/catalog-sheet";
 import { DuctStudio } from "@/components/duct-studio";
 import { InstallButton } from "@/components/install-button";
+import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { findSheet, HOME_BUTTONS, sheetsForHome, type HomeButtonId } from "@/lib/catalog";
 
 
 const HOME_ICONS = {
-  "single-duct": Cylinder,
+  "single-duct": SpiralDuctIcon,
   "single-fitting": Spline,
   "double-duct": Layers,
   "double-fitting": Boxes,
@@ -55,7 +56,13 @@ export default function CatalogPage() {
               onClick={() => setGroup(on ? null : button.id)}
               className="btn-raised flex min-h-24 flex-col items-center justify-center gap-1 rounded-card px-1 py-2 text-center"
             >
-              <Icon className="size-5 shrink-0" aria-hidden="true" />
+              <span className="flex h-8 items-center justify-center" aria-hidden="true">
+                {button.id === "single-duct" ? (
+                  <Icon className="h-8 w-auto shrink-0" />
+                ) : (
+                  <Icon className="size-5 shrink-0" />
+                )}
+              </span>
               <span className="font-display text-sm leading-none sm:text-base">
                 {button.label.map((line) => (
                   <span key={line} className="block whitespace-nowrap">
