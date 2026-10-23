@@ -25,12 +25,17 @@
     <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/spiral-duct-viewer/icons/startup/apple-startup-1242x2208.png" />
     <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/spiral-duct-viewer/icons/startup/apple-startup-750x1334.png" />
     <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/spiral-duct-viewer/icons/startup/apple-startup-640x1136.png" />
+    <!-- Splash: a tall, phone-shaped version of the catalog cover built from pieces of it (logo, banner, product photo)
+         plus live text, so it fills any tall screen without cropping. Images are preloaded and in the SW precache. -->
+    <link rel="preload" as="image" href="/spiral-duct-viewer/splash-photo.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/spiral-duct-viewer/splash-mark.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/spiral-duct-viewer/splash-banner.webp" type="image/webp" fetchpriority="high" />
     <link rel="icon" type="image/svg+xml" href="/spiral-duct-viewer/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/spiral-duct-viewer/icons/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/spiral-duct-viewer/icons/favicon-32.png" />
     <meta property="og:title" content="Spiral Systems" />
     <meta property="og:image" content="/spiral-duct-viewer/og.jpg" />
-    <style>#splash{z-index:9999;padding:max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));color:#033b82;background:radial-gradient(120% 80% at 50% 30%,#fff 0%,#f4f6f8 60%,#e6ebf1 100%);flex-direction:column;justify-content:center;align-items:center;gap:28px;font-family:IBM Plex Sans,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;transition:opacity .45s,visibility 0s linear .45s;display:flex;position:fixed;top:0;bottom:0;left:0;right:0}#splash.splash-hide{opacity:0;visibility:hidden;pointer-events:none}#splash .splash-logo{width:min(64vw,260px);height:auto;animation:.6s ease-out both splash-in}#splash .splash-duct{width:88px;height:88px;animation:.6s ease-out .12s both splash-in}#splash .splash-spin{transform-origin:50px 50px;animation:1.1s linear infinite splash-rot}#splash .splash-seams{transform-origin:50px 50px;animation:3.2s linear infinite reverse splash-rot}#splash .splash-band{text-align:center;letter-spacing:.18em;color:#033b82;width:100%;max-width:320px;font-family:Barlow Condensed,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;font-size:15px;font-weight:600;animation:.6s ease-out .2s both splash-in}#splash .splash-bar{background:#d5dde6;border-radius:4px;width:min(60vw,220px);height:4px;margin:12px auto 0;overflow:hidden}#splash .splash-bar:after{content:"";background:#033b82;border-radius:4px;width:40%;height:100%;animation:1.2s ease-in-out infinite splash-bar;display:block}@keyframes splash-rot{to{transform:rotate(360deg)}}@keyframes splash-bar{0%{transform:translate(-100%)}to{transform:translate(250%)}}@keyframes splash-in{0%{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}#splash .splash-msg{text-align:center;color:#14181c;max-width:320px;font-size:14px;line-height:1.45;display:none}#splash.splash-error .splash-msg{display:block}#splash.splash-error .splash-duct,#splash.splash-error .splash-band{display:none}#splash .splash-msg p{margin:0 0 14px}#splash .splash-msg small{color:#5c6770;word-break:break-word;margin-top:10px;font-size:12px;display:block}#splash .splash-msg button{width:100%;min-height:44px;font:inherit;cursor:pointer;color:#14181c;background:#fff;border:1px solid #d5dde6;border-radius:.9rem;margin-top:10px;font-weight:600;display:block}#splash .splash-msg button.primary{color:#fff;background:#033b82;border-color:#033b82}#pwa-toast{left:50%;bottom:max(16px, env(safe-area-inset-bottom));z-index:10000;opacity:0;color:#fff;background:#033b82;border-radius:.9rem;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 24px);padding:12px 14px;font:500 14px/1.35 IBM Plex Sans,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;transition:transform .25s,opacity .25s;display:flex;position:fixed;transform:translate(-50%,140%);box-shadow:0 8px 24px #001e4640}#pwa-toast.show{opacity:1;transform:translate(-50%)}#pwa-toast button{color:#033b82;min-height:36px;font:inherit;cursor:pointer;background:#fff;border:0;border-radius:8px;flex:none;padding:0 12px;font-weight:600}@media (prefers-reduced-motion:reduce){#splash *,#splash :after{animation-duration:0s!important;animation-iteration-count:1!important}}</style>
+    <style>#splash{--sp-blue:#0a22c4;--sp-frame:#0a8bf4;z-index:9999;padding:max(18px, env(safe-area-inset-top)) 0 max(18px, env(safe-area-inset-bottom));color:var(--sp-blue);background:#fff;flex-direction:column;align-items:center;font-family:Segoe UI,Roboto,Helvetica Neue,Arial,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Noto Sans,Ubuntu,Cantarell,sans-serif;transition:opacity .45s,visibility 0s linear .45s;display:flex;position:fixed;top:0;bottom:0;left:0;right:0;overflow:hidden}#splash.splash-hide{opacity:0;visibility:hidden;pointer-events:none}#splash .sp-frame{inset:max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));border:2px solid var(--sp-frame);pointer-events:none;position:absolute}#splash>:not(.sp-frame){flex:none;position:relative}#splash img{opacity:0;transition:opacity .2s;display:block}#splash img.ok{opacity:1}#splash .sp-top{flex-direction:column;align-items:center;width:calc(100% - 40px);padding-top:2.2vh;display:flex}#splash .sp-logo{aspect-ratio:720/358;width:auto;max-width:78%;height:max(84px,min(15.5vh,150px))}#splash .sp-addr{text-align:center;justify-content:center;align-items:stretch;gap:14px;margin-top:2vh;font-size:min(14px,3.7vw);line-height:1.4;display:flex}#splash .sp-addr p{margin:0}#splash .sp-addr i{background:var(--sp-blue);opacity:.8;width:1.5px}#splash .sp-phone{border-top:1.5px solid var(--sp-blue);text-align:center;min-width:74%;margin:1vh 0 0;padding-top:.8vh;font-size:min(14px,3.7vw)}#splash .sp-banner{aspect-ratio:1080/96;color:#fff;letter-spacing:.02em;background:linear-gradient(90deg,#033a8e 0%,#0b5cc4 50%,#033a8e 100%);place-items:center;width:100%;margin-top:2.6vh;font:900 min(30px,7.4vw)/1 Arial Black,Segoe UI,Roboto,sans-serif;display:grid}@supports not (aspect-ratio:1 / 1){#splash .sp-banner{height:8.9vw}#splash .sp-logo{height:calc(min(64vw,300px)/2.01117)}}#splash .sp-banner img{width:100%;height:100%;position:absolute;top:0;bottom:0;left:0;right:0}#splash .sp-lines{letter-spacing:.04em;white-space:nowrap;justify-content:center;align-items:center;gap:5px;width:calc(100% - 28px);margin:1.4vh 0 0;font-size:min(11px,2.42vw);display:flex}#splash .sp-lines:before,#splash .sp-lines:after{content:"";background:var(--sp-blue);flex:1 1 0;min-width:0;max-width:40px;height:1.5px}#splash .sp-photo{flex:auto;justify-content:center;align-items:center;width:calc(100% - 20px);min-height:120px;margin-top:.8vh;display:flex}#splash .sp-photo img{object-fit:contain;object-position:50% 50%;mix-blend-mode:multiply;width:100%;height:100%;max-height:100%;-webkit-mask-image:linear-gradient(#0000 0,#000 4% 90%,#0000 100%);mask-image:linear-gradient(#0000 0,#000 4% 90%,#0000 100%)}#splash .sp-photo:before{content:"";opacity:1;background:url(/spiral-duct-viewer/blueprint.png) 50%/cover no-repeat;position:absolute;top:0;bottom:0;left:0;right:0;-webkit-mask-image:radial-gradient(closest-side,#000 55%,#0000 100%);mask-image:radial-gradient(closest-side,#000 55%,#0000 100%)}#splash .sp-photo img{position:relative}#splash .sp-tag{text-align:center;white-space:nowrap;margin:.6vh 0 0;font-size:min(16.5px,3.85vw);font-style:italic;line-height:1.3}#splash .splash-bar{background:#d5dde6;border-radius:4px;width:min(56vw,220px);height:4px;margin:2.6vh 0 2.4vh;overflow:hidden}#splash .splash-bar:after{content:"";background:#033b82;border-radius:4px;width:40%;height:100%;animation:1.2s ease-in-out infinite splash-bar;display:block}@keyframes splash-bar{0%{transform:translate(-100%)}to{transform:translate(250%)}}#splash.splash-error .sp-photo,#splash.splash-error .sp-tag,#splash.splash-error .splash-bar{display:none}#splash.splash-error .splash-msg{margin-top:4vh}#splash .splash-msg{text-align:center;color:#14181c;width:calc(100% - 64px);max-width:320px;font-size:14px;line-height:1.45;display:none}#splash.splash-error .splash-msg{display:block}#splash .splash-msg p{margin:0 0 14px}#splash .splash-msg small{color:#5c6770;word-break:break-word;margin-top:10px;font-size:12px;display:block}#splash .splash-msg button{width:100%;min-height:44px;font:inherit;cursor:pointer;color:#14181c;background:#fff;border:1px solid #d5dde6;border-radius:.9rem;margin-top:10px;font-weight:600;display:block}#splash .splash-msg button.primary{color:#fff;background:#033b82;border-color:#033b82}#pwa-toast{left:50%;bottom:max(16px, env(safe-area-inset-bottom));z-index:10000;opacity:0;color:#fff;background:#033b82;border-radius:.9rem;align-items:center;gap:12px;width:max-content;max-width:calc(100vw - 24px);padding:12px 14px;font:500 14px/1.35 IBM Plex Sans,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif;transition:transform .25s,opacity .25s;display:flex;position:fixed;transform:translate(-50%,140%);box-shadow:0 8px 24px #001e4640}#pwa-toast.show{opacity:1;transform:translate(-50%)}#pwa-toast button{color:#033b82;min-height:36px;font:inherit;cursor:pointer;background:#fff;border:0;border-radius:8px;flex:none;padding:0 12px;font-weight:600}@media (prefers-reduced-motion:reduce){#splash *,#splash :after{animation-duration:0s!important;animation-iteration-count:1!important}}</style>
     <script>
       /* Boot guard: if the app's code can't load or start (stale cached page pointing at old files, a network
          hiccup, an unsupported browser), never leave the splash spinning forever. Retry once automatically with
@@ -71,9 +76,10 @@
         }
         window.addEventListener("error", function (e) {
           var t = e.target;
-          if (t && t !== window && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+          if (t && t !== window && t.tagName) {
+            /* resource load errors: only the app's scripts/styles matter; a missing splash image must not trip the guard */
             var u = t.src || t.href || "";
-            if (u.indexOf("/assets/") !== -1) assetFailed(u);
+            if ((t.tagName === "SCRIPT" || t.tagName === "LINK") && u.indexOf("/assets/") !== -1) assetFailed(u);
             return;
           }
           show("Something went wrong while starting the app.", e.message || "");
@@ -87,29 +93,27 @@
         }, 15000);
       })();
     </script>
-    <script type="module" crossorigin src="/spiral-duct-viewer/assets/index-C-ffwPMM.js"></script>
-    <link rel="stylesheet" crossorigin href="/spiral-duct-viewer/assets/index-APjr-37b.css">
+    <script type="module" crossorigin src="/spiral-duct-viewer/assets/index-80xDwhuv.js"></script>
+    <link rel="stylesheet" crossorigin href="/spiral-duct-viewer/assets/index-C-46wGjj.css">
   </head>
   <body>
     <div id="splash" role="status" aria-label="Loading Spiral Systems catalog">
-      <img class="splash-logo" src="/spiral-duct-viewer/splash-logo.png" alt="Spiral Systems Incorporated" width="480" height="277" />
-      <svg class="splash-duct" viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="50" r="44" fill="none" stroke="#c9d1da" stroke-width="7" />
-        <g class="splash-seams" fill="none" stroke="#8a96a3" stroke-width="1.6" stroke-linecap="round">
-          <path d="M50 6 A44 44 0 0 1 94 50" stroke-dasharray="3 7" />
-          <path d="M50 94 A44 44 0 0 1 6 50" stroke-dasharray="3 7" />
-        </g>
-        <circle cx="50" cy="50" r="30" fill="none" stroke="#d5dde6" stroke-width="5" />
-        <circle cx="50" cy="50" r="37" fill="none" stroke="#e8ecf1" stroke-width="5" />
-        <g class="splash-spin">
-          <circle cx="50" cy="50" r="44" fill="none" stroke="#033b82" stroke-width="7" stroke-linecap="round" stroke-dasharray="70 207" />
-        </g>
-      </svg>
-      <div class="splash-msg" id="splash-msg" role="alert"></div>
-      <div class="splash-band">
-        ROUND · OVAL · FITTINGS · ACCESSORIES
-        <div class="splash-bar"></div>
+      <div class="sp-frame" aria-hidden="true"></div>
+      <div class="sp-top">
+        <img class="sp-logo" src="/spiral-duct-viewer/splash-mark.webp" alt="Spiral Systems Incorporated" width="720" height="358" fetchpriority="high" onload="this.className+=' ok'" />
+        <div class="sp-addr">
+          <p>860 Old Hwy 51<br />Nesbit, MS 38651</p>
+          <i aria-hidden="true"></i>
+          <p>399 Old Hickory Blvd,<br />Old Hickory, TN 37138</p>
+        </div>
+        <p class="sp-phone">Phone: 1-662-429-0373</p>
       </div>
+      <div class="sp-banner">PRODUCT CATALOG<img src="/spiral-duct-viewer/splash-banner.webp" alt="" width="1080" height="96" onload="this.className='ok'" /></div>
+      <p class="sp-lines">ROUND • OVAL • FITTINGS • ACCESSORIES • CUSTOM FABRICATION</p>
+      <div class="sp-photo"><img src="/spiral-duct-viewer/splash-photo.webp" alt="Spiral duct, elbow, reducer and tee" width="1080" height="716" fetchpriority="high" onload="this.className='ok'" /></div>
+      <p class="sp-tag">Quality Spiral Duct Products<br />for Commercial, Industrial and Custom Applications</p>
+      <div class="splash-bar" aria-hidden="true"></div>
+      <div class="splash-msg" id="splash-msg" role="alert"></div>
     </div>
     <div id="root"></div>
   </body>

@@ -25,6 +25,11 @@
     <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="/icons/startup/apple-startup-1242x2208.png" />
     <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/icons/startup/apple-startup-750x1334.png" />
     <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" href="/icons/startup/apple-startup-640x1136.png" />
+    <!-- Splash: a tall, phone-shaped version of the catalog cover built from pieces of it (logo, banner, product photo)
+         plus live text, so it fills any tall screen without cropping. Images are preloaded and in the SW precache. -->
+    <link rel="preload" as="image" href="/splash-photo.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/splash-mark.webp" type="image/webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/splash-banner.webp" type="image/webp" fetchpriority="high" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
@@ -32,35 +37,59 @@
     <meta property="og:image" content="/og.jpg" />
     <style>
       #splash {
-        position: fixed; inset: 0; z-index: 9999;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;
-        padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
-        background: radial-gradient(120% 80% at 50% 30%, #ffffff 0%, #f4f6f8 60%, #e6ebf1 100%);
-        color: #033b82; font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+        --sp-blue: #0a22c4; --sp-frame: #0a8bf4;
+        position: fixed; inset: 0; z-index: 9999; overflow: hidden;
+        display: flex; flex-direction: column; align-items: center;
+        padding: max(18px, env(safe-area-inset-top)) 0 max(18px, env(safe-area-inset-bottom));
+        background: #fff; color: var(--sp-blue);
+        font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif;
         transition: opacity 450ms ease, visibility 0s linear 450ms;
       }
       #splash.splash-hide { opacity: 0; visibility: hidden; pointer-events: none; }
-      #splash .splash-logo { width: min(64vw, 260px); height: auto; animation: splash-in 600ms ease-out both; }
-      #splash .splash-duct { width: 88px; height: 88px; animation: splash-in 600ms 120ms ease-out both; }
-      #splash .splash-spin { transform-origin: 50px 50px; animation: splash-rot 1.1s linear infinite; }
-      #splash .splash-seams { transform-origin: 50px 50px; animation: splash-rot 3.2s linear infinite reverse; }
-      #splash .splash-band {
-        width: 100%; max-width: 320px; text-align: center;
-        font-family: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif; font-weight: 600;
-        letter-spacing: 0.18em; font-size: 15px; color: #033b82;
-        animation: splash-in 600ms 200ms ease-out both;
+      /* thin blue frame like the cover; the banner runs across it */
+      #splash .sp-frame { position: absolute; inset: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); border: 2px solid var(--sp-frame); pointer-events: none; }
+      #splash > :not(.sp-frame) { position: relative; flex: none; }
+      #splash img { display: block; opacity: 0; transition: opacity 200ms ease; }
+      #splash img.ok { opacity: 1; }
+      #splash .sp-top { width: calc(100% - 40px); display: flex; flex-direction: column; align-items: center; padding-top: 2.2vh; }
+      #splash .sp-logo { height: clamp(84px, 15.5vh, 150px); width: auto; max-width: 78%; aspect-ratio: 720 / 358; }
+      #splash .sp-addr { display: flex; justify-content: center; align-items: stretch; gap: 14px; margin-top: 2vh; font-size: min(14px, 3.7vw); line-height: 1.4; text-align: center; }
+      #splash .sp-addr p { margin: 0; }
+      #splash .sp-addr i { width: 1.5px; background: var(--sp-blue); opacity: .8; }
+      #splash .sp-phone { margin: 1vh 0 0; padding-top: .8vh; min-width: 74%; border-top: 1.5px solid var(--sp-blue); text-align: center; font-size: min(14px, 3.7vw); }
+      #splash .sp-banner {
+        width: 100%; margin-top: 2.6vh; aspect-ratio: 1080 / 96;
+        background: linear-gradient(90deg, #033a8e 0%, #0b5cc4 50%, #033a8e 100%);
+        display: grid; place-items: center; color: #fff; font: 900 min(30px, 7.4vw)/1 "Arial Black", "Segoe UI", Roboto, sans-serif; letter-spacing: .02em;
       }
-      #splash .splash-bar { margin: 12px auto 0; width: min(60vw, 220px); height: 4px; border-radius: 4px; background: #d5dde6; overflow: hidden; }
+      @supports not (aspect-ratio: 1 / 1) { #splash .sp-banner { height: 8.9vw; } #splash .sp-logo { height: calc(min(64vw, 300px) * 358 / 720); } }
+      #splash .sp-banner img { position: absolute; inset: 0; width: 100%; height: 100%; }
+      #splash .sp-lines { width: calc(100% - 28px); margin: 1.4vh 0 0; display: flex; align-items: center; justify-content: center; gap: 5px; font-size: min(11px, 2.42vw); letter-spacing: .04em; white-space: nowrap; }
+      #splash .sp-lines::before, #splash .sp-lines::after { content: ""; flex: 1 1 0; min-width: 0; max-width: 40px; height: 1.5px; background: var(--sp-blue); }
+      /* product photo takes the remaining height; full width, never cropped; light blueprint tint fills any extra height */
+      #splash .sp-photo {
+        flex: 1 1 auto; min-height: 120px; width: calc(100% - 20px); margin-top: .8vh; display: flex; align-items: center; justify-content: center;
+      }
+      #splash .sp-photo img { width: 100%; height: 100%; object-fit: contain; object-position: 50% 50%; max-height: 100%;
+        /* soften the photo's top/bottom edges */
+        -webkit-mask-image: linear-gradient(transparent 0, #000 4%, #000 90%, transparent 100%); mask-image: linear-gradient(transparent 0, #000 4%, #000 90%, transparent 100%);
+        mix-blend-mode: multiply; /* the photo's white paper lets the blueprint tint show through, so there is no visible edge */ }
+      #splash .sp-photo::before {
+        content: ""; position: absolute; inset: 0; background: url("/blueprint.png") center / cover no-repeat; opacity: 1;
+        -webkit-mask-image: radial-gradient(closest-side, #000 55%, transparent 100%); mask-image: radial-gradient(closest-side, #000 55%, transparent 100%);
+      }
+      #splash .sp-photo img { position: relative; }
+      #splash .sp-tag { margin: .6vh 0 0; text-align: center; font-style: italic; font-size: min(16.5px, 3.85vw); line-height: 1.3; white-space: nowrap; }
+            #splash .splash-bar { margin: 2.6vh 0 2.4vh; width: min(56vw, 220px); height: 4px; border-radius: 4px; background: #d5dde6; overflow: hidden; }
       #splash .splash-bar::after {
         content: ""; display: block; width: 40%; height: 100%; border-radius: 4px; background: #033b82;
         animation: splash-bar 1.2s ease-in-out infinite;
       }
-      @keyframes splash-rot { to { transform: rotate(360deg); } }
       @keyframes splash-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
-      @keyframes splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-      #splash .splash-msg { display: none; max-width: 320px; text-align: center; font-size: 14px; line-height: 1.45; color: #14181c; }
+      #splash.splash-error .sp-photo, #splash.splash-error .sp-tag, #splash.splash-error .splash-bar { display: none; }
+      #splash.splash-error .splash-msg { margin-top: 4vh; }
+      #splash .splash-msg { display: none; width: calc(100% - 64px); max-width: 320px; text-align: center; font-size: 14px; line-height: 1.45; color: #14181c; }
       #splash.splash-error .splash-msg { display: block; }
-      #splash.splash-error .splash-duct, #splash.splash-error .splash-band { display: none; }
       #splash .splash-msg p { margin: 0 0 14px; }
       #splash .splash-msg small { display: block; margin-top: 10px; color: #5c6770; font-size: 12px; word-break: break-word; }
       #splash .splash-msg button {
@@ -121,9 +150,10 @@
         }
         window.addEventListener("error", function (e) {
           var t = e.target;
-          if (t && t !== window && (t.tagName === "SCRIPT" || t.tagName === "LINK")) {
+          if (t && t !== window && t.tagName) {
+            /* resource load errors: only the app's scripts/styles matter; a missing splash image must not trip the guard */
             var u = t.src || t.href || "";
-            if (u.indexOf("/assets/") !== -1) assetFailed(u);
+            if ((t.tagName === "SCRIPT" || t.tagName === "LINK") && u.indexOf("/assets/") !== -1) assetFailed(u);
             return;
           }
           show("Something went wrong while starting the app.", e.message || "");
@@ -140,24 +170,22 @@
   </head>
   <body>
     <div id="splash" role="status" aria-label="Loading Spiral Systems catalog">
-      <img class="splash-logo" src="/splash-logo.png" alt="Spiral Systems Incorporated" width="480" height="277" />
-      <svg class="splash-duct" viewBox="0 0 100 100" aria-hidden="true">
-        <circle cx="50" cy="50" r="44" fill="none" stroke="#c9d1da" stroke-width="7" />
-        <g class="splash-seams" fill="none" stroke="#8a96a3" stroke-width="1.6" stroke-linecap="round">
-          <path d="M50 6 A44 44 0 0 1 94 50" stroke-dasharray="3 7" />
-          <path d="M50 94 A44 44 0 0 1 6 50" stroke-dasharray="3 7" />
-        </g>
-        <circle cx="50" cy="50" r="30" fill="none" stroke="#d5dde6" stroke-width="5" />
-        <circle cx="50" cy="50" r="37" fill="none" stroke="#e8ecf1" stroke-width="5" />
-        <g class="splash-spin">
-          <circle cx="50" cy="50" r="44" fill="none" stroke="#033b82" stroke-width="7" stroke-linecap="round" stroke-dasharray="70 207" />
-        </g>
-      </svg>
-      <div class="splash-msg" id="splash-msg" role="alert"></div>
-      <div class="splash-band">
-        ROUND · OVAL · FITTINGS · ACCESSORIES
-        <div class="splash-bar"></div>
+      <div class="sp-frame" aria-hidden="true"></div>
+      <div class="sp-top">
+        <img class="sp-logo" src="/splash-mark.webp" alt="Spiral Systems Incorporated" width="720" height="358" fetchpriority="high" onload="this.className+=' ok'" />
+        <div class="sp-addr">
+          <p>860 Old Hwy 51<br />Nesbit, MS 38651</p>
+          <i aria-hidden="true"></i>
+          <p>399 Old Hickory Blvd,<br />Old Hickory, TN 37138</p>
+        </div>
+        <p class="sp-phone">Phone: 1-662-429-0373</p>
       </div>
+      <div class="sp-banner">PRODUCT CATALOG<img src="/splash-banner.webp" alt="" width="1080" height="96" onload="this.className='ok'" /></div>
+      <p class="sp-lines">ROUND • OVAL • FITTINGS • ACCESSORIES • CUSTOM FABRICATION</p>
+      <div class="sp-photo"><img src="/splash-photo.webp" alt="Spiral duct, elbow, reducer and tee" width="1080" height="716" fetchpriority="high" onload="this.className='ok'" /></div>
+      <p class="sp-tag">Quality Spiral Duct Products<br />for Commercial, Industrial and Custom Applications</p>
+      <div class="splash-bar" aria-hidden="true"></div>
+      <div class="splash-msg" id="splash-msg" role="alert"></div>
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
