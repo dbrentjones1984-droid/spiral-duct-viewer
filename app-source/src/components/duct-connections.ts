@@ -16,7 +16,7 @@ export const CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: strin
   },
   flange: {
     title: "Flange",
-    text: "Each pipe end gets a flange. The two flat rings are screwed together face to face (shown slightly apart).",
+    text: "Each pipe end gets a flange. A rubber gasket between the rings seals the joint, and screws go through both flanges. Shown pulled apart.",
   },
 };
 
@@ -91,9 +91,9 @@ export type BuiltConnection = {
    */
   motion: { parts: { obj: THREE.Object3D; from: number; to: number }[]; piece: { from: number; to: number } };
   /**
-   * Play, after the parts are together: sheet-metal screws driven in around both pipe ends (coupling only).
-   * `group` is in model coordinates (add it to the model). Each screw shows from `start` and is seated at `end`
-   * (0..1 of the screw phase); `drive` moves out along its local +Y (radially out) by `lift` and spins about Y.
+   * Play, after the parts are together: sheet-metal screws driven in (coupling: around both pipe ends; flange:
+   * through both flange rings). `group` is in model coordinates (add it to the model). Each screw shows from `start`
+   * and is seated at `end` (0..1 of the screw phase); `drive` moves out along its local +Y by `lift` and spins about Y.
    */
   screws?: { group: THREE.Group; items: { obj: THREE.Object3D; drive: THREE.Object3D; start: number; end: number; lift: number }[] };
 };
@@ -131,12 +131,19 @@ function screwMesh(k: number, mat: THREE.Material) {
   return { obj: g, length: shankL + 0.15 * k };
 }
 
+/** Screw drawing scale: ~1.6x real size at 12" (more on big pipes, which are seen from farther away) so screws read on a phone. */
+const screwScale = (d: number) => 0.7 * (1.5 + d / 16); // 3": 1.18, 12": 1.58, 24": 2.1
+
+/** Screws through the flange rings, by diameter (Brent: 4 to 6", 6 to 10", 8 to 16", 10 to 20", 12 at 22-24"). */
+export function flangeScrewCount(d: number) {
+  return d <= 6 ? 4 : d <= 10 ? 6 : d <= 16 ? 8 : d <= 20 ? 10 : 12;
+}
+
 /** Screws around both pipe ends, 1" back from the coupling bead on each side, in the assembled pose. */
 function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
   const r = d / 2;
   const n = screwCount(d);
-  // Drawn ~1.6x real size at 12" (more on big pipes, which are seen from farther away) so the screws read on a phone.
-  const k = 0.7 * (1.5 + d / 16); // 3": 1.18, 12": 1.58, 24": 2.1
+  const k = screwScale(d);
   const group = new THREE.Group();
   const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
   // Main pipe side first, then the 12" piece; within a side they go one after another (overlapping) around the pipe.
@@ -161,8 +168,6 @@ function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Materi
 /** Length of the short pipe piece joined on with the connection (Brent: "maybe a foot long"). */
 export const JOIN_LENGTH = 12;
 
-/** How far (in.) the flanged 12" piece starts beyond its static 5/8" gap when the assembly is played. */
-const FLANGE_PLAY_START = 3;
 
 /** Frame the joint plus the whole short piece and a little of the main pipe. */
 function jointFocus(d: number, from: number, to: number, outerR: number) {
@@ -251,9 +256,19 @@ function flangePart(rc: number, ro: number, t: number, segs: number, ring: THREE
 
 /**
  * Flanged joint (Brent's sketch): a flange on the main pipe end and one on the 12" piece, the two plain flat rings
- * face to face, shown 5/8 in. apart (they are screwed together; no screws or holes drawn, per Brent). Collars are inside the pipes.
+ * face to face with a black rubber gasket between them for sealing. Static view: pulled apart (about 1" each side of
+ * the gasket), no screws or holes (per Brent). Play slides it together flush (flange | gasket | flange), then
+ * screws go in through both rings, parallel to the pipe. Collars are inside the pipes.
  */
-export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sheet: THREE.Material, uvScale: number): BuiltConnection {
+export function buildFlange(
+  d: number,
+  pipeEnd: number,
+  ring: THREE.Material,
+  sheet: THREE.Material,
+  uvScale: number,
+  gasketMat: THREE.Material,
+  screwMat: THREE.Material,
+): BuiltConnection {
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);
   const rc = r - wall - 0.03; // collar just inside the pipe
@@ -264,21 +279,55 @@ export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sh
 
   const group = new THREE.Group();
   const a = flangePart(rc, ro, t, segs, ring, sheet, uvScale);
-  a.position.x = pipeEnd;
+  a.position.x = pipeEnd; // ring face pipeEnd..pipeEnd+t
   const b = flangePart(rc, ro, t, segs, ring, sheet, uvScale);
   b.rotation.y = Math.PI; // mirrored: faces -X, collar goes into the 12" piece
-  const gap = 0.625; // 5/8" between the rings: shown slightly apart (Brent), each flange stays on its own pipe
-  const joinStart = pipeEnd + 2 * t + gap;
-  b.position.x = joinStart;
-  group.add(a, b);
 
-  // Play: the 12" piece and its flange start a few inches away and slide in until the rings meet flush.
-  const start = FLANGE_PLAY_START;
-  const move = { from: start, to: -gap };
+  // Rubber gasket: flat ring 1/8" thick, just outside the pipe out to the flange rim (its black edge shows between the rings when assembled).
+  const gt = 0.125;
+  const gap = 1; // static: about 1" on each side of the gasket
+  const gShape = new THREE.Shape(circle(ro - 0.02, segs));
+  gShape.holes.push(new THREE.Path(circle(r + 0.06, segs).reverse()));
+  const gGeo = new THREE.ExtrudeGeometry(gShape, { depth: gt, bevelEnabled: false, curveSegments: 1 });
+  gGeo.rotateY(Math.PI / 2); // thickness along X, 0..gt
+  const gasket = new THREE.Mesh(gGeo, gasketMat);
+  gasket.position.x = pipeEnd + t + gap;
+  const joinStart = pipeEnd + t + gap + gt + gap + t;
+  b.position.x = joinStart; // ring face joinStart-t..joinStart
+  group.add(a, gasket, b);
+
+  // Play: gasket slides onto flange a, flange b + the 12" piece slide onto the gasket: flange | gasket | flange, flush.
+  const pieceTo = -2 * gap;
+  const screws = buildFlangeScrews(d, (r + 0.06 + ro - 0.02) / 2, pipeEnd + 2 * t + gt, screwMat);
   return {
     group,
     joinStart,
-    motion: { parts: [{ obj: b, ...move }], piece: move },
-    ...jointFocus(d, pipeEnd - 4, joinStart + start + JOIN_LENGTH, ro + 0.1),
+    motion: { parts: [{ obj: gasket, from: 0, to: -gap }, { obj: b, from: 0, to: pieceTo }], piece: { from: 0, to: pieceTo } },
+    screws,
+    ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, ro + 0.1),
   };
+}
+
+/**
+ * Screws through both flange rings and the gasket, parallel to the pipe: heads on the 12" piece's flange (faceX, facing +X),
+ * points out the far side of the main pipe's flange. Driven one after another around the ring.
+ */
+function buildFlangeScrews(d: number, rs: number, faceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
+  const n = flangeScrewCount(d);
+  const k = screwScale(d);
+  const group = new THREE.Group();
+  const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
+  const each = 0.4; // one screw's drive time (fraction of the screw phase)
+  for (let i = 0; i < n; i++) {
+    const a = ((i + 0.5) / n) * Math.PI * 2;
+    const obj = new THREE.Group();
+    obj.position.set(faceX, rs * Math.cos(a), rs * Math.sin(a));
+    obj.rotation.z = -Math.PI / 2; // local +Y -> +X (out of the flange face)
+    const s = screwMesh(k, mat);
+    obj.add(s.obj);
+    group.add(obj);
+    const start = (i / Math.max(1, n - 1)) * (1 - each);
+    items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+  }
+  return { group, items };
 }

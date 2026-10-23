@@ -13,7 +13,7 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * "View 3D Model" button is pressed, to keep the main app light. Units are inches.
  */
 
-/** Play (assembly) animation: slide-together time, then (coupling) a short pause and the screw-driving phase, ms. */
+/** Play (assembly) animation: slide-together time, then (coupling, flange) a short pause and the screw-driving phase, ms. */
 const SLIDE_MS = 2300;
 const SCREW_PAUSE_MS = 200;
 const SCREW_MS = 2300;
@@ -189,6 +189,8 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
     const couplingMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, metalness: 0.8, roughness: 0.24, envMapIntensity: 1.25, side: THREE.DoubleSide });
     // Sheet-metal screws (darker steel than the pipe so they stand out), driven in around the coupling joint at the end of Play.
     const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
+    // Flange gasket: dark matte black rubber.
+    const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4 });
     const solidPipe: PipeMats = { metal, inside, seam: seamMat, rim: metal };
 
     const shadowTex = shadowTexture();
@@ -257,7 +259,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       controls.update();
     };
     // ---- Play: slide the parts together (offsets along the pipe axis from each part's static position),
-    // then (coupling) drive the screws in. playT is elapsed ms. ----
+    // then (coupling, flange) drive the screws in. playT is elapsed ms. ----
     let moving: { obj: THREE.Object3D; base: number; from: number; to: number }[] = [];
     let screws: NonNullable<BuiltConnection["screws"]>["items"] = [];
     let playMs = SLIDE_MS;
@@ -325,7 +327,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         c === "coupling"
           ? buildCoupling(d, SECTION_LENGTH / 2, couplingMat, uvScale, screwMat)
           : c === "flange"
-            ? buildFlange(d, SECTION_LENGTH / 2, metal, sheet, uvScale)
+            ? buildFlange(d, SECTION_LENGTH / 2, metal, sheet, uvScale, gasketMat, screwMat)
             : null;
       if (conn) {
         model.add(conn.group);
@@ -402,7 +404,7 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seamMat, inside, sheet, couplingMat, screwMat].forEach((m) => m.dispose());
+      [metal, seamMat, inside, sheet, couplingMat, screwMat, gasketMat].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
