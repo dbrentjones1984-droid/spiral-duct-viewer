@@ -135,8 +135,8 @@ function screwMesh(k: number, mat: THREE.Material) {
 function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
   const r = d / 2;
   const n = screwCount(d);
-  // Drawn ~2x real size (more on big pipes, which are seen from farther away) so the screws read on a phone.
-  const k = 1.5 + d / 16;
+  // Drawn ~1.6x real size at 12" (more on big pipes, which are seen from farther away) so the screws read on a phone.
+  const k = 0.7 * (1.5 + d / 16); // 3": 1.18, 12": 1.58, 24": 2.1
   const group = new THREE.Group();
   const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
   // Main pipe side first, then the 12" piece; within a side they go one after another (overlapping) around the pipe.
