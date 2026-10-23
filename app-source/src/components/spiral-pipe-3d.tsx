@@ -3,6 +3,7 @@ import { RotateCcw, X } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { buildCoupling, buildFlange, CONNECTION_INFO, CONNECTIONS, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -120,8 +121,9 @@ function disposeGroup(group: THREE.Object3D) {
 
 export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
   const host = useRef<HTMLDivElement>(null);
-  const api = useRef<{ setDiameter: (d: number) => void; reset: () => void } | null>(null);
+  const api = useRef<{ setDiameter: (d: number) => void; setConnection: (c: Connection) => void; reset: () => void } | null>(null);
   const [diameter, setDiameter] = useState(12);
+  const [connection, setConnection] = useState<Connection>("none");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
   const gauge = stockGauge(diameter);
@@ -158,6 +160,8 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
     const metal = new THREE.MeshStandardMaterial({ color: 0xffffff, map: spangle, metalness: 0.82, roughness: 0.36, envMapIntensity: 0.95 });
     const seamMat = new THREE.MeshStandardMaterial({ color: 0xd4d9de, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.05 });
     const inside = new THREE.MeshStandardMaterial({ color: 0x9aa3ac, metalness: 0.7, roughness: 0.5, side: THREE.BackSide, envMapIntensity: 0.6 });
+    const sheet = metal.clone(); // same galvanized finish, both sides (thin coupling / collar seen from inside too)
+    sheet.side = THREE.DoubleSide;
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(
@@ -179,14 +183,24 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       setHint(false);
     });
 
-    let pipe: THREE.Group | null = null;
+    // model = pipe (+ connection); rotated as a whole for portrait screens.
+    let model: THREE.Group | null = null;
+    let conn: BuiltConnection | null = null;
     let fitDistance = 100;
     const frame = (d: number) => {
       // Portrait phones: stand the pipe up (shows the open end and fills the tall screen); wide screens: lay it down.
       const upright = camera.aspect < 0.9;
-      if (pipe) pipe.rotation.z = upright ? Math.PI / 2 : 0;
-      shadow.scale.set(upright ? d * 2.4 : SECTION_LENGTH * 1.25, upright ? d * 2.4 : d * 2.2, 1);
-      shadow.position.y = upright ? -SECTION_LENGTH / 2 - 0.05 : -d / 2 - 0.05;
+      if (!model) return;
+      model.rotation.z = upright ? Math.PI / 2 : 0;
+      model.updateMatrixWorld(true);
+      if (upright) {
+        shadow.scale.set(d * 2.4, d * 2.4, 1);
+        shadow.position.set(0, -SECTION_LENGTH / 2 - 0.05, 0);
+      } else {
+        const box = new THREE.Box3().setFromObject(model);
+        shadow.scale.set((box.max.x - box.min.x) * 1.15, d * 2.2, 1);
+        shadow.position.set((box.max.x + box.min.x) / 2, -d / 2 - 0.05, 0);
+      }
       // Fit the pipe's on-screen box (long side x diameter) with a margin.
       const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
       const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
@@ -195,9 +209,18 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       const halfH = upright ? along : across + SECTION_LENGTH * 0.12;
       const halfW = upright ? across : along * 0.92;
       fitDistance = Math.max(halfH / Math.tan(vHalf), halfW / Math.tan(hHalf)) * 1.12 + d / 2;
-      const dir = (upright ? new THREE.Vector3(0.5, 0.36, 1) : new THREE.Vector3(0.55, 0.42, 1)).normalize();
-      camera.position.copy(dir.multiplyScalar(fitDistance));
-      controls.target.set(0, 0, 0);
+      if (conn) {
+        // Zoom to the connection end, seen from a little above so the open end (crimps / ring face) reads.
+        const focus = model.localToWorld(new THREE.Vector3(conn.focusX, 0, 0));
+        const dist = conn.focusR / Math.sin(Math.min(vHalf, hHalf));
+        const dir = (upright ? new THREE.Vector3(0.55, 0.5, 1) : new THREE.Vector3(1, 0.45, 0.9)).normalize();
+        camera.position.copy(focus).addScaledVector(dir, dist);
+        controls.target.copy(focus);
+      } else {
+        const dir = (upright ? new THREE.Vector3(0.5, 0.36, 1) : new THREE.Vector3(0.55, 0.42, 1)).normalize();
+        camera.position.copy(dir.multiplyScalar(fitDistance));
+        controls.target.set(0, 0, 0);
+      }
       controls.minDistance = d * 0.9;
       controls.maxDistance = fitDistance * 2.2;
       camera.near = Math.max(0.1, d * 0.05);
@@ -205,13 +228,22 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       camera.updateProjectionMatrix();
       controls.update();
     };
-    const setPipe = (d: number) => {
-      if (pipe) {
-        scene.remove(pipe);
-        disposeGroup(pipe);
+    const build = (d: number, c: Connection) => {
+      if (model) {
+        scene.remove(model);
+        disposeGroup(model);
       }
-      pipe = buildPipe(d, metal, inside, seamMat);
-      scene.add(pipe);
+      model = new THREE.Group();
+      model.add(buildPipe(d, metal, inside, seamMat));
+      const uvScale = 1 / SECTION_LENGTH; // same spangle scale as the pipe
+      conn =
+        c === "coupling"
+          ? buildCoupling(d, SECTION_LENGTH / 2, sheet, uvScale)
+          : c === "flange"
+            ? buildFlange(d, SECTION_LENGTH / 2, metal, sheet, uvScale)
+            : null;
+      if (conn) model.add(conn.group);
+      scene.add(model);
       spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), SECTION_LENGTH / 10);
       frame(d);
     };
@@ -226,18 +258,25 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       camera.updateProjectionMatrix();
     };
     let currentD = 12;
+    let currentC: Connection = "none";
     resize();
-    setPipe(currentD);
+    build(currentD, currentC);
     const ro = new ResizeObserver(() => {
       resize();
-      if (pipe) frame(currentD);
+      frame(currentD);
     });
     ro.observe(el);
 
     api.current = {
       setDiameter: (d) => {
+        if (d === currentD) return;
         currentD = d;
-        setPipe(d);
+        build(currentD, currentC);
+      },
+      setConnection: (c) => {
+        if (c === currentC) return;
+        currentC = c;
+        build(currentD, currentC);
       },
       reset: () => {
         frame(currentD);
@@ -255,10 +294,10 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       ro.disconnect();
       renderer.setAnimationLoop(null);
       controls.dispose();
-      if (pipe) disposeGroup(pipe);
+      if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seamMat, inside].forEach((m) => m.dispose());
+      [metal, seamMat, inside, sheet].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -270,6 +309,10 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     api.current?.setDiameter(diameter);
   }, [diameter]);
+  useEffect(() => {
+    api.current?.setConnection(connection);
+  }, [connection]);
+  const info = connection === "none" ? null : CONNECTION_INFO[connection];
 
   return (
     <div
@@ -303,8 +346,35 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
             Drag to turn · pinch to zoom
           </p>
         )}
+        {info && !failed && (
+          <div
+            className="pointer-events-none absolute inset-x-3 bottom-3 rounded-[0.65rem] border border-[#8e9bab]/60 bg-surface/90 px-3 py-2 shadow-[0_2px_8px_rgb(0_28_64/0.18)] short:inset-x-auto short:top-3 short:bottom-auto short:left-3 short:py-1"
+            aria-live="polite"
+            data-testid="connection-caption"
+          >
+            <p className="font-display text-lg leading-tight text-accent">{info.title}</p>
+            <p className="text-xs leading-snug text-ink short:hidden">{info.text}</p>
+          </div>
+        )}
       </div>
-      <div className="flex items-center gap-2 border-t border-[#8e9bab]/50 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
+      <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5" role="radiogroup" aria-label="Connection">
+        <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Connection</span>
+        <div className="mt-1 grid grid-cols-3 gap-2">
+          {CONNECTIONS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              role="radio"
+              aria-checked={connection === c.id}
+              onClick={() => setConnection(c.id)}
+              className="btn-raised btn-raised-sm h-10 rounded-[0.65rem] font-display text-lg leading-none short:h-8"
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
         <label className="flex max-w-44 min-w-0 flex-1 flex-col">
           <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Diameter</span>
           <select
