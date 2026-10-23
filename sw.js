@@ -1,12 +1,13 @@
 /* Spiral Duct Viewer · service worker (mirrors the NWCC Campus Map approach, made self-healing).
    - Page loads (navigations): NETWORK-FIRST with a short timeout, so a new deploy is picked up right away;
      the cached shell is only used when offline / the network is too slow.
-   - Hashed build files, PDFs, images, icons, fonts: precached, cache-first (they never change under the same URL).
+   - Hashed build files, sheet images, icons, fonts: precached, cache-first (they never change under the same URL).
+   - Downloadable PDFs (docs/): not precached (too big for every install); cached the first time they are fetched.
    - Self-healing: a new version installs, takes over immediately (skipWaiting + clients.claim) and deletes every
      older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
      on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = '7e7192cfb5';
+const VERSION = 'b38a204d94';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -23,8 +24,9 @@ const PRECACHE = [
   "assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff",
   "assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff",
   "assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2",
-  "assets/index-C7d-dv5-.css",
-  "assets/index-UigW4908.js",
+  "assets/index-Cxsos55c.js",
+  "assets/index-fK_Poa63.css",
+  "assets/spiral-pipe-3d-B61mj9EC.js",
   "blueprint.png",
   "favicon.svg",
   "icons/apple-touch-icon.png",
@@ -38,6 +40,11 @@ const PRECACHE = [
   "logo.webp",
   "manifest.webmanifest",
   "og.jpg",
+  "sheets/single-wall-round-1.webp",
+  "sheets/single-wall-round-2.webp",
+  "sheets/single-wall-round-3.webp",
+  "sheets/single-wall-round-4.webp",
+  "sheets/single-wall-round-5.webp",
   "splash-banner.webp",
   "splash-logo.png",
   "splash-mark.webp",

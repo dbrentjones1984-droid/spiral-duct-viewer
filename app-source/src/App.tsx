@@ -4,7 +4,9 @@ import { InstallButton } from "@/components/install-button";
 import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
+import { SheetPage } from "@/components/sheet-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
+import { goBack, navigate, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -17,9 +19,46 @@ const HOME_ICONS = {
   "double-fitting": DuctElbowIcon,
 } as const;
 
-export default function CatalogPage() {
+/** Pages that exist so far. Everything else in the drop-downs just shows its selection for now. */
+function pageFor(group: HomeButtonId, shape: Shape) {
+  if (group === "single-duct" && shape === "Round") return SW_ROUND_HASH;
+  return null;
+}
+
+export default function App() {
+  const route = useHashRoute();
+  // Tab + Round/Oval choice live here so they are still shown when coming back from a sheet page.
   const [group, setGroup] = useState<HomeButtonId | null>(null);
   const [shape, setShape] = useState<Shape | null>(null);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [route.page]);
+
+  if (route.page === "sw-round") {
+    return (
+      <SheetPage
+        model3d={route.model3d}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(SW_ROUND_3D_HASH)}
+        onClose3d={() => goBack(SW_ROUND_HASH)}
+      />
+    );
+  }
+  return <CatalogPage group={group} setGroup={setGroup} shape={shape} setShape={setShape} />;
+}
+
+function CatalogPage({
+  group,
+  setGroup,
+  shape,
+  setShape,
+}: {
+  group: HomeButtonId | null;
+  setGroup: (g: HomeButtonId | null) => void;
+  shape: Shape | null;
+  setShape: (s: Shape | null) => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const tabRow = useRef<HTMLDivElement>(null);
 
@@ -121,7 +160,14 @@ export default function CatalogPage() {
                         type="button"
                         role="menuitemradio"
                         aria-checked={shape === s}
-                        onClick={() => setShape(s)}
+                        onClick={() => {
+                          setShape(s);
+                          const page = pageFor(button.id, s);
+                          if (page) {
+                            setMenuOpen(false);
+                            navigate(page);
+                          }
+                        }}
                         className="btn-raised btn-raised-sm flex min-h-11 w-full items-center justify-center rounded-[0.65rem] px-1 font-display text-base leading-none whitespace-nowrap sm:text-lg"
                       >
                         {s}

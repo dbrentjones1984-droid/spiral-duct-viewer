@@ -26,7 +26,11 @@ function serviceWorkerPlugin(): Plugin {
       };
       walk(outDir);
       // iOS launch images are only read when adding to the home screen; no need to precache them.
-      const precache = files.filter((f) => f !== "sw.js" && !f.startsWith("icons/startup/") && f !== ".nojekyll").sort();
+      // Downloadable PDFs (docs/) are big (7.4 MB) and only needed when someone taps Download, so they are not
+      // precached; the service worker caches a PDF the first time it is downloaded (runtime cache).
+      const precache = files
+        .filter((f) => f !== "sw.js" && !f.startsWith("icons/startup/") && f !== ".nojekyll" && !f.startsWith("docs/"))
+        .sort();
       const hash = createHash("sha256");
       for (const f of precache) hash.update(f).update(readFileSync(join(outDir, f)));
       const template = readFileSync("sw-template.js", "utf8");
