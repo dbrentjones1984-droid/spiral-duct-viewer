@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -12,6 +12,11 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * 3"-24" stock sizes with the sheet-1 gauges. Plain three.js (no React Three Fiber) and loaded only when the
  * "View 3D Model" button is pressed, to keep the main app light. Units are inches.
  */
+
+/** Play (assembly) animation length, ms. */
+const PLAY_MS = 2300;
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+type PlayState = "idle" | "playing" | "paused" | "done";
 
 const SECTION_LENGTH = 48; // a 4 ft section is shown so small sizes still read as a pipe; stock length is 10'-0"
 const STRIP_PITCH = 5.6; // axial advance of the lock seam per turn (~5-1/2" strip)
@@ -132,7 +137,13 @@ function disposeGroup(group: THREE.Object3D) {
 
 export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
   const host = useRef<HTMLDivElement>(null);
-  const api = useRef<{ setDiameter: (d: number) => void; setConnection: (c: Connection) => void; reset: () => void } | null>(null);
+  const api = useRef<{
+    setDiameter: (d: number) => void;
+    setConnection: (c: Connection) => void;
+    reset: () => void;
+    play: () => void;
+  } | null>(null);
+  const [play, setPlay] = useState<PlayState>("idle");
   const [diameter, setDiameter] = useState(12);
   const [connection, setConnection] = useState<Connection>("none");
   const [failed, setFailed] = useState(false);
@@ -184,10 +195,10 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       g.depthWrite = false;
       return g;
     };
-    const metalGhost = ghost(metal, 0.3);
-    const insideGhost = ghost(inside, 0.12);
-    const seamGhost = ghost(seamMat, 0.6);
-    const rimGhost = ghost(seamMat, 0.8);
+    const metalGhost = ghost(metal, 0.65);
+    const insideGhost = ghost(inside, 0.25);
+    const seamGhost = ghost(seamMat, 0.9);
+    const rimGhost = ghost(seamMat, 0.95);
     const solidPipe: PipeMats = { metal, inside, seam: seamMat, rim: metal };
     const ghostPipe: PipeMats = { metal: metalGhost, inside: insideGhost, seam: seamGhost, rim: rimGhost };
 
@@ -256,6 +267,48 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
       camera.updateProjectionMatrix();
       controls.update();
     };
+    // ---- Play: slide the parts together (offsets along the pipe axis from each part's static position) ----
+    let moving: { obj: THREE.Object3D; base: number; from: number; to: number }[] = [];
+    let playT = 0;
+    let playing = false;
+    let lastTime = 0;
+    const pose = (t: number | null) => {
+      // t = null: the static view (no offsets); 0..1: assembly progress.
+      const k = t === null ? 0 : easeInOut(t);
+      for (const m of moving) m.obj.position.x = m.base + (t === null ? 0 : m.from + (m.to - m.from) * k);
+    };
+    const stopPlay = () => {
+      playing = false;
+      playT = 0;
+      pose(null);
+      setPlay("idle");
+    };
+    const togglePlay = () => {
+      if (!moving.length) return;
+      if (playing) {
+        playing = false;
+        setPlay("paused");
+        return;
+      }
+      if (playT === 0 || playT >= 1) {
+        playT = 0;
+        pose(0);
+      }
+      playing = true;
+      lastTime = performance.now();
+      setPlay("playing");
+    };
+    const stepPlay = (now: number) => {
+      if (!playing) return;
+      playT = Math.min(1, playT + (now - lastTime) / PLAY_MS);
+      lastTime = now;
+      pose(playT);
+      if (playT >= 1) {
+        playing = false;
+        setPlay("done");
+      }
+    };
+
     const build = (d: number, c: Connection) => {
       if (model) {
         scene.remove(model);
@@ -278,7 +331,14 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         const piece = buildPipe(d, mats, JOIN_LENGTH, see);
         piece.position.x = conn.joinStart + JOIN_LENGTH / 2;
         model.add(piece);
+        moving = [
+          ...conn.motion.parts.map((m) => ({ ...m, base: m.obj.position.x })),
+          { obj: piece, base: piece.position.x, ...conn.motion.piece },
+        ];
+      } else {
+        moving = [];
       }
+      stopPlay();
       scene.add(model);
       spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), SECTION_LENGTH / 10);
       frame(d);
@@ -315,12 +375,15 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         build(currentD, currentC);
       },
       reset: () => {
+        stopPlay();
         frame(currentD);
         controls.autoRotate = true;
       },
+      play: togglePlay,
     };
 
-    renderer.setAnimationLoop(() => {
+    renderer.setAnimationLoop((now) => {
+      stepPlay(now);
       controls.update();
       renderer.render(scene, camera);
     });
@@ -394,7 +457,27 @@ export default function SpiralPipe3D({ onClose }: { onClose: () => void }) {
         )}
       </div>
       <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5" role="radiogroup" aria-label="Connection">
-        <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Connection</span>
+        {/* Label row; the Play button sits in the right column, over Flange (row height is kept for None). */}
+        <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
+          <span className="col-span-2 text-[11px] font-medium tracking-wide text-muted uppercase">Connection</span>
+          {connection !== "none" && !failed && (
+            <button
+              type="button"
+              onClick={() => api.current?.play()}
+              aria-label={play === "playing" ? "Pause" : play === "done" ? "Replay how it goes together" : "Play how it goes together"}
+              className="btn-raised btn-raised-sm mb-1 flex h-8 items-center justify-center gap-1.5 rounded-[0.65rem] font-display text-base leading-none short:h-7"
+            >
+              {play === "playing" ? (
+                <Pause className="size-4" aria-hidden="true" />
+              ) : play === "done" ? (
+                <RotateCw className="size-4" aria-hidden="true" />
+              ) : (
+                <Play className="size-4" aria-hidden="true" />
+              )}
+              {play === "playing" ? "Pause" : play === "done" ? "Replay" : "Play"}
+            </button>
+          )}
+        </div>
         <div className="mt-1 grid grid-cols-3 gap-2">
           {CONNECTIONS.map((c) => (
             <button

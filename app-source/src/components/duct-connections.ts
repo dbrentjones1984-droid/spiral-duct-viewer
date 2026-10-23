@@ -12,7 +12,7 @@ export const CONNECTIONS: { id: Connection; label: string }[] = [
 export const CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
     title: "Slip coupling",
-    text: "Slides inside both pipe ends (male × male); the center bead stops each pipe. Pipe shown see-through so the coupling shows.",
+    text: "Slides inside both pipe ends (male × male); the center bead stops each pipe. Shown pulled apart.",
   },
   flange: {
     title: "Flange",
@@ -85,10 +85,18 @@ export type BuiltConnection = {
   focusR: number;
   /** X where the short (12") joined pipe piece starts; it runs from here in +X. */
   joinStart: number;
+  /**
+   * Play animation ("shows them going together"): X offsets from the built (static) pose, at the start (from) and
+   * end (to) of the assembly. `parts` are objects inside `group`; `piece` is the 12" pipe piece.
+   */
+  motion: { parts: { obj: THREE.Object3D; from: number; to: number }[]; piece: { from: number; to: number } };
 };
 
 /** Length of the short pipe piece joined on with the connection (Brent: "maybe a foot long"). */
 export const JOIN_LENGTH = 12;
+
+/** How far (in.) the flanged 12" piece starts beyond its static 5/8" gap when the assembly is played. */
+const FLANGE_PLAY_START = 3;
 
 /** Frame the joint plus the whole short piece and a little of the main pipe. */
 function jointFocus(d: number, from: number, to: number, outerR: number) {
@@ -125,11 +133,22 @@ export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material,
   );
   const group = new THREE.Group();
   group.add(new THREE.Mesh(geo, sheet));
-  // Both pipes pushed all the way on, their ends against the bead (the pipe is drawn see-through for the
-  // coupling, so the sleeve inside both ends shows).
-  group.position.x = pipeEnd + bw / 2;
-  const joinStart = pipeEnd + bw;
-  return { group, joinStart, ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, r + 0.1) };
+  // Pulled apart (Brent): main pipe | gap | coupling | gap | 12" piece, so both crimped ends show in full.
+  const gap = d <= 8 ? 1 : d <= 16 ? 1.25 : 1.5;
+  group.position.x = pipeEnd + gap + C / 2;
+  const joinStart = pipeEnd + gap + C + gap;
+  // Assembled: coupling slid into the main pipe up to the bead, 12" piece slid onto it up to the bead.
+  const coupleShift = pipeEnd + bw / 2 - group.position.x;
+  const pieceShift = pipeEnd + bw - joinStart;
+  const coupling = new THREE.Group();
+  coupling.add(...group.children);
+  group.add(coupling);
+  return {
+    group,
+    joinStart,
+    motion: { parts: [{ obj: coupling, from: 0, to: coupleShift }], piece: { from: 0, to: pieceShift } },
+    ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, r + 0.1),
+  };
 }
 
 /** One flange: plain flat ring (rolled outer edge) facing +X (thickness 0..t), collar going back into the pipe (-X). */
@@ -185,5 +204,13 @@ export function buildFlange(d: number, pipeEnd: number, ring: THREE.Material, sh
   b.position.x = joinStart;
   group.add(a, b);
 
-  return { group, joinStart, ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, ro + 0.1) };
+  // Play: the 12" piece and its flange start a few inches away and slide in until the rings meet flush.
+  const start = FLANGE_PLAY_START;
+  const move = { from: start, to: -gap };
+  return {
+    group,
+    joinStart,
+    motion: { parts: [{ obj: b, ...move }], piece: move },
+    ...jointFocus(d, pipeEnd - 4, joinStart + start + JOIN_LENGTH, ro + 0.1),
+  };
 }
