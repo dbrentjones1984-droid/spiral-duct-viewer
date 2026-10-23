@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Phones turned sideways: short screens get a one-row sheet-page header. */
+@custom-variant short (@media (orientation: landscape) and (max-height: 500px));
+
 @theme {
   --color-paper: #f4f6f8;
   --color-surface: #ffffff;
@@ -125,4 +128,10 @@
       .h-\[70svh\] { height: 70vh; }
     }
   }
+}
+
+/* Sheet page at "Fit": each swipe lands on the next whole sheet, below the sticky header. */
+html.snap-sheets {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: var(--sheet-bar-h, 0px);
 }
