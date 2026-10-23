@@ -3,9 +3,9 @@
 
 export const HOME_BUTTONS = [
   { id: "single-duct", label: ["Single Wall", "Duct"] },
-  { id: "single-fitting", label: ["Single", "Fitting"] },
-  { id: "double-duct", label: ["Double", "Duct"] },
-  { id: "double-fitting", label: ["Double", "Fitting"] },
+  { id: "single-fitting", label: ["Single Wall", "Fittings"] },
+  { id: "double-duct", label: ["Double Wall", "Duct"] },
+  { id: "double-fitting", label: ["Double Wall", "Fittings"] },
 ] as const;
 
 export type HomeButtonId = (typeof HOME_BUTTONS)[number]["id"];

@@ -1,16 +1,21 @@
 import { useState } from "react";
-import { Boxes, Layers, Spline } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallButton } from "@/components/install-button";
+import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
+import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { HOME_BUTTONS, type HomeButtonId } from "@/lib/catalog";
 
 
+function SingleWallElbowIcon({ className }: { className?: string }) {
+  return <DuctElbowIcon className={className} innerWall={false} />;
+}
+
 const HOME_ICONS = {
   "single-duct": SpiralDuctIcon,
-  "single-fitting": Spline,
-  "double-duct": Layers,
-  "double-fitting": Boxes,
+  "single-fitting": SingleWallElbowIcon,
+  "double-duct": DoubleWallDuctIcon,
+  "double-fitting": DuctElbowIcon,
 } as const;
 
 export default function CatalogPage() {
@@ -48,11 +53,7 @@ export default function CatalogPage() {
               className="btn-raised flex min-h-24 flex-col items-center justify-center gap-1 rounded-card px-1 py-2 text-center"
             >
               <span className="flex h-8 items-center justify-center" aria-hidden="true">
-                {button.id === "single-duct" ? (
-                  <Icon className="h-8 w-auto shrink-0" />
-                ) : (
-                  <Icon className="size-5 shrink-0" />
-                )}
+                <Icon className="h-8 w-auto shrink-0" />
               </span>
               <span className="font-display text-sm leading-none sm:text-base">
                 {button.label.map((line) => (
