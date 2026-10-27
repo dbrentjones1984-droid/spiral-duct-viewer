@@ -10,15 +10,15 @@ const FITTINGS = [
   {
     id: "e90",
     name: "Gored 90° Elbow (E90)",
-    text: "90° 5-piece gored elbow · centerline radius 1.5 × diameter · 2″ straight ends",
+    text: "90° 5-piece gored elbow · R = 1.5 × diameter · 2″ straight ends",
     source: "Catalog page 7 · Gored Elbows",
     gores: true,
   },
   {
     id: "ds90",
     name: "Die-Stamped 90° Elbow",
-    text: "Smooth stamped elbow, sizes 3″–10″ · centerline radius 1.5 × diameter · 2″ straight ends",
-    source: "Stamped from two halves, seamed along the throat and heel",
+    text: "Smooth stamped elbow · R = 1.5 × diameter · 2″ straight ends",
+    source: "Sizes 3″–10″ · seamed throat and heel",
     gores: false,
   },
 ] as const;
@@ -61,17 +61,20 @@ export function FittingsPage({
         </header>
       </div>
 
-      <ul className="mx-auto grid w-full max-w-3xl gap-3 px-3 pt-4 pb-8 sm:grid-cols-2">
+      {/* Uniform cards: every row is the same height (auto-rows-fr + stretch), each card is a flex column with the
+          button pinned to the bottom, and the text lines have fixed slots (1-line title, 2-line description,
+          1-line detail) so titles, descriptions and buttons line up across cards. */}
+      <ul className="mx-auto grid w-full max-w-3xl auto-rows-fr items-stretch gap-3 px-3 pt-4 pb-8 sm:grid-cols-2">
         {FITTINGS.map((f) => (
-          <li key={f.id} className="flex flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
-            <div className="flex items-center gap-3">
+          <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
+            <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
                 <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} />
               </span>
-              <div className="min-w-0">
-                <h2 className="font-display text-xl leading-tight text-accent">{f.name}</h2>
-                <p className="text-xs leading-snug text-ink">{f.text}</p>
-                <p className="mt-0.5 text-[11px] text-muted">{f.source}</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
+                <p className="line-clamp-2 min-h-[2lh] text-xs leading-snug text-ink">{f.text}</p>
+                <p className="mt-0.5 truncate text-[11px] leading-snug text-muted">{f.source}</p>
               </div>
             </div>
             <button
@@ -79,7 +82,7 @@ export function FittingsPage({
               onClick={() => onOpen3d(f.id)}
               aria-haspopup="dialog"
               aria-label={`View 3D Model: ${f.name}`}
-              className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none"
+              className="btn-raised btn-raised-sm btn-primary mt-auto flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none"
             >
               <Box className="size-5 shrink-0" />
               View 3D Model
@@ -89,7 +92,7 @@ export function FittingsPage({
         {/* Room for the next fittings (same dashed "coming soon" look as the 3D spot on pages without a model). */}
         <li
           role="note"
-          className="flex min-h-24 items-center justify-center rounded-card border-2 border-dashed border-[#8e9bab] bg-surface/60 px-4 text-center font-display text-lg leading-tight text-muted"
+          className="flex h-full items-center justify-center rounded-card border-2 border-dashed border-[#8e9bab] bg-surface/60 p-3 text-center font-display text-lg leading-tight text-muted"
         >
           <span className="flex flex-col items-center">
             More fittings

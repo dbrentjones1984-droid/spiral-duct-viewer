@@ -7,7 +7,7 @@
      older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
      on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = 'e354b10d14';
+const VERSION = '28803fd3df';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -18,17 +18,17 @@ const PRECACHE = [
   "assets/barlow-condensed-latin-600-normal-DepVgxBB.woff2",
   "assets/barlow-condensed-latin-700-normal-Dmwat-ge.woff",
   "assets/barlow-condensed-latin-700-normal-v1xN8_Wq.woff2",
-  "assets/gored-elbow-3d-BuBYm1Vw.js",
+  "assets/gored-elbow-3d-Bg_Ldld0.js",
   "assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2",
   "assets/ibm-plex-sans-latin-400-normal-CYLoc0-x.woff",
   "assets/ibm-plex-sans-latin-500-normal-6ng42L7E.woff2",
   "assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff",
   "assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff",
   "assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2",
-  "assets/index-Cqczzrjg.css",
-  "assets/index-DbGWX7ER.js",
-  "assets/oval-pipe-3d-oK0AYCdk.js",
-  "assets/spiral-pipe-3d-rBYJ4BlK.js",
+  "assets/index-BUBXMl8u.js",
+  "assets/index-DYQvPoBC.css",
+  "assets/oval-pipe-3d-B0tZQEtt.js",
+  "assets/spiral-pipe-3d-BqxqzPEg.js",
   "blueprint.png",
   "favicon.svg",
   "icons/apple-touch-icon.png",
