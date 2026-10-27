@@ -5,9 +5,20 @@
  * dashed lines for the inner wall. Simplified for tab size: front half of each gore seam only.
  * innerWall={false} gives the same drawing without the dashed lines (Single Wall Fittings tab).
  * gores={false} draws a smooth (die-stamped) elbow: no gore seams, curved walls.
+ * miter draws a 2-piece mitered elbow: straight walls meeting at a sharp corner, one seam along the 45° cut.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
-export function DuctElbowIcon({ className, innerWall = true, gores = true }: { className?: string; innerWall?: boolean; gores?: boolean }) {
+export function DuctElbowIcon({
+  className,
+  innerWall = true,
+  gores = true,
+  miter = false,
+}: {
+  className?: string;
+  innerWall?: boolean;
+  gores?: boolean;
+  miter?: boolean;
+}) {
   return (
     <svg
       viewBox="0 0 60 40"
@@ -34,7 +45,14 @@ export function DuctElbowIcon({ className, innerWall = true, gores = true }: { c
             <path d="M8.9 18.6 L17.0 11.8 L29.4 8.7 L41.7 10.6 L51.8 16.8" strokeWidth={1.1} strokeDasharray="4 3" />
           </>
         )}
-        {gores ? (
+        {miter ? (
+          <>
+            <path d="M21.2 33.3 L30.1 25.8 L41.7 33.1" strokeWidth={2} />
+            <path d="M7.1 16.4 L29 1.6 L53.3 14.3" strokeWidth={2} />
+            {/* the seam along the 45° cut */}
+            <path d="M29 1.6 L30.1 25.8" strokeWidth={1.1} />
+          </>
+        ) : gores ? (
           <>
             <path d="M21.2 33.3 L26.5 28.8 L30.2 28.2 L35.2 29.0 L41.7 33.1" strokeWidth={2} />
             <path d="M7.1 16.4 L15.6 9.3 L29.3 5.8 L42.7 7.9 L53.3 14.3" strokeWidth={2} />

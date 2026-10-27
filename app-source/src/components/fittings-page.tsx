@@ -21,6 +21,14 @@ const FITTINGS = [
     source: "Sizes 3″–10″ · seamed throat and heel",
     gores: false,
   },
+  {
+    id: "me90",
+    name: "Mitered 90° Elbow (ME90 / MEV90)",
+    text: "90° 2-piece mitered elbow · optional turning vanes",
+    source: "Mitered Elbows",
+    gores: false,
+    miter: true,
+  },
 ] as const;
 
 export type FittingId = (typeof FITTINGS)[number]["id"];
@@ -69,7 +77,7 @@ export function FittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} miter={"miter" in f && f.miter} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>

@@ -11,13 +11,14 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/round/3d"         list of fitting 3D models
  *   "#/single-wall-fittings/round/3d/e90"     same, with the gored 90° elbow (E90) 3D model open on top
  *   "#/single-wall-fittings/round/3d/ds90"    same, with the die-stamped 90° elbow 3D model open on top
+ *   "#/single-wall-fittings/round/3d/me90"    same, with the mitered 90° elbow (ME90 / MEV90) 3D model open on top
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
-  | { page: "swf-models"; model3d: "e90" | "ds90" | null };
+  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | null };
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
@@ -27,6 +28,7 @@ export const SWF_ROUND_HASH = "#/single-wall-fittings/round";
 export const SWF_MODELS_HASH = "#/single-wall-fittings/round/3d";
 export const SWF_E90_3D_HASH = "#/single-wall-fittings/round/3d/e90";
 export const SWF_DS90_3D_HASH = "#/single-wall-fittings/round/3d/ds90";
+export const SWF_ME90_3D_HASH = "#/single-wall-fittings/round/3d/me90";
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -36,6 +38,7 @@ function parse(hash: string): Route {
   if (h === SW_OVAL_HASH) return { page: "sw-oval", model3d: false };
   if (h === SWF_E90_3D_HASH) return { page: "swf-models", model3d: "e90" };
   if (h === SWF_DS90_3D_HASH) return { page: "swf-models", model3d: "ds90" };
+  if (h === SWF_ME90_3D_HASH) return { page: "swf-models", model3d: "me90" };
   if (h === SWF_MODELS_HASH) return { page: "swf-models", model3d: null };
   if (h === SWF_ROUND_HASH) return { page: "swf-round" };
   return { page: "home" };

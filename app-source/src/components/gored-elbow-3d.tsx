@@ -30,6 +30,11 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * The same viewer also shows the die-stamped 90° elbow (kind "ds90", sizes 3"-10" only): one smooth bend pressed
  * from two halves that are joined along the throat and the heel (the inside and outside of the bend), so a raised
  * lap seam runs lengthwise along both; same 2" ends, connections and Play.
+ * And the mitered 90° elbow (kind "me90", catalog sheet "Mitered Elbows"): two straight pieces of round pipe cut at
+ * 45° and seamed along the cut, a sharp square corner (no radius). Each leg runs 4" past the other leg's outside
+ * wall (the sheet's 4" dimension), ending in a 2" beaded collar. With Vanes on (MEV90, 8" and up) it adds the curved
+ * quarter-arc turning vanes set along the miter, across the full duct, counted by size as on the sheet, and shows
+ * the walls see-through so the vanes read on a phone.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -42,8 +47,23 @@ const SEAMS = [0, 11.25, 33.75, 56.25, 78.75, 90].map((a) => a * DEG);
 const DS_CLR = 1.5;
 const DS_MAX_D = 10;
 
+/** Mitered elbow: each leg runs MITER_LEG past the other leg's outside wall, collar included (sheet's 4"). */
+const MITER_LEG = 4;
+/** MEV90 turning vanes by diameter (sheet's table). */
+const VANE_TABLE = [
+  { from: 8, to: 9, n: 2 },
+  { from: 10, to: 14, n: 3 },
+  { from: 15, to: 19, n: 4 },
+  { from: 20, to: 60, n: 5 },
+] as const;
+export const VANES_FROM = VANE_TABLE[0].from;
+export function vaneSpec(d: number) {
+  const row = VANE_TABLE.find((v) => d >= v.from && d <= v.to);
+  return row ? { n: row.n, range: `${row.from}″–${row.to}″` } : null;
+}
+
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90";
+export type ElbowKind = "e90" | "ds90" | "me90";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -70,6 +90,19 @@ const ELBOWS: Record<
       text: `Smooth stamped elbow, sizes 3″–${DS_MAX_D}″. Two pressed halves seamed along the throat and heel; centerline radius ${DS_CLR} × diameter, 2″ straight ends.`,
     },
     note: "Galvanized · stamped",
+  },
+  me90: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Mitered 90° Elbow (ME90)",
+    aria: "3D model: single wall round 2-piece mitered 90 degree elbow",
+    canvas: "3D 2-piece mitered 90 degree elbow. Drag to turn, pinch to zoom.",
+    none: {
+      title: "Mitered 90° Elbow (ME90)",
+      text: `90° 2-piece mitered elbow: two straight pieces seamed at a 45° cut, square corner. Each leg runs ${MITER_LEG}″ past the other, 2″ beaded collars.`,
+    },
+    note: "Galvanized · mitered",
   },
 };
 
@@ -199,6 +232,115 @@ class JointLoop extends THREE.Curve<THREE.Vector3> {
   }
 }
 
+/**
+ * Mitered elbow leg (local frame: miter corner at the origin, cut plane x = y): straight round pipe along dir, its
+ * circle in (perp, B), from the 45° cut (s = -rr cos phi) out to sTo.
+ */
+function miterLeg(dir: THREE.Vector3, perp: THREE.Vector3, rr: number, sTo: number, vBase: number, radial: number) {
+  const rows = 4;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const p = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  // Wind the triangles to face out whichever way the (perp, B) circle turns about dir.
+  const flip = new THREE.Vector3().crossVectors(perp, B).dot(dir) > 0;
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const s0 = -rr * Math.cos(phi);
+      const s = s0 + ((sTo - s0) * i) / rows;
+      n.copy(perp).multiplyScalar(Math.cos(phi)).addScaledVector(B, Math.sin(phi));
+      p.copy(dir).multiplyScalar(s).addScaledVector(n, rr);
+      pos.push(p.x, p.y, p.z);
+      nor.push(n.x, n.y, n.z);
+      uv.push(j / radial, (vBase + sTo - s) / TEX_LENGTH);
+    }
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < radial; j++) {
+      const a = i * (radial + 1) + j;
+      const b = a + radial + 1;
+      if (flip) idx.push(a, a + 1, b, b, a + 1, b + 1);
+      else idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/** The miter seam: the ellipse where the two legs meet on the cut plane x = y. */
+class MiterLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(private rr: number) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    return target.set(this.rr * Math.cos(phi), this.rr * Math.cos(phi), this.rr * Math.sin(phi));
+  }
+}
+
+/**
+ * Turning vanes (MEV90), in the miter's local frame. Flow comes up leg 0 (+y) and leaves along leg 1 (-x); each vane
+ * is a quarter-arc blade whose middle sits on the cut plane, leading edge along +y and trailing edge along -x, set at
+ * even steps along the miter from throat to heel. Each blade spans the full width of the duct (to the round wall).
+ */
+function buildVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
+  const g = new THREE.Group();
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const rin = r - wall - 0.02;
+  const step = (2 * r) / (n + 1);
+  const a = step * 1.05; // blade radius: chord about one vane spacing
+  const H = Math.SQRT1_2;
+  const half = (x: number, y: number) => {
+    const c = x > y ? x : y; // which leg the point is in (leg 0: x > y)
+    return Math.sqrt(Math.max(0, rin * rin - c * c));
+  };
+  const us = 24;
+  const vs = 10;
+  for (let k = 0; k < n; k++) {
+    const t = -r + step * (k + 1) - a * 0.1;
+    const cx = t - a * H;
+    const pos: number[] = [];
+    const idx: number[] = [];
+    for (let i = 0; i <= us; i++) {
+      const th = (i / us) * (Math.PI / 2);
+      const x = cx + a * Math.cos(th);
+      const y = cx + a * Math.sin(th);
+      const h = half(x, y);
+      for (let j = 0; j <= vs; j++) pos.push(x, y, -h + (2 * h * j) / vs);
+    }
+    for (let i = 0; i < us; i++) {
+      for (let j = 0; j < vs; j++) {
+        const p0 = i * (vs + 1) + j;
+        const p1 = p0 + vs + 1;
+        idx.push(p0, p1, p0 + 1, p1, p1 + 1, p0 + 1);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    g.add(new THREE.Mesh(geo, mat));
+    // Outline the blade (curved edges along the wall, straight leading and trailing edges) so its shape reads.
+    const ring: THREE.Vector3[] = [];
+    const at = (i: number, j: number) => new THREE.Vector3(pos[(i * (vs + 1) + j) * 3], pos[(i * (vs + 1) + j) * 3 + 1], pos[(i * (vs + 1) + j) * 3 + 2]);
+    for (let i = 0; i <= us; i++) ring.push(at(i, vs));
+    for (let j = vs - 1; j >= 0; j--) ring.push(at(us, j));
+    for (let i = us - 1; i >= 0; i--) ring.push(at(i, 0));
+    for (let j = 1; j < vs; j++) ring.push(at(0, j));
+    const path = new THREE.CatmullRomCurve3(ring, true, "centripetal");
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(path, ring.length * 2, Math.max(0.05, d * 0.007), 5, true), edge));
+  }
+  return g;
+}
+
 type Mats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material };
 
 /**
@@ -272,6 +414,44 @@ function buildCollar(d: number, style: EndStyle, { metal, inside, seam }: Mats, 
     g.add(new THREE.Mesh(t, seam));
   }
   return g;
+}
+
+/** Mitered elbow: the two legs, the seam along the cut, the collars, and (MEV90) the vanes. Same end frames as the bends. */
+function buildMitered(d: number, mats: Mats, style: EndStyle, vanes: number, vaneMat: THREE.Material, vaneEdge: THREE.Material) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const radial = Math.min(144, 64 + Math.round(d * 4));
+  const rib = Math.min(0.34, 0.04 + d * 0.012);
+  const bead = rib * 0.8;
+  // Miter corner at (R, R) so the ends sit where the bends' ends do (leg 0 down along x = R, leg 1 left along y = R).
+  const R = r + MITER_LEG;
+  const body = new THREE.Group();
+  body.position.set(R, R, 0);
+  group.add(body);
+  const legs = [
+    { dir: new THREE.Vector3(0, -1, 0), perp: new THREE.Vector3(1, 0, 0) },
+    { dir: new THREE.Vector3(-1, 0, 0), perp: new THREE.Vector3(0, 1, 0) },
+  ];
+  const sTo = R - COLLAR; // body ends where the 2" collar starts
+  legs.forEach(({ dir, perp }, i) => {
+    body.add(new THREE.Mesh(miterLeg(dir, perp, r, sTo, COLLAR + i * 37, radial), metal));
+    const inner = miterLeg(dir, perp, r - wall, sTo, COLLAR + i * 37, radial);
+    body.add(new THREE.Mesh(inner, inside));
+  });
+  // Seam along the 45° cut (the two pieces locked together), raised a little proud of the pipe.
+  body.add(new THREE.Mesh(new THREE.TubeGeometry(new MiterLoop(r + rib * 0.35), radial, rib, 8, true), seam));
+  if (vanes > 0) body.add(buildVanes(d, vanes, vaneMat, vaneEdge));
+  const ends = legs.map(({ dir }) => {
+    const f = new THREE.Group();
+    f.position.set(R, R, 0).addScaledVector(dir, R);
+    f.quaternion.setFromUnitVectors(X_AXIS, dir);
+    f.add(buildCollar(d, style, mats, bead, radial));
+    group.add(f);
+    return f;
+  });
+  return { group, ends };
 }
 
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
@@ -416,12 +596,15 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
   const api = useRef<{
     setDiameter: (d: number) => void;
     setConnection: (c: Connection) => void;
+    setVanes: (n: number) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
   } | null>(null);
   const [diameter, setDiameter] = useState(spec.defaultD);
   const [connection, setConnection] = useState<Connection>("none");
+  const [vanesOn, setVanesOn] = useState(false);
+  const vanes = kind === "me90" && vanesOn ? vaneSpec(diameter) : null; // shown only from 8" (sheet's table)
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
@@ -465,6 +648,17 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
     const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4 });
     const pipeMats: PipeMats = { metal, inside, seam, rim: metal };
+    // Mitered elbow with vanes: the elbow's walls go see-through so the vanes inside read (connections stay solid).
+    const ghost = (m: THREE.MeshStandardMaterial, opacity: number) => {
+      const g = m.clone();
+      g.transparent = true;
+      g.opacity = opacity;
+      g.depthWrite = false;
+      return g;
+    };
+    const ghostMats: Mats = { metal: ghost(metal, 0.28), inside: ghost(inside, 0.16), seam: ghost(seam, 0.85) };
+    const vaneMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, map: spangle, metalness: 0.5, roughness: 0.42, envMapIntensity: 1, side: THREE.DoubleSide });
+    const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -497,6 +691,8 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     // model holds the elbow turned like the sheet's drawing (one end pointing down, the other to the right),
     // plus the connection on the bottom end, centred on its bounding box so the auto-spin turns it in place.
     let model: THREE.Group | null = null;
+    // Viewing direction: front three-quarter; with vanes, more from the side so the blades show their faces.
+    let view = new THREE.Vector3(0.3, 0.32, 1);
     const frame = (d: number) => {
       if (!model) return;
       const box = new THREE.Box3().setFromObject(model);
@@ -511,7 +707,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       const halfW = spin * 1.12;
       const halfH = (size.y / 2) * 1.08;
       const dist = Math.max(halfH / Math.tan(vHalf), halfW / Math.tan(hHalf)) * 1.04 + d / 4;
-      const dir = new THREE.Vector3(0.3, 0.32, 1).normalize();
+      const dir = view.clone().normalize();
       camera.position.copy(dir.multiplyScalar(dist));
       controls.target.set(0, 0, 0);
       controls.minDistance = d * 0.9;
@@ -576,13 +772,17 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       }
     };
 
-    const build = (d: number, c: Connection) => {
+    const build = (d: number, c: Connection, v = 0) => {
       if (model) {
         scene.remove(model);
         disposeGroup(model);
       }
       const style: EndStyle = c === "coupling" ? "crimp" : c === "flange" ? "plain" : "bead";
-      const { group: elbow, ends } = buildElbow(d, { metal, inside, seam }, style, kind);
+      view = v > 0 ? new THREE.Vector3(-0.85, 0.42, 1) : new THREE.Vector3(0.3, 0.32, 1);
+      const { group: elbow, ends } =
+        kind === "me90"
+          ? buildMitered(d, v > 0 ? ghostMats : { metal, inside, seam }, style, v, vaneMat, vaneEdge)
+          : buildElbow(d, { metal, inside, seam }, style, kind);
       // The bottom end reads best on a phone: the duct hangs straight down under the elbow, in the tall screen.
       const joint = c === "coupling" ? slipJoint(d, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(d, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
@@ -609,8 +809,9 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     };
     let currentD = spec.defaultD;
     let currentC: Connection = "none";
+    let currentV = 0;
     resize();
-    build(currentD, currentC);
+    build(currentD, currentC, currentV);
     const ro = new ResizeObserver(() => {
       resize();
       frame(currentD);
@@ -621,12 +822,17 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       setDiameter: (d) => {
         if (d === currentD) return;
         currentD = d;
-        build(currentD, currentC);
+        build(currentD, currentC, currentV);
       },
       setConnection: (c) => {
         if (c === currentC) return;
         currentC = c;
-        build(currentD, currentC);
+        build(currentD, currentC, currentV);
+      },
+      setVanes: (n) => {
+        if (n === currentV) return;
+        currentV = n;
+        build(currentD, currentC, currentV);
       },
       setTopInset: (px) => {
         if (Math.abs(px - inset) < 1) return;
@@ -655,7 +861,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seam, inside, sheet, screwMat, gasketMat].forEach((m) => m.dispose());
+      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), vaneMat, vaneEdge].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -670,6 +876,11 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
   useEffect(() => {
     api.current?.setConnection(connection);
   }, [connection]);
+  // Diameter first, then vanes (both effects run on a size change; the vane count follows the new size).
+  const vaneN = vanes?.n ?? 0;
+  useEffect(() => {
+    api.current?.setVanes(vaneN);
+  }, [vaneN]);
   // Keep the model clear of the caption card at the top of the view.
   useLayoutEffect(() => {
     const c = caption.current;
@@ -682,7 +893,13 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     ro.observe(h);
     return () => ro.disconnect();
   }, [connection, failed]);
-  const info = connection === "none" ? spec.none : ELBOW_CONNECTION_INFO[connection];
+  const name = vanes ? "Mitered 90° Elbow (MEV90)" : spec.name;
+  const info =
+    connection !== "none"
+      ? ELBOW_CONNECTION_INFO[connection]
+      : vanes
+        ? { title: "Mitered 90° Elbow w/ Vanes (MEV90)", text: `${vanes.n} curved turning vanes along the miter, across the full duct (${vanes.n} for ${vanes.range}). Walls shown see-through.` }
+        : spec.none;
 
   return (
     <div
@@ -694,7 +911,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
-          <p className="truncate text-xs text-white/80">Single Wall Round · {spec.name}</p>
+          <p className="truncate text-xs text-white/80">Single Wall Round · {name}</p>
         </div>
         <button
           type="button"
@@ -765,6 +982,29 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           ))}
         </div>
       </div>
+      {kind === "me90" && (
+        // Turning vanes (MEV90), separate from the connection. Made from 8" up (sheet's table).
+        <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Turning vanes">
+          <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
+            Vanes
+            {diameter < VANES_FROM && <span className="block tracking-normal normal-case">Vanes from {VANES_FROM}&Prime;</span>}
+          </span>
+          {([false, true] as const).map((on) => (
+            <button
+              key={String(on)}
+              type="button"
+              role="radio"
+              aria-checked={on ? !!vanes : !vanes}
+              disabled={on && diameter < VANES_FROM}
+              aria-label={on ? "Vanes on" : "Vanes off"}
+              onClick={() => setVanesOn(on)}
+              className="btn-raised btn-raised-sm h-9 rounded-[0.65rem] font-display text-lg leading-none disabled:opacity-45 short:h-8"
+            >
+              {on ? "On" : "Off"}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-2 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
         <label className="flex max-w-44 min-w-0 flex-1 flex-col">
           <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Diameter</span>
@@ -781,10 +1021,29 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           </select>
         </label>
         <div className="min-w-0 flex-[1.3] text-xs leading-snug text-ink">
-          <p>
-            <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(spec.clr * diameter)}&Prime;</b>
-          </p>
-          <p className="text-muted">{spec.note}</p>
+          {kind === "me90" ? (
+            <>
+              <p>
+                <b className="font-semibold">{gauge.fitting} ga</b> fitting · 2-piece
+              </p>
+              <p className={vanes ? "" : "text-muted"}>
+                {vanes ? (
+                  <>
+                    Vanes: <b className="font-semibold">{vanes.n}</b> ({vanes.range})
+                  </>
+                ) : (
+                  spec.note
+                )}
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(spec.clr * diameter)}&Prime;</b>
+              </p>
+              <p className="text-muted">{spec.note}</p>
+            </>
+          )}
         </div>
         <button
           type="button"
