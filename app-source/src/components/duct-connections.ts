@@ -59,7 +59,7 @@ function shell(xs: number[], segments: number, radius: (x: number, a: number) =>
 }
 
 /** Sample points from a to b: fine steps where `fine(x)` (bead / crimps), coarse elsewhere. */
-function samples(a: number, b: number, fine: (x: number) => boolean, fineStep = 0.05, coarseStep = 0.3) {
+export function samples(a: number, b: number, fine: (x: number) => boolean, fineStep = 0.05, coarseStep = 0.3) {
   const xs = [a];
   let x = a;
   while (x < b - 1e-6) {
@@ -108,7 +108,7 @@ export function screwCount(d: number) {
  * Local frame: +Y points out of the pipe; y = 0 is the underside of the washer (sits on the pipe surface),
  * the threaded shank and point go down -Y into the pipe and coupling.
  */
-function screwMesh(k: number, mat: THREE.Material) {
+export function screwMesh(k: number, mat: THREE.Material) {
   const g = new THREE.Group();
   const washer = new THREE.CylinderGeometry(0.21 * k, 0.21 * k, 0.04 * k, 20);
   washer.translate(0, 0.02 * k, 0);
@@ -132,7 +132,7 @@ function screwMesh(k: number, mat: THREE.Material) {
 }
 
 /** Screw drawing scale: ~1.6x real size at 12" (more on big pipes, which are seen from farther away) so screws read on a phone. */
-const screwScale = (d: number) => 0.7 * (1.5 + d / 16); // 3": 1.18, 12": 1.58, 24": 2.1
+export const screwScale = (d: number) => 0.7 * (1.5 + d / 16); // 3": 1.18, 12": 1.58, 24": 2.1
 
 /** Screws through the flange rings, by diameter (Brent: 4 to 6", 6 to 10", 8 to 16", 10 to 20", 12 at 22-24"). */
 export function flangeScrewCount(d: number) {

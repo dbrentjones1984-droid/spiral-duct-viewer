@@ -25,7 +25,7 @@ const SECTION_LENGTH = 48; // a 4 ft section is shown so small sizes still read 
 const STRIP_PITCH = 5.6; // axial advance of the lock seam per turn (~5-1/2" strip)
 
 /** Faint galvanized "spangle": soft irregular light/dark flakes, generated once (no image download). */
-function spangleTexture() {
+export function spangleTexture() {
   const size = 256;
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -57,7 +57,7 @@ function spangleTexture() {
 }
 
 /** Soft contact shadow under the pipe (radial gradient on a plane; cheaper than real shadows on phones). */
-function shadowTexture() {
+export function shadowTexture() {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const g = c.getContext("2d")!;

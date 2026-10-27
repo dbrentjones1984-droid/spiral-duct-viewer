@@ -87,8 +87,8 @@ export type SheetDoc = {
   subtitle: string;
   sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
   pdf: { href: string; fileName: string; sizeLabel: string };
-  /** false = the 3D model isn't built yet (button shows "Coming soon"). */
-  has3d: boolean;
+  /** Which 3D model "View 3D Model" opens; null = not built yet (button shows "Coming soon"). */
+  model: "round" | "oval" | null;
 };
 
 export const SW_ROUND_DOC: SheetDoc = {
@@ -96,7 +96,7 @@ export const SW_ROUND_DOC: SheetDoc = {
   subtitle: "Spiral duct · sheets 1-5",
   sheets: SW_ROUND_SHEETS,
   pdf: SW_ROUND_PDF,
-  has3d: true,
+  model: "round",
 };
 
 export const SW_OVAL_DOC: SheetDoc = {
@@ -104,7 +104,7 @@ export const SW_OVAL_DOC: SheetDoc = {
   subtitle: "Spiral duct · sheets 1-2",
   sheets: SW_OVAL_SHEETS,
   pdf: SW_OVAL_PDF,
-  has3d: false,
+  model: "oval",
 };
 
 /** Stock sizes and gauges from sheet 1 (used by the 3D model's size picker). */

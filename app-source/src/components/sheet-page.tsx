@@ -4,6 +4,7 @@ import type { SheetDoc } from "@/lib/sheets";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
 const SpiralPipe3D = lazy(() => import("@/components/spiral-pipe-3d"));
+const OvalPipe3D = lazy(() => import("@/components/oval-pipe-3d"));
 
 /** Zoom steps. "Fit" (the default) shows each whole letter page in the space under the sticky bar, one per screen;
  * "Width" fills the screen width; the % steps are relative to Width. */
@@ -163,7 +164,7 @@ export function SheetPage({
           <span className="w-[4.5rem] shrink-0 short:hidden" aria-hidden="true" />
         </header>
         <div className="grid grid-cols-2 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[23rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
-          {doc.has3d ? (
+          {doc.model ? (
             <button
               type="button"
               onClick={onOpen3d}
@@ -285,7 +286,7 @@ export function SheetPage({
             <div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>
           }
         >
-          <SpiralPipe3D onClose={onClose3d} />
+          {doc.model === "oval" ? <OvalPipe3D onClose={onClose3d} /> : <SpiralPipe3D onClose={onClose3d} />}
         </Suspense>
       )}
     </main>

@@ -7,7 +7,7 @@ import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
 import { SW_OVAL_DOC, SW_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -50,8 +50,16 @@ export default function App() {
     );
   }
   if (route.page === "sw-oval") {
-    // Oval 3D model is next (Brent); until then the page has a "Coming soon" slot where View 3D Model goes.
-    return <SheetPage key="sw-oval" doc={SW_OVAL_DOC} model3d={false} onBack={() => goBack("")} onOpen3d={() => {}} onClose3d={() => {}} />;
+    return (
+      <SheetPage
+        key="sw-oval"
+        doc={SW_OVAL_DOC}
+        model3d={route.model3d}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(SW_OVAL_3D_HASH)}
+        onClose3d={() => goBack(SW_OVAL_HASH)}
+      />
+    );
   }
   return <CatalogPage group={group} setGroup={setGroup} shape={shape} setShape={setShape} />;
 }
