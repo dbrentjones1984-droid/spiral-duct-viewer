@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
-import type { CteeType, LatType, TapType, TeeType } from "@/lib/route";
+import type { CteeType, LatType, LtapType, TapType, TeeType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -71,6 +71,14 @@ const FITTINGS = [
     gores: false,
     tap: true,
   },
+  {
+    id: "ltap",
+    name: "Lateral Taps",
+    text: "LST45 saddle tap, LT45 tap · 45° branches A on pipe P",
+    source: "Lateral Taps · L = A × 1.414 (+3″ saddle)",
+    gores: false,
+    ltap: true,
+  },
 ] as const;
 
 export type FittingId = (typeof FITTINGS)[number]["id"];
@@ -85,6 +93,7 @@ export function FittingsPage({
   cteeType,
   latType,
   tapType,
+  ltapType,
   onBack,
   onOpen3d,
   onClose3d,
@@ -94,6 +103,7 @@ export function FittingsPage({
   cteeType?: CteeType;
   latType?: LatType;
   tapType?: TapType;
+  ltapType?: LtapType;
   onBack: () => void;
   onOpen3d: (id: FittingId) => void;
   onClose3d: () => void;
@@ -127,7 +137,7 @@ export function FittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} miter={"miter" in f && f.miter} tee={"tee" in f && f.tee} cross={"cross" in f && f.cross} conical={"conical" in f && f.conical} lateral={"lateral" in f && f.lateral} tap={"tap" in f && f.tap} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} miter={"miter" in f && f.miter} tee={"tee" in f && f.tee} cross={"cross" in f && f.cross} conical={"conical" in f && f.conical} lateral={"lateral" in f && f.lateral} tap={"tap" in f && f.tap} ltap={"ltap" in f && f.ltap} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -163,7 +173,9 @@ export function FittingsPage({
         <Suspense
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
-          {model3d === "tap" ? (
+          {model3d === "ltap" ? (
+            <GoredElbow3D key={`ltap-${ltapType}`} kind="ltap" teeType={ltapType} onClose={onClose3d} />
+          ) : model3d === "tap" ? (
             <GoredElbow3D key={`tap-${tapType}`} kind="tap" teeType={tapType} onClose={onClose3d} />
           ) : model3d === "lat" ? (
             <GoredElbow3D key={`lat-${latType}`} kind="lat" teeType={latType} onClose={onClose3d} />

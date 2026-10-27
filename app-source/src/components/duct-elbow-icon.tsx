@@ -16,6 +16,8 @@
  * top and one on the bottom, both at 45° leaning right, each with its beaded 2" collar and its saddle curve.
  * tap draws a straight saddle tap (Straight & Conical Taps card), front view as on its sheet: the 2" beaded collar on a
  * saddle plate, its curved bottom, and the pipe it sits on dashed (shown for reference, not part of the fitting).
+ * ltap draws a lateral saddle tap (Lateral Taps card): a 45° branch leaning right with its beaded 2" collar, cut to
+ * the curve on a saddle plate, the pipe dashed (reference only).
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -28,6 +30,7 @@ export function DuctElbowIcon({
   conical = false,
   lateral = false,
   tap = false,
+  ltap = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -38,7 +41,20 @@ export function DuctElbowIcon({
   conical?: boolean;
   lateral?: boolean;
   tap?: boolean;
+  ltap?: boolean;
 }) {
+  if (ltap) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* the pipe P, dashed: reference only */}
+        <path d="M6 20 L14 20 M42 20 L54 20 M6 20 L6 38 M54 20 L54 38 M6 38 L54 38" strokeWidth={1.1} strokeDasharray="2.5 2" />
+        {/* 45° branch (end cut square to it) on the saddle plate */}
+        <path d="M19.5 15 L32.8 1.8 L41.2 10.2 L36.5 15 M14 15 L42 15 L42 20 L14 20 Z" strokeWidth={2} />
+        {/* bead 2" down the collar, the branch's curved bottom */}
+        <path d="M30.8 3.8 L39.2 12.2 M19.5 15 Q25 20.5 36.5 15" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (tap) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
