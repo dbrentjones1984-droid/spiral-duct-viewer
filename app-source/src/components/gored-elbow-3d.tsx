@@ -1,0 +1,698 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import {
+  buildFlange,
+  CONNECTIONS,
+  JOIN_LENGTH,
+  samples,
+  screwCount,
+  screwMesh,
+  screwScale,
+  shell,
+  type BuiltConnection,
+  type Connection,
+} from "@/components/duct-connections";
+import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
+import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
+
+/*
+ * 3D model of the E90, the 90° 5-piece gored elbow (Single Wall Round, catalog page 7 "Gored Elbows"):
+ * centerline radius R = 1.5 x diameter A, two 11-1/4° end gores and three 22-1/2° middle gores, each a straight
+ * piece of round pipe mitred where it meets the next one, with a raised seam at every gore joint and a 2" straight
+ * collar on each end. No spiral seam: gored elbows are pieced, not spiral. Same viewer feel as the Round pipe
+ * (shared spangle and shadow textures, lighting, orbit, auto-spin). Units are inches.
+ * Connections (Brent), shown on the elbow's bottom end joined to a 12" piece of spiral duct, with Play like the duct:
+ * Coupling (slip joint: crimped end past the bead, the duct slides over it and is screwed) and Flange (plain ends,
+ * the duct's flange joint).
+ */
+
+const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
+const COLLAR = 2; // straight ends, as dimensioned on the sheet
+const DEG = Math.PI / 180;
+/** Gore joints along the 90° turn: end gores 11-1/4°, middle gores 22-1/2°. */
+const SEAMS = [0, 11.25, 33.75, 56.25, 78.75, 90].map((a) => a * DEG);
+
+const B = new THREE.Vector3(0, 0, 1);
+const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
+const tangent = (a: number) => new THREE.Vector3(-Math.sin(a), Math.cos(a), 0);
+const outward = (a: number) => new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
+
+/** A straight round piece along the line O + s*T (T tangent to the centerline at angle t), from sFrom(phi) to sTo(phi). */
+function piece(
+  t: number,
+  R: number,
+  rr: number,
+  sFrom: (phi: number) => number,
+  sTo: (phi: number) => number,
+  vBase: number,
+  radial: number,
+) {
+  const O = centerline(t, R);
+  const T = tangent(t);
+  const N = outward(t);
+  const rows = 6;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const p = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const s = sFrom(phi) + ((sTo(phi) - sFrom(phi)) * i) / rows;
+      n.copy(N).multiplyScalar(Math.cos(phi)).addScaledVector(B, Math.sin(phi));
+      p.copy(O).addScaledVector(T, s).addScaledVector(n, rr);
+      pos.push(p.x, p.y, p.z);
+      nor.push(n.x, n.y, n.z);
+      uv.push(j / radial, (vBase + s) / TEX_LENGTH);
+    }
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < radial; j++) {
+      const a = i * (radial + 1) + j;
+      const b = a + radial + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/** Where the piece tangent at t crosses the radial joint plane at angle a, for a point at radius rr, angle phi. */
+const miter = (t: number, a: number, R: number, rr: number) => (phi: number) => (R + rr * Math.cos(phi)) * Math.tan(a - t);
+
+/** Closed loop around a gore joint (the mitre ellipse), pushed out a little so the seam sits on the surface. */
+class JointLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private t: number,
+    private a: number,
+    private R: number,
+    private rr: number,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    const s = miter(this.t, this.a, this.R, this.rr)(phi);
+    return target
+      .copy(centerline(this.t, this.R))
+      .addScaledVector(tangent(this.t), s)
+      .addScaledVector(outward(this.t), this.rr * Math.cos(phi))
+      .addScaledVector(B, this.rr * Math.sin(phi));
+  }
+}
+
+type Mats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material };
+
+/**
+ * How the elbow's ends are made, by connection (Brent):
+ *   bead   None: plain 2" straight ends with a bead where each meets its end gore.
+ *   crimp  Coupling (slip joint): bead, then the end is crimped past it (a little smaller, fluted) so the duct slides over it.
+ *   plain  Flange: straight ends, no beads; a flange's collar goes inside the end.
+ */
+type EndStyle = "bead" | "crimp" | "plain";
+
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+/**
+ * Local frame at one open end of the elbow: origin at the end's centre, +X pointing out of the elbow along its axis
+ * (so the 2" collar runs from x = -2 to 0). The duct connections are built along +X, same as on the straight duct.
+ */
+function endFrame(end: 0 | 1, R: number) {
+  const t = end === 0 ? 0 : Math.PI / 2;
+  const out = tangent(t).multiplyScalar(end === 0 ? -1 : 1);
+  const g = new THREE.Group();
+  g.position.copy(centerline(t, R)).addScaledVector(out, COLLAR);
+  g.quaternion.setFromUnitVectors(X_AXIS, out);
+  return g;
+}
+
+/** Crimped end: the bead sits BEAD_X in from the end; past it the end steps down and is fluted to the cut edge. */
+const BEAD_X = -1.55;
+const CRIMP_X = -1.3; // crimp starts (the duct slides on up to here, against the bead)
+const CRIMP_TAPER = 0.22;
+
+function crimpRadius(d: number) {
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const rcr = r - wall - 0.05; // fits inside the duct
+  const flutes = Math.max(24, Math.round((Math.PI * 2 * rcr) / 0.42));
+  const cd = 0.1 + d * 0.003;
+  return (x: number, a: number) => {
+    if (x < CRIMP_X) return r;
+    const e = Math.min(1, (x - CRIMP_X) / CRIMP_TAPER);
+    const k = e * e * (3 - 2 * e);
+    return r - (r - rcr) * k - cd * k * 0.5 * (1 - Math.cos(flutes * a));
+  };
+}
+
+/** One end's 2" collar (outside + inside), its bead and the cut rim, in its end frame. */
+function buildCollar(d: number, style: EndStyle, { metal, inside, seam }: Mats, bead: number, radial: number) {
+  const g = new THREE.Group();
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const uv = 1 / TEX_LENGTH;
+  if (style === "crimp") {
+    const rad = crimpRadius(d);
+    const xs = samples(-COLLAR, 0, (x) => x > CRIMP_X - 0.05, 0.05, 0.3);
+    const segs = Math.max(24, Math.round((Math.PI * 2 * (r - wall - 0.05)) / 0.42)) * 4;
+    g.add(new THREE.Mesh(shell(xs, segs, rad, uv), metal));
+    g.add(new THREE.Mesh(shell(xs, segs, (x, a) => rad(x, a) - wall, uv), inside));
+    const rim = new THREE.RingGeometry(r - wall - 0.05 - wall - 0.1 - d * 0.003, r - wall - 0.05, segs);
+    rim.rotateY(Math.PI / 2);
+    g.add(new THREE.Mesh(rim, metal));
+  } else {
+    const xs = [-COLLAR, 0];
+    g.add(new THREE.Mesh(shell(xs, radial, () => r, uv), metal));
+    g.add(new THREE.Mesh(shell(xs, radial, () => r - wall, uv), inside));
+    const rim = new THREE.RingGeometry(r - wall, r + 0.005, radial);
+    rim.rotateY(Math.PI / 2);
+    g.add(new THREE.Mesh(rim, metal));
+  }
+  if (style !== "plain") {
+    const t = new THREE.TorusGeometry(r + bead * 0.2, bead, 8, radial);
+    t.rotateY(Math.PI / 2);
+    t.translate(style === "crimp" ? BEAD_X : -COLLAR, 0, 0);
+    g.add(new THREE.Mesh(t, seam));
+  }
+  return g;
+}
+
+function buildElbow(d: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const r = d / 2;
+  const R = 1.5 * d;
+  const wall = Math.max(0.05, d * 0.006);
+  const radial = Math.min(144, 64 + Math.round(d * 4));
+  const rib = Math.min(0.34, 0.04 + d * 0.012); // raised gore seam, in proportion to the size (3": 0.08", 12": 0.18", 24": 0.33")
+  const bead = rib * 0.8; // rolled bead on each end
+
+  // Gore k runs from joint a_k to a_k+1; end gores are tangent at the ends of the turn, middle gores at their middle.
+  const tangents = SEAMS.slice(0, -1).map((a, k) => (k === 0 ? 0 : k === SEAMS.length - 2 ? Math.PI / 2 : (a + SEAMS[k + 1]) / 2));
+  let vBase = COLLAR;
+  tangents.forEach((t, k) => {
+    const a0 = SEAMS[k];
+    const a1 = SEAMS[k + 1];
+    group.add(new THREE.Mesh(piece(t, R, r, miter(t, a0, R, r), miter(t, a1, R, r), vBase, radial), metal));
+    group.add(new THREE.Mesh(piece(t, R, r - wall, miter(t, a0, R, r - wall), miter(t, a1, R, r - wall), vBase, radial), inside));
+    vBase += 2 * R * Math.tan((a1 - a0) / 2) + 3;
+  });
+  // Raised seams at the four gore joints.
+  for (let k = 1; k < SEAMS.length - 1; k++) {
+    const loop = new JointLoop(tangents[k - 1], SEAMS[k], R, r + rib * 0.35);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(loop, radial, rib, 8, true), seam));
+  }
+  // 2" straight ends.
+  const ends = ([0, 1] as const).map((e) => {
+    const f = endFrame(e, R);
+    f.add(buildCollar(d, style, mats, bead, radial));
+    group.add(f);
+    return f;
+  });
+  return { group, ends };
+}
+
+/** Screws around the duct over the crimped end (one row), driven one after another. */
+function crimpScrews(d: number, x: number, mat: THREE.Material) {
+  const r = d / 2;
+  const n = screwCount(d);
+  const k = screwScale(d);
+  const group = new THREE.Group();
+  const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
+  const each = 0.4;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.PI / 4;
+    const obj = new THREE.Group();
+    obj.position.set(x, r * Math.cos(a), r * Math.sin(a));
+    obj.rotation.x = a; // local +Y -> radial
+    const s = screwMesh(k, mat);
+    obj.add(s.obj);
+    group.add(obj);
+    const start = (i / Math.max(1, n - 1)) * (1 - each);
+    items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+  }
+  return { group, items };
+}
+
+type Joint = {
+  moving: { obj: THREE.Object3D; from: number; to: number }[];
+  screws: NonNullable<BuiltConnection["screws"]>;
+};
+
+/**
+ * Slip joint on one elbow end (in its end frame): the 12" piece of spiral duct starts pulled off the crimped end;
+ * Play slides it over the crimp up to the bead, then screws go in around the duct over the crimp.
+ */
+function slipJoint(d: number, frame: THREE.Group, pipeMats: PipeMats, screwMat: THREE.Material): Joint {
+  const gap = d <= 8 ? 1.5 : d <= 16 ? 2 : 2.5;
+  const duct = buildPipe(d, pipeMats, JOIN_LENGTH);
+  duct.position.x = gap + JOIN_LENGTH / 2;
+  frame.add(duct);
+  const stop = CRIMP_X - 0.03; // duct's end against the bead
+  const screws = crimpScrews(d, (CRIMP_X + CRIMP_TAPER) / 2 - 0.15, screwMat);
+  frame.add(screws.group);
+  return { moving: [{ obj: duct, from: 0, to: stop - gap }], screws };
+}
+
+/** Flange on one elbow end: the duct's flanged joint (flange in the elbow end, gasket, flange on the 12" duct). */
+function flangeJoint(d: number, frame: THREE.Group, pipeMats: PipeMats, metal: THREE.Material, sheet: THREE.Material, gasketMat: THREE.Material, screwMat: THREE.Material): Joint {
+  const c = buildFlange(d, 0, metal, sheet, 1 / TEX_LENGTH, gasketMat, screwMat);
+  frame.add(c.group);
+  const duct = buildPipe(d, pipeMats, JOIN_LENGTH);
+  duct.position.x = c.joinStart + JOIN_LENGTH / 2;
+  frame.add(duct);
+  if (c.screws) frame.add(c.screws.group);
+  return {
+    moving: [...c.motion.parts, { obj: duct, ...c.motion.piece }],
+    screws: c.screws ?? { group: new THREE.Group(), items: [] },
+  };
+}
+
+function disposeGroup(group: THREE.Object3D) {
+  group.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
+  });
+}
+
+const inches = (x: number) => (Number.isInteger(x) ? `${x}` : `${Math.floor(x)}½`);
+
+/** Elbow connections: same buttons as the duct; captions describe the elbow's end. */
+const ELBOW_CONNECTION_INFO: Record<Connection, { title: string; text: string }> = {
+  none: {
+    title: "Gored 90° Elbow (E90)",
+    text: "90° 5-piece gored elbow. Centerline radius 1.5 × diameter, 2″ straight ends.",
+  },
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "The elbow end is crimped past the bead. The duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "Straight elbow ends, no beads. A flange goes in the elbow end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
+/** Play timing, same as the duct: slide together, short pause, drive the screws. */
+const SLIDE_MS = 2300;
+const SCREW_PAUSE_MS = 200;
+const SCREW_MS = 2300;
+const SCREW_TURNS = 4;
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+type PlayState = "idle" | "playing" | "paused" | "done";
+
+export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
+  const host = useRef<HTMLDivElement>(null);
+  const caption = useRef<HTMLDivElement>(null);
+  const api = useRef<{
+    setDiameter: (d: number) => void;
+    setConnection: (c: Connection) => void;
+    setTopInset: (px: number) => void;
+    reset: () => void;
+    play: () => void;
+  } | null>(null);
+  const [diameter, setDiameter] = useState(12);
+  const [connection, setConnection] = useState<Connection>("none");
+  const [play, setPlay] = useState<PlayState>("idle");
+  const [failed, setFailed] = useState(false);
+  const [hint, setHint] = useState(true);
+  const gauge = stockGauge(diameter);
+
+  useEffect(() => {
+    const el = host.current!;
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+    } catch {
+      setFailed(true);
+      return;
+    }
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.domElement.style.touchAction = "none";
+    renderer.domElement.setAttribute("aria-label", "3D gored 90 degree elbow. Drag to turn, pinch to zoom.");
+    renderer.domElement.setAttribute("role", "img");
+    el.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    scene.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+    scene.add(new THREE.HemisphereLight(0xf4f7fb, 0x7d8b99, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+    sun.position.set(30, 60, 40);
+    scene.add(sun);
+
+    // Same materials as the Round pipe viewer.
+    const spangle = spangleTexture();
+    const metal = new THREE.MeshStandardMaterial({ color: 0xffffff, map: spangle, metalness: 0.82, roughness: 0.36, envMapIntensity: 0.95 });
+    const seam = new THREE.MeshStandardMaterial({ color: 0xd4d9de, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.05 });
+    const inside = new THREE.MeshStandardMaterial({ color: 0x9aa3ac, metalness: 0.7, roughness: 0.5, side: THREE.BackSide, envMapIntensity: 0.6 });
+    const sheet = metal.clone();
+    sheet.side = THREE.DoubleSide;
+    const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
+    const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4 });
+    const pipeMats: PipeMats = { metal, inside, seam, rim: metal };
+
+    const shadowTex = shadowTexture();
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2;
+    scene.add(shadow);
+
+    const camera = new THREE.PerspectiveCamera(32, 1, 0.5, 2000);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.8;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 1.2;
+    controls.addEventListener("start", () => {
+      controls.autoRotate = false;
+      setHint(false);
+    });
+
+    // Canvas size, and the strip at the top covered by the caption card (the model is framed in the space below it).
+    let W = 1;
+    let H = 1;
+    let inset = 0;
+    const project = () => {
+      const h = Math.max(1, H - inset);
+      camera.aspect = W / h;
+      camera.setViewOffset(W, h, 0, -inset, W, H);
+      camera.updateProjectionMatrix();
+    };
+
+    // model holds the elbow turned like the sheet's drawing (one end pointing down, the other to the right),
+    // plus the connection on the bottom end, centred on its bounding box so the auto-spin turns it in place.
+    let model: THREE.Group | null = null;
+    const frame = (d: number) => {
+      if (!model) return;
+      const box = new THREE.Box3().setFromObject(model);
+      const size = box.getSize(new THREE.Vector3());
+      // It spins about the vertical axis: keep the whole turning circle (corner of the box) clear, plus the near side's
+      // perspective growth, so no angle runs off the screen.
+      const spin = Math.hypot(size.x, size.z) / 2;
+      shadow.scale.set(spin * 2.3, spin * 2.3, 1);
+      shadow.position.set(0, box.min.y - 0.05, 0);
+      const vHalf = THREE.MathUtils.degToRad(camera.fov) / 2;
+      const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+      const halfW = spin * 1.12;
+      const halfH = (size.y / 2) * 1.08;
+      const dist = Math.max(halfH / Math.tan(vHalf), halfW / Math.tan(hHalf)) * 1.04 + d / 4;
+      const dir = new THREE.Vector3(0.3, 0.32, 1).normalize();
+      camera.position.copy(dir.multiplyScalar(dist));
+      controls.target.set(0, 0, 0);
+      controls.minDistance = d * 0.9;
+      controls.maxDistance = dist * 2.2;
+      camera.near = Math.max(0.1, d * 0.05);
+      camera.far = dist * 6;
+      project();
+      controls.update();
+    };
+
+    // ---- Play: slide the parts together (X offsets in the end frame), then drive the screws. playT is elapsed ms. ----
+    let moving: { obj: THREE.Object3D; base: number; from: number; to: number }[] = [];
+    let screws: NonNullable<BuiltConnection["screws"]>["items"] = [];
+    const playMs = SLIDE_MS + SCREW_PAUSE_MS + SCREW_MS;
+    let playT = 0;
+    let playing = false;
+    let lastTime = 0;
+    const pose = (t: number | null) => {
+      const k = t === null ? 0 : easeInOut(Math.min(1, t / SLIDE_MS));
+      for (const m of moving) m.obj.position.x = m.base + (t === null ? 0 : m.from + (m.to - m.from) * k);
+      const s = t === null ? -1 : (t - SLIDE_MS - SCREW_PAUSE_MS) / SCREW_MS;
+      for (const sc of screws) {
+        const shown = s >= sc.start;
+        sc.obj.visible = shown;
+        if (!shown) continue;
+        const u = Math.min(1, (s - sc.start) / (sc.end - sc.start));
+        const e = easeInOut(u);
+        sc.drive.position.y = sc.lift * (1 - e);
+        sc.drive.rotation.y = -e * SCREW_TURNS * Math.PI * 2;
+        sc.drive.scale.setScalar(Math.min(1, 0.4 + u * 4));
+      }
+    };
+    const stopPlay = () => {
+      playing = false;
+      playT = 0;
+      pose(null);
+      setPlay("idle");
+    };
+    const togglePlay = () => {
+      if (!moving.length) return;
+      if (playing) {
+        playing = false;
+        setPlay("paused");
+        return;
+      }
+      if (playT === 0 || playT >= playMs) {
+        playT = 0;
+        pose(0);
+      }
+      playing = true;
+      lastTime = performance.now();
+      setPlay("playing");
+    };
+    const stepPlay = (now: number) => {
+      if (!playing) return;
+      playT = Math.min(playMs, playT + (now - lastTime));
+      lastTime = now;
+      pose(playT);
+      if (playT >= playMs) {
+        playing = false;
+        setPlay("done");
+      }
+    };
+
+    const build = (d: number, c: Connection) => {
+      if (model) {
+        scene.remove(model);
+        disposeGroup(model);
+      }
+      const style: EndStyle = c === "coupling" ? "crimp" : c === "flange" ? "plain" : "bead";
+      const { group: elbow, ends } = buildElbow(d, { metal, inside, seam }, style);
+      // The bottom end reads best on a phone: the duct hangs straight down under the elbow, in the tall screen.
+      const joint = c === "coupling" ? slipJoint(d, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(d, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
+      moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
+      screws = joint ? joint.screws.items : [];
+      stopPlay();
+      elbow.rotation.y = Math.PI; // bottom end on the left, other end out to the right, as drawn on the sheet
+      elbow.updateMatrixWorld(true);
+      const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
+      elbow.position.sub(center);
+      model = new THREE.Group();
+      model.add(elbow);
+      scene.add(model);
+      spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), TEX_LENGTH / 10);
+      frame(d);
+    };
+
+    const resize = () => {
+      W = el.clientWidth || 1;
+      H = el.clientHeight || 1;
+      renderer.setSize(W, H, false);
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.height = "100%";
+      project();
+    };
+    let currentD = 12;
+    let currentC: Connection = "none";
+    resize();
+    build(currentD, currentC);
+    const ro = new ResizeObserver(() => {
+      resize();
+      frame(currentD);
+    });
+    ro.observe(el);
+
+    api.current = {
+      setDiameter: (d) => {
+        if (d === currentD) return;
+        currentD = d;
+        build(currentD, currentC);
+      },
+      setConnection: (c) => {
+        if (c === currentC) return;
+        currentC = c;
+        build(currentD, currentC);
+      },
+      setTopInset: (px) => {
+        if (Math.abs(px - inset) < 1) return;
+        inset = px;
+        frame(currentD);
+      },
+      reset: () => {
+        stopPlay();
+        frame(currentD);
+        controls.autoRotate = true;
+      },
+      play: togglePlay,
+    };
+
+    renderer.setAnimationLoop((now) => {
+      stepPlay(now);
+      controls.update();
+      renderer.render(scene, camera);
+    });
+
+    return () => {
+      api.current = null;
+      ro.disconnect();
+      renderer.setAnimationLoop(null);
+      controls.dispose();
+      if (model) disposeGroup(model);
+      shadow.geometry.dispose();
+      (shadow.material as THREE.Material).dispose();
+      [metal, seam, inside, sheet, screwMat, gasketMat].forEach((m) => m.dispose());
+      [spangle, shadowTex].forEach((t) => t.dispose());
+      scene.environment?.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    api.current?.setDiameter(diameter);
+  }, [diameter]);
+  useEffect(() => {
+    api.current?.setConnection(connection);
+  }, [connection]);
+  // Keep the model clear of the caption card at the top of the view.
+  useLayoutEffect(() => {
+    const c = caption.current;
+    const h = host.current;
+    if (!c || !h) return;
+    const measure = () => api.current?.setTopInset(Math.max(0, c.getBoundingClientRect().bottom - h.getBoundingClientRect().top));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(c);
+    ro.observe(h);
+    return () => ro.disconnect();
+  }, [connection, failed]);
+  const info = ELBOW_CONNECTION_INFO[connection];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="3D model: single wall round gored 90 degree elbow"
+    >
+      <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
+          <p className="truncate text-xs text-white/80">Single Wall Round · Gored 90° Elbow (E90)</p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid size-10 place-items-center rounded-full bg-white/15 active:bg-white/25"
+          aria-label="Close 3D model"
+        >
+          <X className="size-6" />
+        </button>
+      </header>
+      <div ref={host} className="relative min-h-0 flex-1">
+        {failed && (
+          <p className="absolute inset-0 grid place-items-center px-8 text-center text-sm text-muted">
+            3D isn&apos;t available on this device (WebGL is turned off or not supported).
+          </p>
+        )}
+        {!failed && (
+          <div
+            ref={caption}
+            className="pointer-events-none absolute inset-x-3 top-3 rounded-[0.65rem] border border-[#8e9bab]/60 bg-surface/90 px-3 py-2 shadow-[0_2px_8px_rgb(0_28_64/0.18)] short:inset-x-auto short:left-3 short:py-1"
+            aria-live="polite"
+            data-testid="connection-caption"
+          >
+            <p className="font-display text-lg leading-tight text-accent">{info.title}</p>
+            <p className="text-xs leading-snug text-ink short:hidden">{info.text}</p>
+          </div>
+        )}
+        {hint && !failed && (
+          <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-xs font-medium text-steel">
+            Drag to turn · pinch to zoom
+          </p>
+        )}
+      </div>
+      <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5" role="radiogroup" aria-label="Connection">
+        {/* Label row; the Play button sits in the right column, over Flange (same as the duct). */}
+        <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
+          <span className="col-span-2 text-[11px] font-medium tracking-wide text-muted uppercase">Connection</span>
+          {connection !== "none" && !failed && (
+            <button
+              type="button"
+              onClick={() => api.current?.play()}
+              aria-label={play === "playing" ? "Pause" : play === "done" ? "Replay how it goes together" : "Play how it goes together"}
+              className="btn-raised btn-raised-sm mb-1 flex h-8 items-center justify-center gap-1.5 rounded-[0.65rem] font-display text-base leading-none short:h-7"
+            >
+              {play === "playing" ? (
+                <Pause className="size-4" aria-hidden="true" />
+              ) : play === "done" ? (
+                <RotateCw className="size-4" aria-hidden="true" />
+              ) : (
+                <Play className="size-4" aria-hidden="true" />
+              )}
+              {play === "playing" ? "Pause" : play === "done" ? "Replay" : "Play"}
+            </button>
+          )}
+        </div>
+        <div className="mt-1 grid grid-cols-3 gap-2">
+          {CONNECTIONS.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              role="radio"
+              aria-checked={connection === c.id}
+              onClick={() => setConnection(c.id)}
+              className="btn-raised btn-raised-sm h-10 rounded-[0.65rem] font-display text-lg leading-none short:h-8"
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
+        <label className="flex max-w-44 min-w-0 flex-1 flex-col">
+          <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Diameter</span>
+          <select
+            value={diameter}
+            onChange={(e) => setDiameter(Number(e.target.value))}
+            className="btn-raised btn-raised-sm mt-1 h-10 rounded-[0.65rem] px-2 font-display text-lg"
+          >
+            {STOCK_DIAMETERS.map((d) => (
+              <option key={d} value={d}>
+                {d}&Prime; round
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="min-w-0 flex-[1.3] text-xs leading-snug text-ink">
+          <p>
+            <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(1.5 * diameter)}&Prime;</b>
+          </p>
+          <p className="text-muted">Galvanized · 5 gores</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => api.current?.reset()}
+          className="btn-raised btn-raised-sm grid size-11 shrink-0 place-items-center rounded-[0.65rem]"
+          aria-label="Reset view"
+        >
+          <RotateCcw className="size-5" />
+        </button>
+      </div>
+    </div>
+  );
+}

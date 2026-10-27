@@ -93,9 +93,9 @@ function scaleV(g: THREE.BufferGeometry, k: number) {
   for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * k);
 }
 
-type PipeMats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material; rim: THREE.Material };
+export type PipeMats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material; rim: THREE.Material };
 
-function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: PipeMats, L = SECTION_LENGTH) {
+export function buildPipe(diameter: number, { metal, inside, seam: seamMat, rim }: PipeMats, L = SECTION_LENGTH) {
   const group = new THREE.Group();
   const r = diameter / 2;
   const wall = Math.max(0.05, diameter * 0.006); // drawn a little thicker than 26 ga (0.022") so the rim shows

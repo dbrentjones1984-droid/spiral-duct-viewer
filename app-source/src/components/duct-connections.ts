@@ -21,7 +21,7 @@ export const CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: strin
 };
 
 /** Surface of revolution around X: rings at xs, radius(x, angle) lets the profile vary around (crimp flutes). */
-function shell(xs: number[], segments: number, radius: (x: number, a: number) => number, uvScale: number) {
+export function shell(xs: number[], segments: number, radius: (x: number, a: number) => number, uvScale: number) {
   const pos: number[] = [];
   const uv: number[] = [];
   const idx: number[] = [];

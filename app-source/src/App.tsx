@@ -6,8 +6,9 @@ import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
+import { FittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SWF_E90_3D_HASH, SWF_MODELS_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
 import { SW_OVAL_DOC, SW_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -25,6 +26,7 @@ const HOME_ICONS = {
 function pageFor(group: HomeButtonId, shape: Shape) {
   if (group === "single-duct" && shape === "Round") return SW_ROUND_HASH;
   if (group === "single-duct" && shape === "Oval") return SW_OVAL_HASH;
+  if (group === "single-fitting" && shape === "Round") return SWF_MODELS_HASH; // the fitting sheets come later
   return null;
 }
 
@@ -58,6 +60,16 @@ export default function App() {
         onBack={() => goBack("")}
         onOpen3d={() => navigate(SW_OVAL_3D_HASH)}
         onClose3d={() => goBack(SW_OVAL_HASH)}
+      />
+    );
+  }
+  if (route.page === "swf-models") {
+    return (
+      <FittingsPage
+        model3d={route.model3d}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(SWF_E90_3D_HASH)}
+        onClose3d={() => goBack(SWF_MODELS_HASH)}
       />
     );
   }
