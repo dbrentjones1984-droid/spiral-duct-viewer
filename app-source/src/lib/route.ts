@@ -23,13 +23,15 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/round/3d/tap?type=st90"   ... opened on that type (sst90, ct90s, st90 or ct90)
  *   "#/single-wall-fittings/round/3d/ltap"    same, with the lateral taps 3D model open on top (LST45 shown);
  *   "#/single-wall-fittings/round/3d/ltap?type=lt45"  ... opened on that type (lst45 or lt45)
+ *   "#/single-wall-fittings/round/3d/red"     same, with the reducers 3D model open on top (CR shown);
+ *   "#/single-wall-fittings/round/3d/red?type=er"     ... opened on that type (cr or er)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
-  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType };
+  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
 export const TEE_TYPES = ["t90", "rt90", "c180", "rc180"] as const;
@@ -49,6 +51,9 @@ export type TapType = (typeof TAP_TYPES)[number];
 /** Lateral Taps sheet types (one model, picked in the viewer). */
 export const LTAP_TYPES = ["lst45", "lt45"] as const;
 export type LtapType = (typeof LTAP_TYPES)[number];
+/** Concentric and Eccentric Reducer sheet types (one model, picked in the viewer). */
+export const RED_TYPES = ["cr", "er"] as const;
+export type RedType = (typeof RED_TYPES)[number];
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
@@ -75,6 +80,9 @@ export const tapHash = (t: TapType) => (t === "sst90" ? SWF_TAP_3D_HASH : `${SWF
 export const SWF_LTAP_3D_HASH = "#/single-wall-fittings/round/3d/ltap";
 /** Deep link to one lateral tap type (LST45 is the default, so it gets the plain link). */
 export const ltapHash = (t: LtapType) => (t === "lst45" ? SWF_LTAP_3D_HASH : `${SWF_LTAP_3D_HASH}?type=${t}`);
+export const SWF_RED_3D_HASH = "#/single-wall-fittings/round/3d/red";
+/** Deep link to one reducer type (CR is the default, so it gets the plain link). */
+export const redHash = (t: RedType) => (t === "cr" ? SWF_RED_3D_HASH : `${SWF_RED_3D_HASH}?type=${t}`);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -105,6 +113,10 @@ function parse(hash: string): Route {
   if (h === SWF_LTAP_3D_HASH || h.startsWith(`${SWF_LTAP_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWF_LTAP_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swf-models", model3d: "ltap", ltapType: LTAP_TYPES.find((x) => x === t) ?? "lst45" };
+  }
+  if (h === SWF_RED_3D_HASH || h.startsWith(`${SWF_RED_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWF_RED_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swf-models", model3d: "red", redType: RED_TYPES.find((x) => x === t) ?? "cr" };
   }
   if (h === SWF_MODELS_HASH) return { page: "swf-models", model3d: null };
   if (h === SWF_ROUND_HASH) return { page: "swf-round" };

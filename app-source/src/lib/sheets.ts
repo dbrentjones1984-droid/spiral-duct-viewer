@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "1.5 MB",
+  sizeLabel: "1.8 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -154,6 +154,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1392,
     alt: "Single Wall Round, Lateral Taps: LST45 lateral saddle tap 45° (order by A and P, pipe size; L = C x 1.414 + 3 inch) and LT45 lateral tap 45° (order by A and P; L = C x 1.414; saddle not included; factory or field installed); 45° branches A with 2 inch collars, the pipe P dashed.",
+  },
+  {
+    n: 9,
+    title: "Concentric and Eccentric Reducer",
+    src: `${base}sheets/single-wall-round-fittings-9.webp`,
+    w: 1132,
+    h: 1333,
+    alt: "Single Wall Round, Concentric and Eccentric Reducer: large end A and small end B, each a 2 inch end, with the reducer R between. CR concentric reducer, R by reduction A - B: 1 to 4 inch R 4, 5 to 8 inch R 8, 9 to 12 inch R 12, 13 to 16 inch R 16. ER eccentric reducer (flat on one side): reduction 1 to 3 inch R 6, else R = (A - B) x 1.5.",
   },
 ] as const;
 

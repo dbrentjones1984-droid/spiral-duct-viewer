@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type TapType, type TeeType } from "@/lib/route";
+import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -39,7 +39,7 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * And the 90° bullhead tee (kind "bt90", catalog sheet "Bullhead Tees"): a straight body of diameter A, L = A + 3"
  * long, with the branch A coming out of the bottom centre (TEE_BRANCH below the body, ending in a 2" beaded collar),
  * and on each run end a concentric reducer down to B (left) and C (right), each with a 2" beaded end. The sheet says
- * "R = refer to reducer drawing", which we don't have yet, so reducerLength() is an assumption. With Vanes on (BTV90)
+ * "R = refer to reducer drawing": reducerLength(), the concentric reducer's R from the reducer sheet. With Vanes on (BTV90)
  * it adds curved splitter vanes in a mirrored pair of sets, turning the branch flow out to both run ends (count by A,
  * same table as the MEV90 - an assumption), walls see-through. Connections go on the branch end.
  * And the tees & crosses (kind "tee", catalog sheet "Tees and Crosses"), one model with a type picker: a straight main
@@ -49,7 +49,7 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  *   RT90  reducing tee 90°: A in on the left, reducer R down to outlet B on the right, tap C on top.
  *   C180  cross 180°: A both ends, tap B on top and tap C on the bottom.
  *   RC180 reducing cross 180°: A in, reducer R to B, taps C on top and D on the bottom.
- * R uses the bullhead tee's assumed reducerLength(). Connections go on the A inlet end (left). No vanes.
+ * R is the concentric reducer's (reducerLength(), reducer sheet). Connections go on the A inlet end (left). No vanes.
  * And the conical tees & crosses (kind "ctee", catalog sheet "Conical Tees and Conical Crosses"), same layout with a
  * type picker, L = top tap + 5" between the 2" beaded ends, but each tap is a cone: its 2" beaded collar, then a cone
  * CONE_H (5") tall flaring wider down to the main, CONE_FLARE (1") each side along the main (base = tap + 2" where it
@@ -66,6 +66,11 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  *   RL45   reducing lateral 45°: A in, reducer R to outlet B on the right, branch C on top.
  *   LC45   lateral cross 45°: A both ends, branches B on top and C on the bottom (C up to B).
  *   RLC45  reducing lateral cross 45°: A in, reducer R to B, branches C on top and D on the bottom (D up to C).
+ * And the reducers (kind "red", catalog sheet "Concentric and Eccentric Reducer"), one model with a type picker: the
+ * large end A's 2" beaded end, a cone R long, then the small end B's 2" beaded end (B smaller than A):
+ *   CR  concentric reducer: the cone centred; R by the reduction A - B from the sheet's table (reducerLength()).
+ *   ER  eccentric reducer: flat along one side (the bottom, as drawn); R = 6" for A - B of 1"-3", else (A - B) x 1.5.
+ * Connections go on the small B end.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -120,17 +125,24 @@ const TAP_SADDLE = 1;
  */
 const LTAP_EXTRA = 3;
 /**
- * Reducer length R from the body (A) down to an outlet (B or C). ASSUMED until Brent sends the reducer sheet: none when
- * the outlet is the full size, else 1.25 x the size drop (the sheet's drawing: about 5" for 12" to 8"), at least 2" and
- * at most 12", in 1/2" steps.
+ * Concentric reducer length R from A down to B (sheet "Concentric and Eccentric Reducer", CR table): by the reduction
+ * A - B, 1"-4" -> 4", 5"-8" -> 8", 9"-12" -> 12", 13"-16" -> 16". Past the table (17"+, assumed) it goes on in the same
+ * 4" steps (17"-20" -> 20", 21"-24" -> 24"). None when B is the full size. Also the tee/lateral reducers' R.
  */
+export const CR_TABLE_MAX = 16;
 export function reducerLength(a: number, b: number) {
   if (b >= a) return 0;
-  return Math.min(12, Math.max(2, Math.ceil(1.25 * (a - b) * 2) / 2));
+  return Math.ceil((a - b) / 4) * 4;
+}
+/** Eccentric reducer length R (sheet, ER): 6" for a reduction of 1"-3", else (A - B) x 1.5 (whole sizes: always a 1/2"). */
+export function eccentricLength(a: number, b: number) {
+  if (b >= a) return 0;
+  const d = a - b;
+  return d <= 3 ? 6 : d * 1.5;
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -232,6 +244,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round lateral taps",
     canvas: "3D lateral tap on a see-through pipe. Drag to turn, pinch to zoom.",
     none: { title: "Lateral Saddle Tap 45° (LST45)", text: "" },
+    note: "Galvanized",
+  },
+  red: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Concentric Reducer (CR)",
+    aria: "3D model: single wall round concentric and eccentric reducers",
+    canvas: "3D concentric or eccentric reducer. Drag to turn, pinch to zoom.",
+    none: { title: "Concentric Reducer (CR)", text: "" },
     note: "Galvanized",
   },
 };
@@ -1809,6 +1831,112 @@ function buildLateralTap(type: LtapType, sizes: readonly number[], mats: Mats, s
   return { group, ends: [f] };
 }
 
+/** Reducer types (sheet "Concentric and Eccentric Reducer"): A (large) then B (small, below A). */
+type RedSpec = CrossSpec & { short: string; ecc: boolean; rRule: string };
+const REDS: Record<RedType, RedSpec> = {
+  cr: {
+    code: "CR",
+    name: "Concentric Reducer",
+    short: "concentric",
+    labels: ["A · large", "B · small"],
+    defaults: [12, 8],
+    out: 1,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    rRule: "",
+    ecc: false,
+    text: "Large end A (2″ beaded end), a cone R long centred on it, then small end B (2″ beaded end). R by the reduction A − B: 1–4″ 4″, 5–8″ 8″, 9–12″ 12″, 13–16″ 16″.",
+  },
+  er: {
+    code: "ER",
+    name: "Eccentric Reducer",
+    short: "eccentric",
+    labels: ["A · large", "B · small"],
+    defaults: [12, 8],
+    out: 1,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    rRule: "R = (A − B) × 1.5, 6″ min",
+    ecc: true,
+    text: "Large end A (2″ beaded end), a cone R long, flat along one side (bottom, as drawn), then small end B (2″ beaded end). R = 6″ for A − B of 1–3″, else (A − B) × 1.5.",
+  },
+};
+/** A reducer's sizes, its reduction and R. */
+function redDims(type: RedType, sizes: readonly number[]) {
+  const a = sizes[0];
+  const b = sizes[1];
+  const ecc = REDS[type].ecc;
+  return { a, b, drop: a - b, ecc, R: ecc ? eccentricLength(a, b) : reducerLength(a, b), past: !ecc && a - b > CR_TABLE_MAX };
+}
+
+/**
+ * Reducer (sheet "Concentric and Eccentric Reducer") along x: the large end A's 2" collar on the left, the cone R long,
+ * the small end B's 2" collar on the right. CR keeps the cone centred; ER keeps its bottom line flat (centre drops by
+ * the radius difference). ends[0] is the small B end (connections go there), ends[1] the A end.
+ */
+function buildReducer(type: RedType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const { metal, inside } = mats;
+  const { a, b, ecc, R } = redDims(type, sizes);
+  const group = new THREE.Group();
+  const rA = a / 2;
+  const rB = b / 2;
+  const wallA = Math.max(0.05, a * 0.006);
+  const wallB = Math.max(0.05, b * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const radialB = Math.min(144, 64 + Math.round(b * 4));
+  const ribOf = (x: number) => Math.min(0.34, 0.04 + x * 0.012);
+  const x0 = -R / 2;
+  const k = (x: number) => (x - x0) / R;
+  const cone = (ra: number, rb: number) => {
+    const rows = 12;
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    const dr = (rb - ra) / R; // radius slope
+    const dc = ecc ? (rB - rA) / R : 0; // centre slope (ER: bottom line flat)
+    for (let i = 0; i <= rows; i++) {
+      const x = x0 + (R * i) / rows;
+      const rad = ra + (rb - ra) * k(x);
+      const c = ecc ? (rB - rA) * k(x) : 0;
+      for (let j = 0; j <= radial; j++) {
+        const phi = (j / radial) * Math.PI * 2;
+        const cy = Math.cos(phi);
+        const sz = Math.sin(phi);
+        pos.push(x, c + rad * cy, rad * sz);
+        const n = new THREE.Vector3(-(dc * cy + dr) * rad, rad * cy, rad * sz).normalize();
+        nor.push(n.x, n.y, n.z);
+        uv.push(j / radial, (x + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+  };
+  group.add(new THREE.Mesh(cone(rA, rB), metal));
+  group.add(new THREE.Mesh(cone(rA - wallA, rB - wallB), inside));
+  const fA = new THREE.Group();
+  fA.position.set(x0 - COLLAR, 0, 0);
+  fA.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(-1, 0, 0));
+  fA.add(buildCollar(a, style, mats, ribOf(a) * 0.8, radial));
+  const fB = new THREE.Group();
+  fB.position.set(-x0 + COLLAR, ecc ? rB - rA : 0, 0);
+  fB.add(buildCollar(b, style, mats, ribOf(b) * 0.8, radialB));
+  group.add(fA, fB);
+  return { group, ends: [fB, fA] };
+}
+
+/** Reducer connections: same, shown on the small B end. */
+const RED_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "Shown on the small B end (right): it is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "Shown on the small B end (right): straight end, no bead. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
@@ -1992,7 +2120,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -2002,8 +2130,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const ltaps = kind === "ltap";
   const taps = kind === "tap" || ltaps;
   const tapFam: Record<string, TapSpec> = ltaps ? LTAPS : TAPS;
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : "t90");
+  // Reducers: same picker and size selects (A, then B below A).
+  const reds = kind === "red";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -2030,7 +2160,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps;
+  const cross = kind === "tee" || conical || lateral || taps || reds;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -2222,18 +2352,22 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           ? buildTap(currentTee as TapType, currentTeeSizes, solid, style, refMats, plateMat)
           : kind === "ltap"
           ? buildLateralTap(currentTee as LtapType, currentTeeSizes, solid, style, refMats, plateMat)
+          : kind === "red"
+          ? buildReducer(currentTee as RedType, currentTeeSizes, solid, style)
           : kind === "me90"
           ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
           : kind === "bt90"
             ? buildTee(d, Math.min(currentB, d), Math.min(currentRunC, d), v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
             : buildElbow(d, solid, style, kind);
       // The bottom end reads best on a phone: the duct hangs straight down under the elbow, in the tall screen.
-      const joint = c === "coupling" ? slipJoint(d, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(d, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
+      // (reducers: on the small B end, so that size)
+      const jd = kind === "red" ? currentTeeSizes[1] : d;
+      const joint = c === "coupling" ? slipJoint(jd, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(jd, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
-      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" ? 0 : Math.PI;
+      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -2254,7 +2388,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -2367,7 +2501,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const tapSpec = taps ? tapFam[teeType] : null;
   const tapD = taps && !ltaps ? tapDims(teeType as TapType, teeSizes) : null;
   const ltapD = ltaps ? ltapDims(teeType as LtapType, teeSizes) : null;
-  const dims: { L: number; R: number; reducing: boolean; Lx?: number } = conical
+  const redD = reds ? redDims(teeType as RedType, teeSizes) : null;
+  const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
+    ? { L: 0, R: redD.R, reducing: true }
+    : conical
     ? cteeDims(teeType as CteeType, teeSizes)
     : ltapD
     ? { L: ltapD.L, Lx: ltapD.Lx, R: 0, reducing: false }
@@ -2378,12 +2515,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     : teeDims(teeType as TeeType, teeSizes);
   const bound = (i: number) => teeSpec.bound?.[i] ?? 0;
   /** Largest size select i may take, given the others (taps: A up to P - gap; else up to its bound, A unlimited). */
-  const maxSize = (i: number, s: readonly number[]) => (tapSpec ? (i === 0 ? s[1] - tapSpec.gap : Infinity) : i === 0 ? Infinity : s[bound(i)]);
+  const maxSize = (i: number, s: readonly number[]) => (tapSpec ? (i === 0 ? s[1] - tapSpec.gap : Infinity) : i === 0 ? Infinity : reds ? s[0] - 1 : s[bound(i)]);
   const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
     cross
       ? connection !== "none"
-        ? (ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
+        ? (reds ? RED_CONNECTION_INFO : ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
         : { title: name, text: teeSpec.text }
       : connection !== "none"
       ? tee
@@ -2405,7 +2542,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (ltaps) {
+    if (reds) {
+      if (location.hash.startsWith(SWF_RED_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + redHash(t as RedType));
+    } else if (ltaps) {
       if (location.hash.startsWith(SWF_LTAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + ltapHash(t as LtapType));
     } else if (taps) {
       if (location.hash.startsWith(SWF_TAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + tapHash(t as TapType));
@@ -2422,6 +2561,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       if (tapSpec) {
         // A up to P - gap, at least the smallest size (P's list only offers pipes that leave room for one)
         n[0] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x <= Math.min(n[0], n[1] - tapSpec.gap)));
+        return n;
+      }
+      if (reds) {
+        // B stays below A (A's list starts one size up, so there is always one)
+        n[1] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x < n[0] && x <= n[1]));
         return n;
       }
       for (let k = 1; k < n.length; k++) n[k] = Math.min(n[k], n[bound(k)]);
@@ -2550,8 +2694,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps ? "grid-cols-2" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds ? "grid-cols-2" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -2559,11 +2703,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {taps && <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{tapFam[t].short}</span>}
+                {(taps || reds) && <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{reds ? REDS[t as RedType].short : tapFam[t].short}</span>}
               </button>
             ))}
           </div>
@@ -2579,6 +2723,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 >
                   {(tapSpec && i === 1
                     ? spec.sizes.filter((d) => d >= spec.sizes[0] + tapSpec.gap)
+                    : reds && i === 0
+                    ? spec.sizes.filter((d) => d > spec.sizes[0])
                     : spec.sizes.filter((d) => d <= maxSize(i, teeSizes))
                   ).map((d) => (
                     <option key={d} value={d}>
@@ -2591,7 +2737,18 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {tapSpec && ltapD ? (
+              {redD ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(redD.R)}&Prime;</b> · reduction{" "}
+                    <b className="font-semibold">{redD.drop}&Prime;</b>
+                  </p>
+                  <p className="truncate text-muted">
+                    {spec.note} ·{" "}
+                    {redD.ecc ? REDS.er.rRule : `A − B ${redD.R - 3}–${redD.R}″ → R ${redD.R}″${redD.past ? " · assumed" : ""}`}
+                  </p>
+                </>
+              ) : tapSpec && ltapD ? (
                 <>
                   <p className="truncate">
                     <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{inches(ltapD.L)}&Prime;</b>
@@ -2638,7 +2795,6 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
               </p>
               <p className="truncate text-muted">
                 {spec.note} · L = {teeSpec.lRule}
-                {dims.reducing ? " · R assumed" : ""}
               </p>
               </>
               )}
@@ -2686,7 +2842,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                     Vanes: <b className="font-semibold">{vanes.n}</b> each side ({vanes.range})
                   </>
                 ) : (
-                  `${spec.note} · R assumed`
+                  spec.note
                 )}
               </p>
             </div>

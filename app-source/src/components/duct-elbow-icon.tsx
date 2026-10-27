@@ -18,6 +18,8 @@
  * saddle plate, its curved bottom, and the pipe it sits on dashed (shown for reference, not part of the fitting).
  * ltap draws a lateral saddle tap (Lateral Taps card): a 45° branch leaning right with its beaded 2" collar, cut to
  * the curve on a saddle plate, the pipe dashed (reference only).
+ * red draws a concentric reducer (Reducers card), side view as on its sheet: the large end A's 2" collar, the cone R
+ * and the small end B's 2" collar.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -31,6 +33,7 @@ export function DuctElbowIcon({
   lateral = false,
   tap = false,
   ltap = false,
+  red = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -42,7 +45,18 @@ export function DuctElbowIcon({
   lateral?: boolean;
   tap?: boolean;
   ltap?: boolean;
+  red?: boolean;
 }) {
+  if (red) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* large end A, the cone R, small end B */}
+        <path d="M11 5 L18 5 L42 12 L49 12 L49 28 L42 28 L18 35 L11 35 Z" strokeWidth={2} />
+        {/* where the 2" collars meet the cone (beads) */}
+        <path d="M18 5 L18 35 M42 12 L42 28" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (ltap) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
