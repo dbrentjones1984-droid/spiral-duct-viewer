@@ -8,6 +8,8 @@
  * miter draws a 2-piece mitered elbow: straight walls meeting at a sharp corner, one seam along the 45° cut.
  * tee draws a 90° bullhead tee, front view as on its sheet: straight body, reducers and 2" ends on both run ends,
  * branch out of the bottom with its 2" end, and the branch's arch.
+ * cross draws a 180° cross (Tees & Crosses card), front view as on its sheet: straight main with 2" ends, a tap on
+ * top and one on the bottom, each with its 2" end and its saddle arch.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -16,13 +18,25 @@ export function DuctElbowIcon({
   gores = true,
   miter = false,
   tee = false,
+  cross = false,
 }: {
   className?: string;
   innerWall?: boolean;
   gores?: boolean;
   miter?: boolean;
   tee?: boolean;
+  cross?: boolean;
 }) {
+  if (cross) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* main with 2" ends, taps top and bottom */}
+        <path d="M4 13 L22 13 L22 3 L38 3 L38 13 L56 13 L56 27 L38 27 L38 37 L22 37 L22 27 L4 27 Z" strokeWidth={2} />
+        {/* beads on the ends, the taps' saddle arches */}
+        <path d="M9 13 L9 27 M51 13 L51 27 M22 7 L38 7 M22 33 L38 33 M22 13 A8 5 0 0 0 38 13 M22 27 A8 5 0 0 1 38 27" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (tee) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

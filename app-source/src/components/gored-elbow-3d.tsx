@@ -16,6 +16,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
+import { SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -41,6 +42,14 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * "R = refer to reducer drawing", which we don't have yet, so reducerLength() is an assumption. With Vanes on (BTV90)
  * it adds curved splitter vanes in a mirrored pair of sets, turning the branch flow out to both run ends (count by A,
  * same table as the MEV90 - an assumption), walls see-through. Connections go on the branch end.
+ * And the tees & crosses (kind "tee", catalog sheet "Tees and Crosses"), one model with a type picker: a straight main
+ * of diameter A, L = largest tap + 3" long between the 2" beaded ends, with round taps centred on it that meet it in a
+ * saddle (the two cylinders' intersection) and end TEE_BRANCH out from the main's wall in a 2" beaded collar:
+ *   T90   tee 90°: A both ends, tap B on top.
+ *   RT90  reducing tee 90°: A in on the left, reducer R down to outlet B on the right, tap C on top.
+ *   C180  cross 180°: A both ends, tap B on top and tap C on the bottom.
+ *   RC180 reducing cross 180°: A in, reducer R to B, taps C on top and D on the bottom.
+ * R uses the bullhead tee's assumed reducerLength(). Connections go on the A inlet end (left). No vanes.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -82,7 +91,7 @@ export function reducerLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -136,7 +145,80 @@ const ELBOWS: Record<
     },
     note: "Galvanized · bullhead",
   },
+  tee: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Tee 90° (T90)",
+    aria: "3D model: single wall round tees and crosses",
+    canvas: "3D tee or cross. Drag to turn, pinch to zoom.",
+    none: { title: "Tee 90° (T90)", text: "" },
+    note: "Galvanized",
+  },
 };
+
+/**
+ * Tees & Crosses types (sheet): the size selects in order (first is always the main A), their defaults, and which
+ * size is the outlet on the right (reducer when smaller than A), the top tap and the bottom tap.
+ */
+const TEES: Record<
+  TeeType,
+  { code: string; name: string; labels: readonly string[]; defaults: readonly number[]; out: number; top: number; bottom: number | null; lRule: string; text: string }
+> = {
+  t90: {
+    code: "T90",
+    name: "Tee 90°",
+    labels: ["A · main", "B · tap"],
+    defaults: [12, 8],
+    out: 0,
+    top: 1,
+    bottom: null,
+    lRule: "B + 3″",
+    text: "Main A straight through, tap B on top, centred on the body. L = B + 3″ between the 2″ beaded ends.",
+  },
+  rt90: {
+    code: "RT90",
+    name: "Reducing Tee 90°",
+    labels: ["A · inlet", "B · outlet", "C · tap"],
+    defaults: [12, 10, 8],
+    out: 1,
+    top: 2,
+    bottom: null,
+    lRule: "C + 3″",
+    text: "Main A in on the left, reducer R down to outlet B on the right, tap C on top. L = C + 3″, 2″ beaded ends.",
+  },
+  c180: {
+    code: "C180",
+    name: "Cross 180°",
+    labels: ["A · main", "B · top", "C · bottom"],
+    defaults: [12, 8, 8],
+    out: 0,
+    top: 1,
+    bottom: 2,
+    lRule: "largest tap + 3″",
+    text: "Main A straight through, tap B on top and tap C on the bottom, opposite. L = largest tap + 3″, 2″ beaded ends.",
+  },
+  rc180: {
+    code: "RC180",
+    name: "Reducing Cross 180°",
+    labels: ["A · inlet", "B · outlet", "C · top", "D · bottom"],
+    defaults: [12, 10, 8, 8],
+    out: 1,
+    top: 2,
+    bottom: 3,
+    lRule: "largest tap + 3″",
+    text: "Main A in, reducer R down to outlet B on the right, tap C on top and tap D on the bottom. L = largest tap + 3″.",
+  },
+};
+/** The main, outlet and tap sizes of a tee/cross (bottom 0 = none), its body length L and reducer R. */
+function teeDims(type: TeeType, sizes: readonly number[]) {
+  const t = TEES[type];
+  const a = sizes[0];
+  const out = sizes[t.out];
+  const top = sizes[t.top];
+  const bottom = t.bottom === null ? 0 : sizes[t.bottom];
+  return { a, out, top, bottom, L: Math.max(top, bottom) + TEE_EXTRA, R: reducerLength(a, out), reducing: t.out !== 0 };
+}
 /** Bullhead tee run outlets by default (B and C; the branch A defaults to 12"). */
 const TEE_RUN_DEFAULT = 10;
 
@@ -683,6 +765,172 @@ function buildTee(a: number, b: number, c: number, mats: Mats, style: EndStyle, 
   return { group, ends };
 }
 
+/**
+ * Tee/cross main (radius rr, along x from -L/2 to L/2, centre at the origin), open where the taps come in: a top tap
+ * of radius rt and a bottom tap of radius rb (0 = none), each no bigger than rr. At the angle theta around the main
+ * (y = rr cos, z = rr sin) the hole runs |x| < sqrt(rt^2 - z^2) on the tap's side (the cylinders' intersection).
+ * Built as a left and a right strip that meet where there is no hole; the angles are refined where the hole's edge
+ * turns fast (near its sides), so the saddle reads round.
+ */
+function crossBody(rr: number, L: number, radial: number, rt: number, rb: number) {
+  const half = (th: number) => {
+    const c = Math.cos(th);
+    const z = rr * Math.sin(th);
+    const t = c > 0 ? rt : c < 0 ? rb : 0;
+    return Math.sqrt(Math.max(0, t * t - z * z));
+  };
+  let ths = Array.from({ length: radial + 1 }, (_, j) => (j / radial) * Math.PI * 2);
+  // exact hole sides, then split any step where the hole edge moves a lot
+  for (const t of [rt, rb]) {
+    if (t <= 0 || t >= rr) continue;
+    const a = Math.asin(t / rr);
+    ths.push(...(t === rt ? [a, -a + Math.PI * 2] : [Math.PI - a, Math.PI + a]));
+  }
+  ths.sort((p, q) => p - q);
+  for (let pass = 0; pass < 6; pass++) {
+    const next: number[] = [ths[0]];
+    for (let j = 1; j < ths.length; j++) {
+      if (Math.abs(half(ths[j]) - half(ths[j - 1])) > rr * 0.04 && ths[j] - ths[j - 1] > 1e-4) next.push((ths[j] + ths[j - 1]) / 2);
+      next.push(ths[j]);
+    }
+    ths = next;
+  }
+  const rows = 8;
+  const cols = ths.length;
+  return ([-1, 1] as const).map((side) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (const th of ths) {
+        const cy = Math.cos(th);
+        const w = half(th);
+        const x = side * (w + ((L / 2 - w) * i) / rows);
+        pos.push(x, rr * cy, rr * Math.sin(th));
+        nor.push(0, cy, Math.sin(th));
+        uv.push(th / (Math.PI * 2), (x + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, cols);
+  });
+}
+
+/** A tap (radius rt) out of the main (radius rr) on the dir side (+1 up, -1 down): from the saddle out to |y| = yTo. */
+function crossTap(rt: number, rr: number, yTo: number, dir: 1 | -1, radial: number) {
+  const rows = 8;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const z = rt * Math.sin(phi);
+      const s0 = Math.sqrt(Math.max(0, rr * rr - z * z));
+      const s = s0 + ((yTo - s0) * i) / rows;
+      pos.push(rt * Math.cos(phi), dir * s, z);
+      nor.push(Math.cos(phi), 0, Math.sin(phi));
+      uv.push(j / radial, (11 + yTo - s) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/** The saddle seam where a tap (radius rt) meets the main (radius rr), pushed out by k so it sits on the surface. */
+class SaddleLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private rt: number,
+    private rr: number,
+    private k: number,
+    private dir: 1 | -1,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    const rp = this.rt + this.k;
+    const z = rp * Math.sin(phi);
+    const R = this.rr + this.k;
+    return target.set(rp * Math.cos(phi), this.dir * Math.sqrt(Math.max(0, R * R - z * z)), z);
+  }
+}
+
+/**
+ * Run end on side (-1 left, +1 right) of a main of diameter a and body length L: a concentric reducer down to d over
+ * reducerLength(a, d) (none when d = a), then the 2" end. Returns the end frame (+X out of the fitting).
+ */
+function runEnd(side: -1 | 1, a: number, d: number, L: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribOf = (x: number) => Math.min(0.34, 0.04 + x * 0.012);
+  const rib = ribOf(a);
+  const R = reducerLength(a, d);
+  const rd = d / 2;
+  const wd = Math.max(0.05, d * 0.006);
+  const radialD = Math.min(144, 64 + Math.round(d * 4));
+  const f = new THREE.Group();
+  f.position.set(side * (L / 2 + R + COLLAR), 0, 0);
+  f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(side, 0, 0));
+  if (R > 0) {
+    const x0 = -COLLAR - R;
+    const k = (x: number) => (x - x0) / R;
+    const xs = [x0, -COLLAR];
+    f.add(new THREE.Mesh(shell(xs, radial, (x) => r + (rd - r) * k(x), 1 / TEX_LENGTH), metal));
+    f.add(new THREE.Mesh(shell(xs, radial, (x) => r - wall + (rd - wd - (r - wall)) * k(x), 1 / TEX_LENGTH), inside));
+    // raised seam where the reducer joins the body
+    const t = new THREE.TorusGeometry(r + rib * 0.2, rib * 0.8, 8, radial);
+    t.rotateY(Math.PI / 2);
+    t.translate(x0, 0, 0);
+    f.add(new THREE.Mesh(t, seam));
+  }
+  f.add(buildCollar(d, style, mats, ribOf(d) * 0.8, radialD));
+  return f;
+}
+
+/**
+ * Tee or cross (sheet "Tees and Crosses"): the main, its taps with their saddle seams and 2" collars, the left A end
+ * and the right end (reducer to the outlet on RT90 / RC180). ends[0] is the A inlet end on the left (connections go
+ * there), then the right end and the taps' ends.
+ */
+function buildCross(type: TeeType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const { a, out, top, bottom, L } = teeDims(type, sizes);
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribOf = (d: number) => Math.min(0.34, 0.04 + d * 0.012);
+  const wallOf = (d: number) => Math.max(0.05, d * 0.006);
+  const rt = top / 2;
+  const rb = bottom / 2;
+  for (const g of crossBody(r, L, radial, rt, rb)) group.add(new THREE.Mesh(g, metal));
+  for (const g of crossBody(r - wall, L, radial, rt - wallOf(top), bottom ? rb - wallOf(bottom) : 0)) group.add(new THREE.Mesh(g, inside));
+  const ends = [runEnd(-1, a, a, L, mats, style), runEnd(1, a, out, L, mats, style)];
+  ends.forEach((f) => group.add(f));
+  const yTo = r + TEE_BRANCH - COLLAR; // tap body ends where its 2" collar starts
+  ([
+    [1, top],
+    [-1, bottom],
+  ] as const).forEach(([dir, d]) => {
+    if (!d) return;
+    const rr = d / 2;
+    const tw = wallOf(d);
+    const tr = Math.min(144, 64 + Math.round(d * 4));
+    group.add(new THREE.Mesh(crossTap(rr, r, yTo, dir, tr), metal));
+    group.add(new THREE.Mesh(crossTap(rr - tw, r - wall, yTo, dir, tr), inside));
+    const rib = ribOf(d);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new SaddleLoop(rr, r, rib * 0.35, dir), tr * 2, rib, 8, true), seam));
+    const f = new THREE.Group();
+    f.position.set(0, dir * (r + TEE_BRANCH), 0);
+    f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, dir, 0));
+    f.add(buildCollar(d, style, mats, rib * 0.8, tr));
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends };
+}
+
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
@@ -822,6 +1070,18 @@ const TEE_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; 
   },
 };
 
+/** Tee/cross connections: same, shown on the A inlet end (left). */
+const CROSS_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "Shown on the A inlet end (left): it is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "Shown on the A inlet end (left): straight ends, no beads. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 /** Play timing, same as the duct: slide together, short pause, drive the screws. */
 const SLIDE_MS = 2300;
 const SCREW_PAUSE_MS = 200;
@@ -830,7 +1090,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () => void; kind?: ElbowKind }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 = "t90" }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType }) {
   const spec = ELBOWS[kind];
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
@@ -839,6 +1099,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     setConnection: (c: Connection) => void;
     setVanes: (n: number) => void;
     setRun: (b: number, c: number) => void;
+    setCross: (type: TeeType, sizes: readonly number[]) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
@@ -851,10 +1112,14 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
   // Bullhead tee run outlets B (left) and C (right), each no bigger than A.
   const [runB, setRunB] = useState(TEE_RUN_DEFAULT);
   const [runC, setRunC] = useState(TEE_RUN_DEFAULT);
+  // Tees & crosses: the type, and its sizes (A first, the rest no bigger than A).
+  const [teeType, setTeeType] = useState<TeeType>(teeType0);
+  const [teeSizes, setTeeSizes] = useState<readonly number[]>(TEES[teeType0].defaults);
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const gauge = stockGauge(diameter);
+  const cross = kind === "tee";
+  const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
     const el = host.current!;
@@ -1027,7 +1292,9 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
       const solid: Mats = { metal, inside, seam };
       const { group: elbow, ends } =
-        kind === "me90"
+        kind === "tee"
+          ? buildCross(currentTee, currentTeeSizes, solid, style)
+          : kind === "me90"
           ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
           : kind === "bt90"
             ? buildTee(d, Math.min(currentB, d), Math.min(currentRunC, d), v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
@@ -1038,7 +1305,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
-      elbow.rotation.y = kind === "bt90" ? 0 : Math.PI;
+      elbow.rotation.y = kind === "bt90" || kind === "tee" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -1057,7 +1324,9 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       renderer.domElement.style.height = "100%";
       project();
     };
-    let currentD = spec.defaultD;
+    let currentTee: TeeType = teeType0;
+    let currentTeeSizes: readonly number[] = TEES[teeType0].defaults;
+    let currentD = kind === "tee" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -1090,6 +1359,13 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
         if (b === currentB && c === currentRunC) return;
         currentB = b;
         currentRunC = c;
+        build(currentD, currentC, currentV);
+      },
+      setCross: (type, sizes) => {
+        if (type === currentTee && sizes.length === currentTeeSizes.length && sizes.every((x, i) => x === currentTeeSizes[i])) return;
+        currentTee = type;
+        currentTeeSizes = sizes;
+        currentD = sizes[0];
         build(currentD, currentC, currentV);
       },
       setTopInset: (px) => {
@@ -1136,6 +1412,9 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     api.current?.setDiameter(diameter);
   }, [diameter]);
   useEffect(() => {
+    api.current?.setCross(teeType, teeSizes);
+  }, [teeType, teeSizes]);
+  useEffect(() => {
     api.current?.setConnection(connection);
   }, [connection]);
   // Diameter first, then vanes (both effects run on a size change; the vane count follows the new size).
@@ -1156,9 +1435,15 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     return () => ro.disconnect();
   }, [connection, failed]);
   const tee = kind === "bt90";
-  const name = vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
+  const teeSpec = TEES[teeType];
+  const dims = teeDims(teeType, teeSizes);
+  const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
-    connection !== "none"
+    cross
+      ? connection !== "none"
+        ? CROSS_CONNECTION_INFO[connection]
+        : { title: name, text: teeSpec.text }
+      : connection !== "none"
       ? tee
         ? TEE_CONNECTION_INFO[connection]
         : ELBOW_CONNECTION_INFO[connection]
@@ -1173,6 +1458,25 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
   const teeL = diameter + TEE_EXTRA;
   const rB = reducerLength(diameter, runB);
   const rC = reducerLength(diameter, runC);
+  /** Pick a tee/cross type: its default sizes, and the link in the address bar follows (no new history step). */
+  const pickType = (t: TeeType) => {
+    if (t === teeType) return;
+    setTeeType(t);
+    setTeeSizes(TEES[t].defaults);
+    if (location.hash.startsWith(SWF_TEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + teeHash(t));
+  };
+  const setTeeSize = (i: number, d: number) =>
+    setTeeSizes((s) => (i === 0 ? s.map((x, k) => (k === 0 ? d : Math.min(x, d))) : s.map((x, k) => (k === i ? d : x))));
+  const resetButton = (
+        <button
+          type="button"
+          onClick={() => api.current?.reset()}
+          className="btn-raised btn-raised-sm grid size-11 shrink-0 place-items-center rounded-[0.65rem]"
+          aria-label="Reset view"
+        >
+          <RotateCcw className="size-5" />
+        </button>
+  );
   const setA = (a: number) => {
     setDiameter(a);
     setRunB((b) => Math.min(b, a));
@@ -1283,7 +1587,63 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           ))}
         </div>
       )}
-      {tee ? (
+      {cross ? (
+        <>
+          {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
+          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Tee or cross type">
+            {TEE_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={teeType === t}
+                aria-label={`${TEES[t].name} (${TEES[t].code})`}
+                onClick={() => pickType(t)}
+                className="btn-raised btn-raised-sm h-9 min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-8"
+              >
+                {TEES[t].code}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" data-testid="cross-sizes">
+            {teeSpec.labels.map((label, i) => (
+              <label key={`${teeType}-${label}`} className="flex min-w-0 flex-col">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted uppercase">{label}</span>
+                <select
+                  value={teeSizes[i]}
+                  onChange={(e) => setTeeSize(i, Number(e.target.value))}
+                  aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {(i === 0 ? spec.sizes : spec.sizes.filter((d) => d <= teeSizes[0])).map((d) => (
+                    <option key={d} value={d}>
+                      {d}&Prime;
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+            <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
+              <p className="truncate">
+                <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{inches(dims.L)}&Prime;</b>
+                {dims.reducing && (
+                  <>
+                    {" "}
+                    · R = <b className="font-semibold">{inches(dims.R)}&Prime;</b>
+                  </>
+                )}
+              </p>
+              <p className="truncate text-muted">
+                {spec.note} · L = {teeSpec.lRule}
+                {dims.reducing ? " · R assumed" : ""}
+              </p>
+            </div>
+            {resetButton}
+          </div>
+        </>
+      ) : tee ? (
         <>
           {/* Bullhead tee sizes: branch A, run outlets B (left) and C (right), each no bigger than A. */}
           <div className="grid grid-cols-3 gap-2 bg-surface/90 px-3 pt-2">

@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "596 KB",
+  sizeLabel: "786 KB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -114,6 +114,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1113,
     h: 1414,
     alt: "Single Wall Round, Bullhead Tees: BT90 bullhead tee 90° and BTV90 bullhead tee 90° with vanes; branch A, run outlets B and C with 2 inch ends, body length L = A + 3 inch, reducers R (refer to reducer drawing).",
+  },
+  {
+    n: 4,
+    title: "Tees and Crosses",
+    src: `${base}sheets/single-wall-round-fittings-4.webp`,
+    w: 1132,
+    h: 1390,
+    alt: "Single Wall Round, Tees and Crosses: T90 tee 90° (L = B + 3 inch), RT90 reducing tee 90° (L = C + 3 inch), C180 cross 180° (L = largest tap + 3 inch) and RC180 reducing cross 180° (L = largest tap + 3 inch); main A, 2 inch ends, reducers R (refer to reducer drawing).",
   },
 ] as const;
 
