@@ -8,8 +8,8 @@ import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { FittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_E90_3D_HASH, SWF_MODELS_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
-import { SW_OVAL_DOC, SW_ROUND_DOC } from "@/lib/sheets";
+import { goBack, navigate, SWF_E90_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { SW_OVAL_DOC, SW_ROUND_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -26,7 +26,7 @@ const HOME_ICONS = {
 function pageFor(group: HomeButtonId, shape: Shape) {
   if (group === "single-duct" && shape === "Round") return SW_ROUND_HASH;
   if (group === "single-duct" && shape === "Oval") return SW_OVAL_HASH;
-  if (group === "single-fitting" && shape === "Round") return SWF_MODELS_HASH; // the fitting sheets come later
+  if (group === "single-fitting" && shape === "Round") return SWF_ROUND_HASH;
   return null;
 }
 
@@ -63,11 +63,24 @@ export default function App() {
       />
     );
   }
+  if (route.page === "swf-round") {
+    // Fittings sheets, same page as the duct sheets; View 3D Model opens the list of fitting models.
+    return (
+      <SheetPage
+        key="swf-round"
+        doc={SWF_ROUND_DOC}
+        model3d={false}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(SWF_MODELS_HASH)}
+        onClose3d={() => {}}
+      />
+    );
+  }
   if (route.page === "swf-models") {
     return (
       <FittingsPage
         model3d={route.model3d}
-        onBack={() => goBack("")}
+        onBack={() => goBack(SWF_ROUND_HASH)}
         onOpen3d={() => navigate(SWF_E90_3D_HASH)}
         onClose3d={() => goBack(SWF_MODELS_HASH)}
       />

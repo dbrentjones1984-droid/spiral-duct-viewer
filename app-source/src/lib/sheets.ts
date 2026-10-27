@@ -81,14 +81,36 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows"). To add sheets: put the
+// images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
+// replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
+export const SWF_ROUND_PDF = {
+  href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
+  fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
+  sizeLabel: "255 KB",
+};
+
+export const SWF_ROUND_SHEETS = [
+  {
+    n: 1,
+    title: "Gored Elbows",
+    src: `${base}sheets/single-wall-round-fittings-1.webp`,
+    w: 1140,
+    h: 1380,
+    alt: "Single Wall Round, Gored Elbows (catalog page 7): E90 90° 5-piece, E60 60° 3-piece, E45 45° 3-piece and E30 30° 2-piece elbows, 2 inch straight ends, standard centerline radius 1-1/2 times diameter (R = 1.5 x A).",
+  },
+] as const;
+
+const sheetCount = (n: number) => (n === 1 ? "sheet 1" : `sheets 1-${n}`);
+
 /** What a sheet page shows: Round and Oval use the same page. */
 export type SheetDoc = {
   title: string;
   subtitle: string;
   sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
   pdf: { href: string; fileName: string; sizeLabel: string };
-  /** Which 3D model "View 3D Model" opens; null = not built yet (button shows "Coming soon"). */
-  model: "round" | "oval" | null;
+  /** Which 3D model "View 3D Model" opens ("fittings": the list of fitting models); null = not built yet ("Coming soon"). */
+  model: "round" | "oval" | "fittings" | null;
 };
 
 export const SW_ROUND_DOC: SheetDoc = {
@@ -105,6 +127,14 @@ export const SW_OVAL_DOC: SheetDoc = {
   sheets: SW_OVAL_SHEETS,
   pdf: SW_OVAL_PDF,
   model: "oval",
+};
+
+export const SWF_ROUND_DOC: SheetDoc = {
+  title: "SINGLE WALL ROUND",
+  subtitle: `Fittings · ${sheetCount(SWF_ROUND_SHEETS.length)}`,
+  sheets: SWF_ROUND_SHEETS,
+  pdf: SWF_ROUND_PDF,
+  model: "fittings",
 };
 
 /** Stock sizes and gauges from sheet 1 (used by the 3D model's size picker). */

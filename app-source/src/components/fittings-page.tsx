@@ -18,7 +18,7 @@ const FITTINGS = [
 export type FittingId = (typeof FITTINGS)[number]["id"];
 
 /**
- * Single Wall Fittings > Round: the list of fitting models, each card opening its 3D model on top
+ * Single Wall Fittings > Round > View 3D Model: the list of fitting models, each card opening its 3D model on top
  * (its own history step, so the phone's back button closes it, same as the sheet pages).
  */
 export function FittingsPage({
@@ -40,7 +40,7 @@ export function FittingsPage({
             type="button"
             onClick={onBack}
             className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
-            aria-label="Back"
+            aria-label="Back to fitting sheets"
           >
             <ChevronLeft className="size-6" />
             Back
