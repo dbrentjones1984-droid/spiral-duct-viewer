@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type CteeType, type LatType, type TeeType } from "@/lib/route";
+import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -106,6 +106,15 @@ const LAT_FACTOR = 1.414;
 const LAT_EXTRA = 3;
 const LAT_STRAIGHT = 2;
 /**
+ * Taps (sheet): TAP_H tall above the pipe's top line, the 2" beaded collar included. Assumed (sheet shows no number): the
+ * cone runs the rest (TAP_CONE_H) and flares TAP_FLARE each side along the pipe (base A + 2"); the saddle plate reaches
+ * TAP_SADDLE past the tap all round (the sheet's 1").
+ */
+const TAP_H = 5;
+const TAP_CONE_H = TAP_H - COLLAR;
+const TAP_FLARE = 1;
+const TAP_SADDLE = 1;
+/**
  * Reducer length R from the body (A) down to an outlet (B or C). ASSUMED until Brent sends the reducer sheet: none when
  * the outlet is the full size, else 1.25 x the size drop (the sheet's drawing: about 5" for 12" to 8"), at least 2" and
  * at most 12", in 1/2" steps.
@@ -116,7 +125,7 @@ export function reducerLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -198,6 +207,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round laterals and lateral crosses",
     canvas: "3D lateral or lateral cross. Drag to turn, pinch to zoom.",
     none: { title: "Lateral 45° (L45)", text: "" },
+    note: "Galvanized",
+  },
+  tap: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 8,
+    name: "Straight Saddle Tap 90° (SST90)",
+    aria: "3D model: single wall round straight and conical taps",
+    canvas: "3D straight or conical tap on a see-through pipe. Drag to turn, pinch to zoom.",
+    none: { title: "Straight Saddle Tap 90° (SST90)", text: "" },
     note: "Galvanized",
   },
 };
@@ -1408,6 +1427,271 @@ function buildLateral(type: LatType, sizes: readonly number[], mats: Mats, style
   return { group, ends };
 }
 
+/**
+ * Straight and Conical Taps types (sheet "Straight and Conical Taps"), ordered by the tap A and the pipe P it goes on.
+ * Same fields as TEES (labels/defaults drive the size selects: A first, then P); top/out/bottom are unused. short is the
+ * picker's second line (the sheet calls both conical ones "CT90"). gap: A is limited to P - gap. Assumed: a saddle plate
+ * reaching 1" past the collar has to stay on the pipe's top half, and a cone's footprint gets odd when it reaches the
+ * pipe's sides, so saddles and cones go up to A = P - 2"; the straight ST90 can be full size (A = P), like a T90's tap.
+ */
+type TapSpec = CrossSpec & { short: string; saddle: boolean; cone: boolean; gap: number; install: string };
+const TAPS: Record<TapType, TapSpec> = {
+  sst90: {
+    code: "SST90",
+    name: "Straight Saddle Tap 90°",
+    short: "saddle",
+    labels: ["A · tap", "P · pipe"],
+    defaults: [8, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    saddle: true,
+    cone: false,
+    gap: 2,
+    install: "field installed",
+    text: "Straight collar A, 5″ tall with a 2″ beaded end, cut to the pipe and set on a saddle plate (1″ past the collar). Pipe P shown for reference, not included.",
+  },
+  ct90s: {
+    code: "CT90",
+    name: "Conical Saddle Tap 90°",
+    short: "saddle",
+    labels: ["A · tap", "P · pipe"],
+    defaults: [8, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    saddle: true,
+    cone: true,
+    gap: 2,
+    install: "field installed",
+    text: "2″ beaded collar A, then a 3″ cone flaring to A + 2″ along the pipe, on a saddle plate (1″ past the cone). Pipe P shown for reference, not included.",
+  },
+  st90: {
+    code: "ST90",
+    name: "Straight Tap 90°",
+    short: "tap",
+    labels: ["A · tap", "P · pipe"],
+    defaults: [8, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    saddle: false,
+    cone: false,
+    gap: 0,
+    install: "factory or field",
+    text: "Straight collar A, 5″ tall with a 2″ beaded end, bottom cut to the pipe's curve. Saddle not included. Pipe P shown for reference, not included.",
+  },
+  ct90: {
+    code: "CT90",
+    name: "Conical Tap 90°",
+    short: "tap",
+    labels: ["A · tap", "P · pipe"],
+    defaults: [8, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    saddle: false,
+    cone: true,
+    gap: 2,
+    install: "factory or field",
+    text: "2″ beaded collar A, then a 3″ cone flaring to A + 2″ along the pipe, bottom cut to its curve. Saddle not included. Pipe P shown for reference, not included.",
+  },
+};
+/** A tap's sizes: tap A, pipe P, the cone's base along the pipe (A when straight) and the saddle plate's size. */
+function tapDims(type: TapType, sizes: readonly number[]) {
+  const t = TAPS[type];
+  const a = sizes[0];
+  const p = sizes[1];
+  const base = t.cone ? a + 2 * TAP_FLARE : a;
+  return { a, p, base, saddle: t.saddle, cone: t.cone, plate: t.saddle ? [base + 2 * TAP_SADDLE, a + 2 * TAP_SADDLE] : null };
+}
+
+/**
+ * A tap's shape over a pipe (axis along x): round (radius rt) at the collar, flaring along the pipe by TAP_FLARE over
+ * TAP_CONE_H below the collar when conical: half-width ax(y) along x, rt across (z); slope = d(ax)/dy.
+ */
+type TapShape = { rt: number; ax: (y: number) => number; slope: number };
+const tapShape = (rt: number, yTop: number, cone: boolean): TapShape =>
+  cone ? { rt, ax: (y) => rt + (TAP_FLARE * (yTop - y)) / TAP_CONE_H, slope: -TAP_FLARE / TAP_CONE_H } : { rt, ax: () => rt, slope: 0 };
+
+/** The tap's wall from where it meets a cylinder of radius rr (the pipe, or the saddle plate's top) up to y = yTop. */
+function tapWall(t: TapShape, rr: number, yTop: number, radial: number) {
+  const rows = 10;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const n = new THREE.Vector3();
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const z = t.rt * Math.sin(phi);
+      const y0 = Math.sqrt(Math.max(0, rr * rr - z * z));
+      const y = y0 + ((yTop - y0) * i) / rows;
+      const ax = t.ax(y);
+      const x = ax * Math.cos(phi);
+      n.set(x / (ax * ax), (-x * x * t.slope) / (ax * ax * ax), z / (t.rt * t.rt)).normalize();
+      pos.push(x, y, z);
+      nor.push(n.x, n.y, n.z);
+      uv.push(j / radial, (11 + yTop - y) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/** A closed curve from a function of u in [0, 1]. */
+class FnCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private f: (u: number, target: THREE.Vector3) => THREE.Vector3) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    return this.f(u, target);
+  }
+}
+
+/**
+ * Saddle plate on a pipe of radius rp: a thin curved plate (thickness th) wrapped on the pipe's top, from the tap's
+ * footprint (half-widths fx along the pipe, fz across, an ellipse) out TAP_SADDLE all round. Top, underside, outer and
+ * inner edges, as plan-view ellipses laid onto the pipe.
+ */
+function saddlePlate(rp: number, th: number, foot: (phi: number) => [number, number], radial: number) {
+  const rows = 6;
+  const outerFoot = (phi: number): [number, number] => {
+    const [x, z] = foot(phi);
+    return [x + TAP_SADDLE * Math.cos(phi), z + TAP_SADDLE * Math.sin(phi)];
+  };
+  const onPipe = (x: number, z: number, R: number) => {
+    const zz = Math.max(-R * 0.999, Math.min(R * 0.999, z));
+    return [x, Math.sqrt(R * R - zz * zz), zz] as const;
+  };
+  const surface = (R: number, up: boolean) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= radial; j++) {
+        const phi = (j / radial) * Math.PI * 2;
+        const [x0, z0] = foot(phi);
+        const [x1, z1] = outerFoot(phi);
+        const k = i / rows;
+        const [x, y, z] = onPipe(x0 + (x1 - x0) * k, z0 + (z1 - z0) * k, R);
+        pos.push(x, y, z);
+        const s = up ? 1 : -1;
+        nor.push(0, (s * y) / R, (s * z) / R);
+        uv.push((x + 40) / TEX_LENGTH, (z + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+  };
+  const edge = (fp: (phi: number) => [number, number], out: 1 | -1) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (const R of [rp + 0.01, rp + th]) {
+      for (let j = 0; j <= radial; j++) {
+        const phi = (j / radial) * Math.PI * 2;
+        const [fx, fz] = fp(phi);
+        const [x, y, z] = onPipe(fx, fz, R);
+        pos.push(x, y, z);
+        nor.push(out * Math.cos(phi), 0, out * Math.sin(phi));
+        uv.push(j / radial, R / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, 2, radial + 1);
+  };
+  return {
+    geos: [surface(rp + th, true), surface(rp + 0.01, false), edge(outerFoot, 1), edge(foot, -1)],
+    rim: new FnCurve((u, target) => {
+      const phi = u * Math.PI * 2;
+      const [x, y, z] = onPipe(...outerFoot(phi), rp + th * 0.5);
+      return target.set(x, y, z);
+    }),
+  };
+}
+
+/**
+ * Straight or conical tap (sheet "Straight and Conical Taps") on a pipe P along x: the tap only, 5" tall above the pipe's
+ * top line (TAP_H, the 2" beaded collar included); its bottom is cut to the pipe's curve (or the saddle plate's), with a
+ * seam where it meets; SST90 / CT90 saddle taps sit on a saddle plate. The pipe P is a see-through ghost (reference, not
+ * part of the fitting). ends[0] is the tap's top (A) end (connections go there).
+ */
+function buildTap(type: TapType, sizes: readonly number[], mats: Mats, style: EndStyle, ref: PipeMats, plateMat: THREE.Material) {
+  const { metal, inside, seam } = mats;
+  const { a, p, saddle, cone } = tapDims(type, sizes);
+  const group = new THREE.Group();
+  const rp = p / 2;
+  const rt = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const rib = Math.min(0.34, 0.04 + a * 0.012);
+  const th = saddle ? Math.max(0.08, wall * 1.4) : 0;
+  const yTop = rp + TAP_H - COLLAR; // tap body ends where its 2" collar starts
+  const rr = rp + th; // the tap meets the plate's top (or the pipe)
+  const outer = tapShape(rt, yTop, cone);
+  const inner: TapShape = { rt: rt - wall, ax: (y) => outer.ax(y) - wall, slope: outer.slope };
+  group.add(new THREE.Mesh(tapWall(outer, rr, yTop, radial), metal));
+  group.add(new THREE.Mesh(tapWall(inner, rr, yTop, radial), inside));
+  // seam where the tap meets the plate / pipe (a cone tap: like ConeSaddleLoop, pushed out by k)
+  const k = rib * 0.35;
+  group.add(
+    new THREE.Mesh(
+      new THREE.TubeGeometry(
+        new FnCurve((u, target) => {
+          const phi = u * Math.PI * 2;
+          const z0 = rt * Math.sin(phi);
+          const y0 = Math.sqrt(Math.max(0, rr * rr - z0 * z0));
+          const z = (rt + k) * Math.sin(phi);
+          const R = rr + k;
+          return target.set((outer.ax(y0) + k) * Math.cos(phi), Math.sqrt(Math.max(0, R * R - z * z)), z);
+        }),
+        radial * 2,
+        rib,
+        8,
+        true,
+      ),
+      seam,
+    ),
+  );
+  if (cone) {
+    // seam where the cone meets the collar
+    const ring = new THREE.TorusGeometry(rt + rib * 0.2, rib * 0.8, 8, radial);
+    ring.rotateX(Math.PI / 2);
+    ring.translate(0, yTop, 0);
+    group.add(new THREE.Mesh(ring, seam));
+  }
+  if (saddle) {
+    const foot = (phi: number): [number, number] => {
+      const z = rt * Math.sin(phi);
+      const y0 = Math.sqrt(Math.max(0, rr * rr - z * z));
+      return [outer.ax(y0) * Math.cos(phi), z];
+    };
+    const plate = saddlePlate(rp, th, foot, radial);
+    for (const g of plate.geos) group.add(new THREE.Mesh(g, plateMat));
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(plate.rim, radial * 2, th * 0.75, 6, true), seam));
+  }
+  const f = new THREE.Group();
+  f.position.set(0, rp + TAP_H, 0);
+  f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, 1, 0));
+  f.add(buildCollar(a, style, mats, rib * 0.8, radial));
+  group.add(f);
+  // The pipe P: a short see-through length, for reference only.
+  let span = 0;
+  for (let j = 0; j <= 90; j++) {
+    const phi = (j / 90) * (Math.PI / 2);
+    const z = rt * Math.sin(phi);
+    span = Math.max(span, 2 * (outer.ax(Math.sqrt(Math.max(0, rr * rr - z * z))) * Math.cos(phi) + (saddle ? TAP_SADDLE * Math.cos(phi) : 0)));
+  }
+  const ghost = buildPipe(p, ref, Math.max(p + 4, Math.ceil(span) + 8));
+  ghost.traverse((o) => {
+    o.renderOrder = 1;
+  });
+  group.add(ghost);
+  return { group, ends: [f] };
+}
+
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
@@ -1559,6 +1843,18 @@ const CROSS_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string
   },
 };
 
+/** Tap connections: same, shown on the tap's top (A) end. */
+const TAP_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "Shown on the tap's top (A) end: it is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "Shown on the tap's top (A) end: straight end, no bead. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 /** Play timing, same as the duct: slide together, short pause, drive the screws. */
 const SLIDE_MS = 2300;
 const SCREW_PAUSE_MS = 200;
@@ -1567,13 +1863,15 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
   const lateral = kind === "lat";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : "t90");
+  // Straight & Conical Taps: same picker and size selects (A, then the pipe P), A limited by P instead of the other way.
+  const taps = kind === "tap";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? TAPS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : taps ? "sst90" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -1600,7 +1898,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral;
+  const cross = kind === "tee" || conical || lateral || taps;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -1650,6 +1948,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       return g;
     };
     const ghostMats: Mats = { metal: ghost(metal, 0.28), inside: ghost(inside, 0.16), seam: ghost(seam, 0.85) };
+    // Taps: the pipe P they go on, faint and see-through (reference only, not part of the fitting).
+    // Saddle plate: same metal, toned down (it faces up into the light and would read white).
+    const plateMat = metal.clone();
+    (plateMat as THREE.MeshStandardMaterial).color.set(0xc9d0d8);
+    (plateMat as THREE.MeshStandardMaterial).envMapIntensity = 0.7;
+    const refMats: PipeMats = { metal: ghost(metal, 0.16), inside: ghost(inside, 0.08), seam: ghost(seam, 0.22), rim: ghost(seam, 0.6) };
     const vaneMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, map: spangle, metalness: 0.5, roughness: 0.42, envMapIntensity: 1, side: THREE.DoubleSide });
     const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
 
@@ -1772,6 +2076,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       }
       const style: EndStyle = c === "coupling" ? "crimp" : c === "flange" ? "plain" : "bead";
       view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
+      if (kind === "tap") view = new THREE.Vector3(0.35, 0.55, 1); // taps: more from above, so the saddle plate reads
       const solid: Mats = { metal, inside, seam };
       const { group: elbow, ends } =
         kind === "tee"
@@ -1780,6 +2085,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           ? buildConeCross(currentTee as CteeType, currentTeeSizes, solid, style)
           : kind === "lat"
           ? buildLateral(currentTee as LatType, currentTeeSizes, solid, style)
+          : kind === "tap"
+          ? buildTap(currentTee as TapType, currentTeeSizes, solid, style, refMats, plateMat)
           : kind === "me90"
           ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
           : kind === "bt90"
@@ -1791,7 +2098,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
-      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" || kind === "lat" ? 0 : Math.PI;
+      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -1812,7 +2119,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -1881,7 +2188,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), vaneMat, vaneEdge].forEach((m) => m.dispose());
+      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), ...new Set(Object.values(refMats)), plateMat, vaneMat, vaneEdge].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -1922,17 +2229,23 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   }, [connection, failed]);
   const tee = kind === "bt90";
   const teeSpec = fam[teeType];
+  const tapSpec = taps ? TAPS[teeType as TapType] : null;
+  const tapD = taps ? tapDims(teeType as TapType, teeSizes) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = conical
     ? cteeDims(teeType as CteeType, teeSizes)
+    : taps
+    ? { L: 0, R: 0, reducing: false }
     : lateral
     ? latDims(teeType as LatType, teeSizes)
     : teeDims(teeType as TeeType, teeSizes);
   const bound = (i: number) => teeSpec.bound?.[i] ?? 0;
+  /** Largest size select i may take, given the others (taps: A up to P - gap; else up to its bound, A unlimited). */
+  const maxSize = (i: number, s: readonly number[]) => (tapSpec ? (i === 0 ? s[1] - tapSpec.gap : Infinity) : i === 0 ? Infinity : s[bound(i)]);
   const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
     cross
       ? connection !== "none"
-        ? CROSS_CONNECTION_INFO[connection]
+        ? (taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
         : { title: name, text: teeSpec.text }
       : connection !== "none"
       ? tee
@@ -1954,7 +2267,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (lateral) {
+    if (taps) {
+      if (location.hash.startsWith(SWF_TAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + tapHash(t as TapType));
+    } else if (lateral) {
       if (location.hash.startsWith(SWF_LAT_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + latHash(t as LatType));
     } else if (conical) {
       if (location.hash.startsWith(SWF_CTEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + cteeHash(t as CteeType));
@@ -1964,6 +2279,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const setTeeSize = (i: number, d: number) =>
     setTeeSizes((s) => {
       const n = s.map((x, k) => (k === i ? d : x));
+      if (tapSpec) {
+        // A up to P - gap, at least the smallest size (P's list only offers pipes that leave room for one)
+        n[0] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x <= Math.min(n[0], n[1] - tapSpec.gap)));
+        return n;
+      }
       for (let k = 1; k < n.length; k++) n[k] = Math.min(n[k], n[bound(k)]);
       return n;
     });
@@ -2090,8 +2410,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -2099,9 +2419,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className="btn-raised btn-raised-sm h-9 min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-8"
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
+                {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
+                {taps && <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{TAPS[t as TapType].short}</span>}
               </button>
             ))}
           </div>
@@ -2115,7 +2437,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                   aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
                   className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
                 >
-                  {(i === 0 ? spec.sizes : spec.sizes.filter((d) => d <= teeSizes[bound(i)])).map((d) => (
+                  {(tapSpec && i === 1
+                    ? spec.sizes.filter((d) => d >= spec.sizes[0] + tapSpec.gap)
+                    : spec.sizes.filter((d) => d <= maxSize(i, teeSizes))
+                  ).map((d) => (
                     <option key={d} value={d}>
                       {d}&Prime;
                     </option>
@@ -2126,6 +2451,30 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
+              {tapSpec && tapD ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{gauge.fitting} ga</b> fitting · H = <b className="font-semibold">{TAP_H}&Prime;</b>
+                    {tapD.cone && (
+                      <>
+                        {" "}
+                        · base <b className="font-semibold">{inches(tapD.base)}&Prime;</b>
+                      </>
+                    )}
+                    {tapD.plate && (
+                      <>
+                        {" "}
+                        · saddle +{TAP_SADDLE}&Prime;
+                      </>
+                    )}
+                  </p>
+                  <p className="truncate text-muted">
+                    {spec.note} · {tapSpec.install}
+                    {tapD.saddle ? "" : " · no saddle"}
+                  </p>
+                </>
+              ) : (
+              <>
               <p className="truncate">
                 <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{inches(dims.L)}&Prime;</b>
                 {dims.Lx !== undefined && <span className="text-muted"> ({dims.Lx.toFixed(2)}&Prime;)</span>}
@@ -2140,6 +2489,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 {spec.note} · L = {teeSpec.lRule}
                 {dims.reducing ? " · R assumed" : ""}
               </p>
+              </>
+              )}
             </div>
             {resetButton}
           </div>

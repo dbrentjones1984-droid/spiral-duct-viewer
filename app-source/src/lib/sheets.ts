@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "1.1 MB",
+  sizeLabel: "1.3 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -138,6 +138,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1390,
     alt: "Single Wall Round, Laterals: L45 lateral 45° (L = B x 1.414 + 3 inch), RL45 reducing lateral 45° (L = C x 1.414 + 3 inch), LC45 lateral cross 45° (L = B x 1.414 + 3 inch, B > C) and RLC45 reducing lateral cross 45° (L = C x 1.414 + 3 inch, C > D); main A, 45° branches with 2 inch collars, 2 inch ends, reducers R (refer to reducer drawing).",
+  },
+  {
+    n: 7,
+    title: "Straight and Conical Taps",
+    src: `${base}sheets/single-wall-round-fittings-7.webp`,
+    w: 1132,
+    h: 1411,
+    alt: "Single Wall Round, Straight and Conical Taps: SST90 straight saddle tap 90° and CT90 saddle tap 90° (order by A and P, pipe size; field installed, with a saddle, 1 inch), ST90 tap 90° and CT90 tap 90° (order by A and P; saddle not included; factory or field installed); 5 inch taps with 2 inch ends, the pipe P dashed.",
   },
 ] as const;
 
