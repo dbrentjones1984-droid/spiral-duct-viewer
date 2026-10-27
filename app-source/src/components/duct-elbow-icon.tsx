@@ -4,9 +4,10 @@
  * inner rings and dashes). Collar at each end, two gores in the middle, an inner ring in each open end and
  * dashed lines for the inner wall. Simplified for tab size: front half of each gore seam only.
  * innerWall={false} gives the same drawing without the dashed lines (Single Wall Fittings tab).
+ * gores={false} draws a smooth (die-stamped) elbow: no gore seams, curved walls.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
-export function DuctElbowIcon({ className, innerWall = true }: { className?: string; innerWall?: boolean }) {
+export function DuctElbowIcon({ className, innerWall = true, gores = true }: { className?: string; innerWall?: boolean; gores?: boolean }) {
   return (
     <svg
       viewBox="0 0 60 40"
@@ -17,10 +18,14 @@ export function DuctElbowIcon({ className, innerWall = true }: { className?: str
       className={className}
       aria-hidden="true"
     >
+        {gores && (
+          <>
         {/* gore seams (front half only, simplified from the drawing) */}
         <path d="M16.8 8.7 L17.2 8.7 L17.7 8.8 L18.2 8.9 L18.8 9.2 L19.4 9.4 L19.9 9.8 L20.5 10.2 L21.1 10.7 L21.7 11.3 L21.7 11.3 L22.3 11.9 L22.8 12.6 L23.4 13.3 L23.9 14.1 L24.4 14.9 L24.9 15.8 L25.4 16.6 L25.8 17.5 L26.2 18.4 L26.6 19.3 L26.9 20.2 L27.2 21.1 L27.4 22.0 L27.5 22.8 L27.7 23.6 L27.7 24.4 L27.8 25.2 L27.7 25.9 L27.6 26.5 L27.5 27.1 L27.3 27.6 L27.1 28.1 L26.8 28.5 L26.5 28.8 L26.1 29.1 L25.7 29.2" strokeWidth={1.1} />
         <path d="M29.4 5.8 L29.5 5.9 L29.6 6.0 L29.7 6.3 L29.8 6.6 L29.9 7.0 L30.1 7.5 L30.2 8.0 L30.3 8.6 L30.4 9.3 L30.4 9.3 L30.5 10.0 L30.6 10.8 L30.7 11.6 L30.8 12.5 L30.8 13.4 L30.9 14.4 L31.0 15.3 L31.0 16.3 L31.0 17.3 L31.1 18.2 L31.1 19.2 L31.1 20.2 L31.1 21.1 L31.1 22.0 L31.1 22.8 L31.0 23.6 L31.0 24.4 L30.9 25.1 L30.9 25.8 L30.8 26.3 L30.7 26.8 L30.6 27.3 L30.6 27.6 L30.5 27.9 L30.4 28.1 L30.2 28.2 L30.1 28.2" strokeWidth={1.1} />
         <path d="M42.9 7.9 L42.7 7.9 L42.4 7.9 L42.1 8.0 L41.8 8.1 L41.5 8.4 L41.2 8.7 L40.8 9.1 L40.4 9.6 L40.0 10.1 L39.6 10.7 L39.6 10.7 L39.2 11.4 L38.8 12.1 L38.4 12.8 L38.0 13.6 L37.6 14.5 L37.2 15.3 L36.8 16.2 L36.5 17.1 L36.2 18.1 L35.8 19.0 L35.6 19.9 L35.3 20.8 L35.1 21.7 L34.8 22.6 L34.7 23.4 L34.5 24.2 L34.4 24.9 L34.3 25.6 L34.3 26.3 L34.3 26.9 L34.3 27.4 L34.4 27.8 L34.5 28.2 L34.6 28.5 L34.8 28.8 L35.0 28.9" strokeWidth={1.1} />
+          </>
+        )}
         {/* outer wall */}
         {/* inner wall, hidden behind the outer one (dashed); left off for the single wall tab */}
         {innerWall && (
@@ -29,8 +34,17 @@ export function DuctElbowIcon({ className, innerWall = true }: { className?: str
             <path d="M8.9 18.6 L17.0 11.8 L29.4 8.7 L41.7 10.6 L51.8 16.8" strokeWidth={1.1} strokeDasharray="4 3" />
           </>
         )}
-        <path d="M21.2 33.3 L26.5 28.8 L30.2 28.2 L35.2 29.0 L41.7 33.1" strokeWidth={2} />
-        <path d="M7.1 16.4 L15.6 9.3 L29.3 5.8 L42.7 7.9 L53.3 14.3" strokeWidth={2} />
+        {gores ? (
+          <>
+            <path d="M21.2 33.3 L26.5 28.8 L30.2 28.2 L35.2 29.0 L41.7 33.1" strokeWidth={2} />
+            <path d="M7.1 16.4 L15.6 9.3 L29.3 5.8 L42.7 7.9 L53.3 14.3" strokeWidth={2} />
+          </>
+        ) : (
+          <>
+            <path d="M21.2 33.3 Q30.6 23.4 41.7 33.1" strokeWidth={2} />
+            <path d="M7.1 16.4 Q29.8 -3.6 53.3 14.3" strokeWidth={2} />
+          </>
+        )}
         {/* end rings: outer + inner */}
         <path d="M14.8 17.1 L15.5 17.6 L16.3 18.1 L17.0 18.7 L17.7 19.4 L18.3 20.1 L19.0 20.8 L19.6 21.5 L20.1 22.3 L20.6 23.1 L21.1 23.9 L21.5 24.7 L21.8 25.5 L22.1 26.3 L22.4 27.1 L22.5 27.9 L22.7 28.7 L22.7 29.4 L22.7 30.1 L22.6 30.7 L22.4 31.4 L22.2 31.9 L21.9 32.4 L21.6 32.9 L21.2 33.3 L20.8 33.6 L20.3 33.8 L19.7 34.0 L19.1 34.1 L18.5 34.2 L17.8 34.2 L17.1 34.1 L16.4 33.9 L15.7 33.7 L15.0 33.3 L14.2 33.0 L13.5 32.6 L12.7 32.1 L12.0 31.5 L11.3 30.9 L10.6 30.3 L9.9 29.6 L9.3 28.9 L8.7 28.1 L8.1 27.4 L7.6 26.6 L7.2 25.8 L6.8 24.9 L6.4 24.1 L6.1 23.3 L5.9 22.5 L5.7 21.7 L5.6 21.0 L5.6 20.3 L5.6 19.6 L5.7 18.9 L5.8 18.3 L6.0 17.7 L6.3 17.2 L6.7 16.8 L7.1 16.4 L7.5 16.1 L8.0 15.8 L8.6 15.6 L9.1 15.5 L9.8 15.5 L10.4 15.5 L11.1 15.6 L11.8 15.8 L12.5 16.0 L13.3 16.3 L14.0 16.7 L14.8 17.1 Z" strokeWidth={2} />
         <path d="M48.2 16.0 L47.5 16.5 L46.9 17.1 L46.3 17.7 L45.8 18.4 L45.2 19.1 L44.6 19.9 L44.1 20.7 L43.6 21.5 L43.1 22.3 L42.6 23.2 L42.2 24.0 L41.8 24.9 L41.5 25.7 L41.2 26.5 L41.0 27.3 L40.8 28.1 L40.7 28.8 L40.6 29.5 L40.6 30.1 L40.6 30.7 L40.7 31.3 L40.8 31.8 L41.0 32.2 L41.2 32.6 L41.5 32.9 L41.8 33.1 L42.2 33.3 L42.6 33.3 L43.0 33.3 L43.5 33.3 L44.0 33.1 L44.5 32.9 L45.1 32.7 L45.7 32.3 L46.3 31.9 L46.9 31.4 L47.5 30.9 L48.1 30.3 L48.7 29.7 L49.3 29.0 L49.8 28.3 L50.4 27.5 L50.9 26.7 L51.4 25.9 L51.9 25.1 L52.4 24.2 L52.8 23.4 L53.2 22.5 L53.5 21.7 L53.8 20.9 L54.0 20.1 L54.2 19.3 L54.3 18.6 L54.4 17.9 L54.4 17.3 L54.4 16.7 L54.3 16.1 L54.2 15.6 L54.0 15.2 L53.8 14.8 L53.5 14.5 L53.2 14.3 L52.8 14.1 L52.4 14.1 L52.0 14.0 L51.5 14.1 L51.0 14.2 L50.5 14.5 L49.9 14.7 L49.3 15.1 L48.8 15.5 L48.2 16.0 Z" strokeWidth={2} />

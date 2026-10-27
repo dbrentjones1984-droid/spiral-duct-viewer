@@ -27,6 +27,9 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * Connections (Brent), shown on the elbow's bottom end joined to a 12" piece of spiral duct, with Play like the duct:
  * Coupling (slip joint: crimped end past the bead, the duct slides over it and is screwed) and Flange (plain ends,
  * the duct's flange joint).
+ * The same viewer also shows the die-stamped 90° elbow (kind "ds90", sizes 3"-10" only): one smooth bend pressed
+ * from two halves that are joined along the throat and the heel (the inside and outside of the bend), so a raised
+ * lap seam runs lengthwise along both; same 2" ends, connections and Play.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -34,6 +37,41 @@ const COLLAR = 2; // straight ends, as dimensioned on the sheet
 const DEG = Math.PI / 180;
 /** Gore joints along the 90° turn: end gores 11-1/4°, middle gores 22-1/2°. */
 const SEAMS = [0, 11.25, 33.75, 56.25, 78.75, 90].map((a) => a * DEG);
+
+/** Die-stamped elbow: centerline radius (x diameter) and the sizes it is made in. */
+const DS_CLR = 1.5;
+const DS_MAX_D = 10;
+
+/** The elbows this viewer shows. */
+export type ElbowKind = "e90" | "ds90";
+const ELBOWS: Record<
+  ElbowKind,
+  { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
+> = {
+  e90: {
+    clr: 1.5,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Gored 90° Elbow (E90)",
+    aria: "3D model: single wall round gored 90 degree elbow",
+    canvas: "3D gored 90 degree elbow. Drag to turn, pinch to zoom.",
+    none: { title: "Gored 90° Elbow (E90)", text: "90° 5-piece gored elbow. Centerline radius 1.5 × diameter, 2″ straight ends." },
+    note: "Galvanized · 5 gores",
+  },
+  ds90: {
+    clr: DS_CLR,
+    sizes: STOCK_DIAMETERS.filter((d) => d <= DS_MAX_D),
+    defaultD: 6,
+    name: "Die-Stamped 90° Elbow",
+    aria: "3D model: single wall round die-stamped 90 degree elbow",
+    canvas: "3D die-stamped 90 degree elbow. Drag to turn, pinch to zoom.",
+    none: {
+      title: "Die-Stamped 90° Elbow",
+      text: `Smooth stamped elbow, sizes 3″–${DS_MAX_D}″. Two pressed halves seamed along the throat and heel; centerline radius ${DS_CLR} × diameter, 2″ straight ends.`,
+    },
+    note: "Galvanized · stamped",
+  },
+};
 
 const B = new THREE.Vector3(0, 0, 1);
 const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
@@ -88,6 +126,57 @@ function piece(
 
 /** Where the piece tangent at t crosses the radial joint plane at angle a, for a point at radius rr, angle phi. */
 const miter = (t: number, a: number, R: number, rr: number) => (phi: number) => (R + rr * Math.cos(phi)) * Math.tan(a - t);
+
+/** Smooth bend (die-stamped): the torus section from 0 to 90°, radius rr about the centerline. */
+function bend(R: number, rr: number, vBase: number, radial: number) {
+  const rows = 48;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const p = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  for (let i = 0; i <= rows; i++) {
+    const a = (i / rows) * (Math.PI / 2);
+    const O = centerline(a, R);
+    const N = outward(a);
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      n.copy(N).multiplyScalar(Math.cos(phi)).addScaledVector(B, Math.sin(phi));
+      p.copy(O).addScaledVector(n, rr);
+      pos.push(p.x, p.y, p.z);
+      nor.push(n.x, n.y, n.z);
+      uv.push(j / radial, (vBase + a * R) / TEX_LENGTH);
+    }
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < radial; j++) {
+      const a = i * (radial + 1) + j;
+      const b = a + radial + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/** Lengthwise line along the bend at a fixed distance from the bend's centre (the heel or throat lap seam). */
+class BendLine extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private rad: number,
+    private z = 0,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const a = u * (Math.PI / 2);
+    return target.set(this.rad * Math.cos(a), this.rad * Math.sin(a), this.z);
+  }
+}
 
 /** Closed loop around a gore joint (the mitre ellipse), pushed out a little so the seam sits on the surface. */
 class JointLoop extends THREE.Curve<THREE.Vector3> {
@@ -185,16 +274,27 @@ function buildCollar(d: number, style: EndStyle, { metal, inside, seam }: Mats, 
   return g;
 }
 
-function buildElbow(d: number, mats: Mats, style: EndStyle) {
+function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
   const r = d / 2;
-  const R = 1.5 * d;
+  const R = ELBOWS[kind].clr * d;
   const wall = Math.max(0.05, d * 0.006);
   const radial = Math.min(144, 64 + Math.round(d * 4));
   const rib = Math.min(0.34, 0.04 + d * 0.012); // raised gore seam, in proportion to the size (3": 0.08", 12": 0.18", 24": 0.33")
   const bead = rib * 0.8; // rolled bead on each end
 
+  if (kind === "ds90") {
+    // One smooth pressed bend; the two halves (above and below the bend's plane) lap along the heel and the throat.
+    group.add(new THREE.Mesh(bend(R, r, COLLAR, radial), metal));
+    group.add(new THREE.Mesh(bend(R, r - wall, COLLAR, radial), inside));
+    const lap = rib * 0.8;
+    for (const side of [1, -1]) {
+      // the raised lap along the seam, and the upper half's sheet edge lying over it (reads as a lapped joint)
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new BendLine(R + side * (r + lap * 0.25)), 48, lap, 8, false), seam));
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new BendLine(R + side * (r + lap * 0.05), lap * 1.25), 48, lap * 0.5, 6, false), seam));
+    }
+  } else {
   // Gore k runs from joint a_k to a_k+1; end gores are tangent at the ends of the turn, middle gores at their middle.
   const tangents = SEAMS.slice(0, -1).map((a, k) => (k === 0 ? 0 : k === SEAMS.length - 2 ? Math.PI / 2 : (a + SEAMS[k + 1]) / 2));
   let vBase = COLLAR;
@@ -209,6 +309,7 @@ function buildElbow(d: number, mats: Mats, style: EndStyle) {
   for (let k = 1; k < SEAMS.length - 1; k++) {
     const loop = new JointLoop(tangents[k - 1], SEAMS[k], R, r + rib * 0.35);
     group.add(new THREE.Mesh(new THREE.TubeGeometry(loop, radial, rib, 8, true), seam));
+  }
   }
   // 2" straight ends.
   const ends = ([0, 1] as const).map((e) => {
@@ -308,7 +409,8 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
+export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () => void; kind?: ElbowKind }) {
+  const spec = ELBOWS[kind];
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -318,7 +420,7 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
     reset: () => void;
     play: () => void;
   } | null>(null);
-  const [diameter, setDiameter] = useState(12);
+  const [diameter, setDiameter] = useState(spec.defaultD);
   const [connection, setConnection] = useState<Connection>("none");
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
@@ -338,7 +440,7 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.domElement.style.touchAction = "none";
-    renderer.domElement.setAttribute("aria-label", "3D gored 90 degree elbow. Drag to turn, pinch to zoom.");
+    renderer.domElement.setAttribute("aria-label", spec.canvas);
     renderer.domElement.setAttribute("role", "img");
     el.appendChild(renderer.domElement);
 
@@ -480,7 +582,7 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
         disposeGroup(model);
       }
       const style: EndStyle = c === "coupling" ? "crimp" : c === "flange" ? "plain" : "bead";
-      const { group: elbow, ends } = buildElbow(d, { metal, inside, seam }, style);
+      const { group: elbow, ends } = buildElbow(d, { metal, inside, seam }, style, kind);
       // The bottom end reads best on a phone: the duct hangs straight down under the elbow, in the tall screen.
       const joint = c === "coupling" ? slipJoint(d, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(d, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
@@ -505,7 +607,7 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
       renderer.domElement.style.height = "100%";
       project();
     };
-    let currentD = 12;
+    let currentD = spec.defaultD;
     let currentC: Connection = "none";
     resize();
     build(currentD, currentC);
@@ -580,19 +682,19 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
     ro.observe(h);
     return () => ro.disconnect();
   }, [connection, failed]);
-  const info = ELBOW_CONNECTION_INFO[connection];
+  const info = connection === "none" ? spec.none : ELBOW_CONNECTION_INFO[connection];
 
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]"
       role="dialog"
       aria-modal="true"
-      aria-label="3D model: single wall round gored 90 degree elbow"
+      aria-label={spec.aria}
     >
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
-          <p className="truncate text-xs text-white/80">Single Wall Round · Gored 90° Elbow (E90)</p>
+          <p className="truncate text-xs text-white/80">Single Wall Round · {spec.name}</p>
         </div>
         <button
           type="button"
@@ -671,7 +773,7 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
             onChange={(e) => setDiameter(Number(e.target.value))}
             className="btn-raised btn-raised-sm mt-1 h-10 rounded-[0.65rem] px-2 font-display text-lg"
           >
-            {STOCK_DIAMETERS.map((d) => (
+            {spec.sizes.map((d) => (
               <option key={d} value={d}>
                 {d}&Prime; round
               </option>
@@ -680,9 +782,9 @@ export default function GoredElbow3D({ onClose }: { onClose: () => void }) {
         </label>
         <div className="min-w-0 flex-[1.3] text-xs leading-snug text-ink">
           <p>
-            <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(1.5 * diameter)}&Prime;</b>
+            <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(spec.clr * diameter)}&Prime;</b>
           </p>
-          <p className="text-muted">Galvanized · 5 gores</p>
+          <p className="text-muted">{spec.note}</p>
         </div>
         <button
           type="button"

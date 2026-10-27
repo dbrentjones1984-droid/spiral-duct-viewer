@@ -12,6 +12,14 @@ const FITTINGS = [
     name: "Gored 90° Elbow (E90)",
     text: "90° 5-piece gored elbow · centerline radius 1.5 × diameter · 2″ straight ends",
     source: "Catalog page 7 · Gored Elbows",
+    gores: true,
+  },
+  {
+    id: "ds90",
+    name: "Die-Stamped 90° Elbow",
+    text: "Smooth stamped elbow, sizes 3″–10″ · centerline radius 1.5 × diameter · 2″ straight ends",
+    source: "Stamped from two halves, seamed along the throat and heel",
+    gores: false,
   },
 ] as const;
 
@@ -58,7 +66,7 @@ export function FittingsPage({
           <li key={f.id} className="flex flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-center gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} />
               </span>
               <div className="min-w-0">
                 <h2 className="font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -94,7 +102,7 @@ export function FittingsPage({
         <Suspense
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
-          <GoredElbow3D onClose={onClose3d} />
+          <GoredElbow3D key={model3d} kind={model3d} onClose={onClose3d} />
         </Suspense>
       )}
     </main>
