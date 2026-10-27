@@ -7,7 +7,8 @@ import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { SW_OVAL_DOC, SW_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -23,6 +24,7 @@ const HOME_ICONS = {
 /** Pages that exist so far. Everything else in the drop-downs just shows its selection for now. */
 function pageFor(group: HomeButtonId, shape: Shape) {
   if (group === "single-duct" && shape === "Round") return SW_ROUND_HASH;
+  if (group === "single-duct" && shape === "Oval") return SW_OVAL_HASH;
   return null;
 }
 
@@ -39,12 +41,17 @@ export default function App() {
   if (route.page === "sw-round") {
     return (
       <SheetPage
+        doc={SW_ROUND_DOC}
         model3d={route.model3d}
         onBack={() => goBack("")}
         onOpen3d={() => navigate(SW_ROUND_3D_HASH)}
         onClose3d={() => goBack(SW_ROUND_HASH)}
       />
     );
+  }
+  if (route.page === "sw-oval") {
+    // Oval 3D model is next (Brent); until then the page has a "Coming soon" slot where View 3D Model goes.
+    return <SheetPage key="sw-oval" doc={SW_OVAL_DOC} model3d={false} onBack={() => goBack("")} onOpen3d={() => {}} onClose3d={() => {}} />;
   }
   return <CatalogPage group={group} setGroup={setGroup} shape={shape} setShape={setShape} />;
 }

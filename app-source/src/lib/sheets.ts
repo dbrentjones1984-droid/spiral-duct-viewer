@@ -53,6 +53,60 @@ export const SW_ROUND_SHEETS = [
   },
 ] as const;
 
+// Single Wall Duct · Oval: Brent's two "Single Wall Oval Nominal Sizes - Gauge Chart" images, kept as sent (sheet 1 plain,
+// sheet 2 shaded rows; a few cells differ and Brent said to keep both as is). Shown the same way as Round (WebP at full
+// resolution); the PDF download is both pages in the same order.
+export const SW_OVAL_PDF = {
+  href: `${base}docs/Spiral-Systems-Single-Wall-Oval-Duct.pdf`,
+  fileName: "Spiral-Systems-Single-Wall-Oval-Duct.pdf",
+  sizeLabel: "1.0 MB",
+};
+
+export const SW_OVAL_SHEETS = [
+  {
+    n: 1,
+    title: "Nominal Sizes · Gauge Chart",
+    src: `${base}sheets/single-wall-oval-1.webp`,
+    w: 1103,
+    h: 1426,
+    alt: "Sheet 1, Single Wall Oval, Nominal Sizes Gauge Chart (positive pressure, 1995 SMACNA): initial spiral diameter by oval major axis (8 to 60 inch, 24/22/20/18 gauge) and minor axis (4 to 30 inch).",
+  },
+  {
+    n: 2,
+    title: "Nominal Sizes · Gauge Chart (shaded rows)",
+    src: `${base}sheets/single-wall-oval-2.webp`,
+    w: 1105,
+    h: 1423,
+    alt: "Sheet 2, Single Wall Oval, Nominal Sizes Gauge Chart with shaded rows (positive pressure, 1995 SMACNA): initial spiral diameter by oval major axis (8 to 60 inch, 24/22/20/18 gauge) and minor axis (4 to 30 inch).",
+  },
+] as const;
+
+/** What a sheet page shows: Round and Oval use the same page. */
+export type SheetDoc = {
+  title: string;
+  subtitle: string;
+  sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
+  pdf: { href: string; fileName: string; sizeLabel: string };
+  /** false = the 3D model isn't built yet (button shows "Coming soon"). */
+  has3d: boolean;
+};
+
+export const SW_ROUND_DOC: SheetDoc = {
+  title: "SINGLE WALL ROUND",
+  subtitle: "Spiral duct · sheets 1-5",
+  sheets: SW_ROUND_SHEETS,
+  pdf: SW_ROUND_PDF,
+  has3d: true,
+};
+
+export const SW_OVAL_DOC: SheetDoc = {
+  title: "SINGLE WALL OVAL",
+  subtitle: "Spiral duct · sheets 1-2",
+  sheets: SW_OVAL_SHEETS,
+  pdf: SW_OVAL_PDF,
+  has3d: false,
+};
+
 /** Stock sizes and gauges from sheet 1 (used by the 3D model's size picker). */
 export const STOCK_DIAMETERS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24] as const;
 

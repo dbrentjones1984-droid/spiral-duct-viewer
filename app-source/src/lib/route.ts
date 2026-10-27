@@ -5,16 +5,19 @@ import { useEffect, useState } from "react";
  *   ""                         home (tabs)
  *   "#/single-wall/round"      Single Wall Duct · Round catalog sheets
  *   "#/single-wall/round/3d"   same, with the 3D model open on top
+ *   "#/single-wall/oval"       Single Wall Duct · Oval gauge chart (its 3D model is still to come)
  */
-export type Route = { page: "home" } | { page: "sw-round"; model3d: boolean };
+export type Route = { page: "home" } | { page: "sw-round"; model3d: boolean } | { page: "sw-oval"; model3d: false };
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
+export const SW_OVAL_HASH = "#/single-wall/oval";
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
   if (h === SW_ROUND_3D_HASH) return { page: "sw-round", model3d: true };
   if (h === SW_ROUND_HASH) return { page: "sw-round", model3d: false };
+  if (h === SW_OVAL_HASH) return { page: "sw-oval", model3d: false };
   return { page: "home" };
 }
 

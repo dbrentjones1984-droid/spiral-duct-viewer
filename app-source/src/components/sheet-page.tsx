@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, ChevronLeft, Download, Maximize, Minus, Plus } from "lucide-react";
-import { SW_ROUND_PDF, SW_ROUND_SHEETS } from "@/lib/sheets";
+import type { SheetDoc } from "@/lib/sheets";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
 const SpiralPipe3D = lazy(() => import("@/components/spiral-pipe-3d"));
@@ -22,16 +22,18 @@ const PILL_H = 64;
 type Layout = { vw: number; barH: number; availH: number };
 
 /**
- * Single Wall Duct > Round: Brent's catalog sheets 1-5 as full-resolution images, with Back, View 3D Model,
+ * A sheet page (Single Wall Duct > Round: catalog sheets 1-5; > Oval: the gauge chart) as full-resolution images, with Back, View 3D Model,
  * Download PDF and zoom (Fit / Width / % steps, plus normal pinch-zoom). The 3D model opens on top as its own
  * history step, so the phone's back button closes it.
  */
 export function SheetPage({
+  doc,
   model3d,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
+  doc: SheetDoc;
   model3d: boolean;
   onBack: () => void;
   onOpen3d: () => void;
@@ -111,11 +113,11 @@ export function SheetPage({
     next = Math.min(ZOOMS.length - 1, Math.max(0, next));
     if (next === zoomIdx) return;
     const el = scroller.current;
-    const doc = document.documentElement;
+    const root = document.documentElement;
     anchor.current = {
       sheet: currentSheet(),
       x: el ? (el.scrollLeft + el.clientWidth / 2) / el.scrollWidth : 0.5,
-      y: (window.scrollY + window.innerHeight / 2) / doc.scrollHeight,
+      y: (window.scrollY + window.innerHeight / 2) / root.scrollHeight,
     };
     setZoomIdx(next);
   };
@@ -155,30 +157,45 @@ export function SheetPage({
             Back
           </button>
           <div className="min-w-0 flex-1 text-center">
-            <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">SINGLE WALL ROUND</h1>
-            <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">Spiral duct · sheets 1-5</p>
+            <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">{doc.title}</h1>
+            <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">{doc.subtitle}</p>
           </div>
           <span className="w-[4.5rem] shrink-0 short:hidden" aria-hidden="true" />
         </header>
         <div className="grid grid-cols-2 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[23rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
-          <button
-            type="button"
-            onClick={onOpen3d}
-            aria-haspopup="dialog"
-            className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
-          >
-            <Box className="size-5 shrink-0" />
-            View 3D Model
-          </button>
+          {doc.has3d ? (
+            <button
+              type="button"
+              onClick={onOpen3d}
+              aria-haspopup="dialog"
+              className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
+            >
+              <Box className="size-5 shrink-0" />
+              View 3D Model
+            </button>
+          ) : (
+            // Spot kept for the 3D model (not built yet): same size and place as View 3D Model, dashed and inactive.
+            <div
+              role="note"
+              aria-label="3D model coming soon"
+              className="flex h-12 items-center justify-center gap-2 rounded-[0.65rem] border-2 border-dashed border-[#8e9bab] bg-surface/60 font-display text-lg leading-none text-muted short:h-10"
+            >
+              <Box className="size-5 shrink-0" />
+              <span className="flex flex-col items-start">
+                3D Model
+                <span className="font-sans text-[10px] font-medium tracking-wider uppercase">Coming soon</span>
+              </span>
+            </div>
+          )}
           <a
-            href={SW_ROUND_PDF.href}
-            download={SW_ROUND_PDF.fileName}
+            href={doc.pdf.href}
+            download={doc.pdf.fileName}
             className="btn-raised btn-raised-sm flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
           >
             <Download className="size-5 shrink-0" />
             <span className="flex flex-col items-start">
               Download PDF
-              <span className="font-sans text-[10px] font-medium text-muted">{SW_ROUND_PDF.sizeLabel}</span>
+              <span className="font-sans text-[10px] font-medium text-muted">{doc.pdf.sizeLabel}</span>
             </span>
           </a>
         </div>
@@ -190,7 +207,7 @@ export function SheetPage({
           className={fit ? "flex flex-col" : "flex flex-col gap-4 px-3 pt-1 pb-24"}
           style={fit ? undefined : { width: `${scale * 100}%` }}
         >
-          {SW_ROUND_SHEETS.map((sheet, i) => (
+          {doc.sheets.map((sheet, i) => (
             <figure
               key={sheet.n}
               ref={(f) => {
@@ -219,7 +236,7 @@ export function SheetPage({
                 className={fit ? "mt-1.5 text-center text-xs text-muted" : "sticky left-3 mt-1.5 w-max text-xs text-muted"}
                 style={fit ? { width: fitPage.w } : undefined}
               >
-                Sheet {sheet.n} of {SW_ROUND_SHEETS.length} · {sheet.title}
+                Sheet {sheet.n} of {doc.sheets.length} · {sheet.title}
               </figcaption>
             </figure>
           ))}
