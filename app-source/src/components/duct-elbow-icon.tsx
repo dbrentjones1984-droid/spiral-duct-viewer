@@ -10,6 +10,8 @@
  * branch out of the bottom with its 2" end, and the branch's arch.
  * cross draws a 180° cross (Tees & Crosses card), front view as on its sheet: straight main with 2" ends, a tap on
  * top and one on the bottom, each with its 2" end and its saddle arch.
+ * cross + conical draws a conical cross (Conical Tees & Crosses card): the same main, each tap a 2" collar then a cone
+ * flaring wider down to the main, with its saddle arch.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -19,6 +21,7 @@ export function DuctElbowIcon({
   miter = false,
   tee = false,
   cross = false,
+  conical = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -26,7 +29,18 @@ export function DuctElbowIcon({
   miter?: boolean;
   tee?: boolean;
   cross?: boolean;
+  conical?: boolean;
 }) {
+  if (cross && conical) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* main with 2" ends, cone taps top and bottom (collar, then the cone flaring down to the main) */}
+        <path d="M4 13 L21 13 L25 6 L25 2 L35 2 L35 6 L39 13 L56 13 L56 27 L39 27 L35 34 L35 38 L25 38 L25 34 L21 27 L4 27 Z" strokeWidth={2} />
+        {/* beads on the ends, collar seams, the cones' saddle arches */}
+        <path d="M9 13 L9 27 M51 13 L51 27 M25 6 L35 6 M25 34 L35 34 M21 13 A9 5 0 0 0 39 13 M21 27 A9 5 0 0 1 39 27" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (cross) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

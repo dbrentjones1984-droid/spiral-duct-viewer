@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type TeeType } from "@/lib/route";
+import { cteeHash, CTEE_TYPES, SWF_CTEE_3D_HASH, SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type CteeType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -50,6 +50,14 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  *   C180  cross 180°: A both ends, tap B on top and tap C on the bottom.
  *   RC180 reducing cross 180°: A in, reducer R to B, taps C on top and D on the bottom.
  * R uses the bullhead tee's assumed reducerLength(). Connections go on the A inlet end (left). No vanes.
+ * And the conical tees & crosses (kind "ctee", catalog sheet "Conical Tees and Conical Crosses"), same layout with a
+ * type picker, L = top tap + 5" between the 2" beaded ends, but each tap is a cone: its 2" beaded collar, then a cone
+ * CONE_H (5") tall flaring wider down to the main, CONE_FLARE (1") each side along the main (base = tap + 2" where it
+ * meets the main's top line; it keeps the tap's width across the main, so every tap up to A fits on the main):
+ *   CT90   conical tee 90°: A both ends, cone tap B on top.
+ *   RCT90  reducing conical tee 90°: A in, reducer R to outlet B on the right, cone tap C on top.
+ *   CC180  conical cross 180°: A both ends, cone taps B on top and C on the bottom (C up to B).
+ *   RCC180 reducing conical cross 180°: A in, reducer R to B, cone taps C on top and D on the bottom (D up to C).
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -80,6 +88,11 @@ export function vaneSpec(d: number) {
 /** Bullhead tee: body length L = A + TEE_EXTRA (sheet); the branch runs TEE_BRANCH below the body, collar included. */
 const TEE_EXTRA = 3;
 const TEE_BRANCH = 4;
+/** Conical taps (sheet): the cone is 5" tall from the main's wall to the collar, L = top tap + 5". */
+const CONE_H = 5;
+const CTEE_EXTRA = 5;
+/** Cone flare each side along the main, at the main's top line (base = tap + 2"; assumed, sheet shows no number). */
+const CONE_FLARE = 1;
 /**
  * Reducer length R from the body (A) down to an outlet (B or C). ASSUMED until Brent sends the reducer sheet: none when
  * the outlet is the full size, else 1.25 x the size drop (the sheet's drawing: about 5" for 12" to 8"), at least 2" and
@@ -91,7 +104,7 @@ export function reducerLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -153,6 +166,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round tees and crosses",
     canvas: "3D tee or cross. Drag to turn, pinch to zoom.",
     none: { title: "Tee 90° (T90)", text: "" },
+    note: "Galvanized",
+  },
+  ctee: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Conical Tee 90° (CT90)",
+    aria: "3D model: single wall round conical tees and conical crosses",
+    canvas: "3D conical tee or cross. Drag to turn, pinch to zoom.",
+    none: { title: "Conical Tee 90° (CT90)", text: "" },
     note: "Galvanized",
   },
 };
@@ -219,6 +242,71 @@ function teeDims(type: TeeType, sizes: readonly number[]) {
   const bottom = t.bottom === null ? 0 : sizes[t.bottom];
   return { a, out, top, bottom, L: Math.max(top, bottom) + TEE_EXTRA, R: reducerLength(a, out), reducing: t.out !== 0 };
 }
+/** One tee/cross type's sizes and text (Tees & Crosses or Conical); bound[i] = the size select i is limited by. */
+type CrossSpec = (typeof TEES)[TeeType] & { bound?: readonly number[] };
+
+/**
+ * Conical Tees and Conical Crosses types (sheet), same fields as TEES. The bottom tap is limited by the top one (sheet:
+ * "B > C" / "C > D"; equal is allowed here, L still follows the top tap), the rest by A.
+ */
+const CTEES: Record<CteeType, CrossSpec> = {
+  ct90: {
+    code: "CT90",
+    name: "Conical Tee 90°",
+    labels: ["A · main", "B · tap"],
+    defaults: [12, 8],
+    out: 0,
+    top: 1,
+    bottom: null,
+    lRule: "B + 5″",
+    text: "Main A straight through, cone tap B on top: 2″ collar, then a 5″ cone flaring to B + 2″ on the main. L = B + 5″.",
+  },
+  rct90: {
+    code: "RCT90",
+    name: "Reducing Conical Tee 90°",
+    labels: ["A · inlet", "B · outlet", "C · tap"],
+    defaults: [12, 10, 8],
+    out: 1,
+    top: 2,
+    bottom: null,
+    lRule: "C + 5″",
+    text: "Main A in on the left, reducer R down to outlet B on the right, cone tap C on top. L = C + 5″, 2″ beaded ends.",
+  },
+  cc180: {
+    code: "CC180",
+    name: "Conical Cross 180°",
+    labels: ["A · main", "B · top", "C · bottom"],
+    defaults: [12, 8, 6],
+    out: 0,
+    top: 1,
+    bottom: 2,
+    bound: [0, 0, 1],
+    lRule: "B + 5″, C ≤ B",
+    text: "Main A straight through, cone tap B on top and cone tap C on the bottom (C up to B). L = B + 5″.",
+  },
+  rcc180: {
+    code: "RCC180",
+    name: "Reducing Conical Cross 180°",
+    labels: ["A · inlet", "B · outlet", "C · top", "D · bottom"],
+    defaults: [12, 10, 8, 6],
+    out: 1,
+    top: 2,
+    bottom: 3,
+    bound: [0, 0, 0, 2],
+    lRule: "C + 5″, D ≤ C",
+    text: "Main A in, reducer R down to outlet B on the right, cone taps C on top and D on the bottom (D up to C). L = C + 5″.",
+  },
+};
+/** Conical tee/cross sizes, L (top tap + 5") and reducer R. */
+function cteeDims(type: CteeType, sizes: readonly number[]) {
+  const t = CTEES[type];
+  const a = sizes[0];
+  const out = sizes[t.out];
+  const top = sizes[t.top];
+  const bottom = t.bottom === null ? 0 : sizes[t.bottom];
+  return { a, out, top, bottom, L: top + CTEE_EXTRA, R: reducerLength(a, out), reducing: t.out !== 0 };
+}
+
 /** Bullhead tee run outlets by default (B and C; the branch A defaults to 12"). */
 const TEE_RUN_DEFAULT = 10;
 
@@ -931,6 +1019,155 @@ function buildCross(type: TeeType, sizes: readonly number[], mats: Mats, style: 
   return { group, ends };
 }
 
+/**
+ * A cone tap's shape: round (radius rt) at the collar, height yTop above the main's axis, flaring along the main as it
+ * goes down: half-width ax(y) along x, rt across (z). Its outline at height y is the ellipse (ax cos, y, rt sin).
+ */
+type ConeTap = { rt: number; ax: (y: number) => number };
+const coneTap = (rt: number, yTop: number): ConeTap => ({ rt, ax: (y) => rt + (CONE_FLARE * (yTop - y)) / CONE_H });
+
+/**
+ * Conical tee/cross main (radius rr, x from -L/2 to L/2): same as crossBody, but the hole is the cone's footprint. At
+ * the angle theta around the main (y = rr cos, z = rr sin) the cone's ellipse at that height gives |x| < ax(y) *
+ * sqrt(1 - z^2 / rt^2) on the tap's side.
+ */
+function coneBody(rr: number, L: number, radial: number, top: ConeTap | null, bottom: ConeTap | null) {
+  const half = (th: number) => {
+    const c = Math.cos(th);
+    const z = rr * Math.sin(th);
+    const t = c > 0 ? top : c < 0 ? bottom : null;
+    if (!t) return 0;
+    const q = 1 - (z * z) / (t.rt * t.rt);
+    return q > 0 ? t.ax(rr * Math.abs(c)) * Math.sqrt(q) : 0;
+  };
+  let ths = Array.from({ length: radial + 1 }, (_, j) => (j / radial) * Math.PI * 2);
+  for (const t of [top, bottom]) {
+    if (!t || t.rt >= rr) continue;
+    const a = Math.asin(t.rt / rr);
+    ths.push(...(t === top ? [a, -a + Math.PI * 2] : [Math.PI - a, Math.PI + a]));
+  }
+  ths.sort((p, q) => p - q);
+  for (let pass = 0; pass < 6; pass++) {
+    const next: number[] = [ths[0]];
+    for (let j = 1; j < ths.length; j++) {
+      if (Math.abs(half(ths[j]) - half(ths[j - 1])) > rr * 0.04 && ths[j] - ths[j - 1] > 1e-4) next.push((ths[j] + ths[j - 1]) / 2);
+      next.push(ths[j]);
+    }
+    ths = next;
+  }
+  const rows = 8;
+  const cols = ths.length;
+  return ([-1, 1] as const).map((side) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (const th of ths) {
+        const cy = Math.cos(th);
+        const w = half(th);
+        const x = side * (w + ((L / 2 - w) * i) / rows);
+        pos.push(x, rr * cy, rr * Math.sin(th));
+        nor.push(0, cy, Math.sin(th));
+        uv.push(th / (Math.PI * 2), (x + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, cols);
+  });
+}
+
+/** A cone tap out of the main (radius rr) on the dir side: from where it meets the main up to |y| = yTop (collar). */
+function coneTapGeo(t: ConeTap, rr: number, yTop: number, dir: 1 | -1, radial: number) {
+  const rows = 10;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const slope = -CONE_FLARE / CONE_H; // d(ax)/dy
+  const n = new THREE.Vector3();
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const z = t.rt * Math.sin(phi);
+      const y0 = Math.sqrt(Math.max(0, rr * rr - z * z));
+      const y = y0 + ((yTop - y0) * i) / rows;
+      const ax = t.ax(y);
+      const x = ax * Math.cos(phi);
+      // gradient of x^2/ax(y)^2 + z^2/rt^2
+      n.set(x / (ax * ax), (-x * x * slope) / (ax * ax * ax), z / (t.rt * t.rt)).normalize();
+      pos.push(x, dir * y, z);
+      nor.push(n.x, dir * n.y, n.z);
+      uv.push(j / radial, (11 + yTop - y) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/** The seam where a cone tap meets the main (radius rr), pushed out by k so it sits on the surface. */
+class ConeSaddleLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private t: ConeTap,
+    private rr: number,
+    private k: number,
+    private dir: 1 | -1,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    const z0 = this.t.rt * Math.sin(phi);
+    const y0 = Math.sqrt(Math.max(0, this.rr * this.rr - z0 * z0));
+    const z = (this.t.rt + this.k) * Math.sin(phi);
+    const R = this.rr + this.k;
+    return target.set((this.t.ax(y0) + this.k) * Math.cos(phi), this.dir * Math.sqrt(Math.max(0, R * R - z * z)), z);
+  }
+}
+
+/**
+ * Conical tee or cross (sheet "Conical Tees and Conical Crosses"): the main, its cone taps (seam where they meet the
+ * main, the cone, a seam at the collar, the 2" beaded collar), the left A end and the right end (reducer to the outlet
+ * on RCT90 / RCC180). ends[0] is the A inlet end on the left (connections go there), then the right end and the taps.
+ */
+function buildConeCross(type: CteeType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const { a, out, top, bottom, L } = cteeDims(type, sizes);
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribOf = (d: number) => Math.min(0.34, 0.04 + d * 0.012);
+  const wallOf = (d: number) => Math.max(0.05, d * 0.006);
+  const yTop = r + CONE_H; // cone runs from the main's wall up to the collar
+  const outer = (d: number) => (d ? coneTap(d / 2, yTop) : null);
+  const inner = (d: number) => (d ? coneTap(d / 2 - wallOf(d), yTop) : null);
+  for (const g of coneBody(r, L, radial, outer(top), outer(bottom))) group.add(new THREE.Mesh(g, metal));
+  for (const g of coneBody(r - wall, L, radial, inner(top), inner(bottom))) group.add(new THREE.Mesh(g, inside));
+  const ends = [runEnd(-1, a, a, L, mats, style), runEnd(1, a, out, L, mats, style)];
+  ends.forEach((f) => group.add(f));
+  ([
+    [1, top],
+    [-1, bottom],
+  ] as const).forEach(([dir, d]) => {
+    if (!d) return;
+    const tr = Math.min(144, 64 + Math.round(d * 4));
+    const t = outer(d)!;
+    group.add(new THREE.Mesh(coneTapGeo(t, r, yTop, dir, tr), metal));
+    group.add(new THREE.Mesh(coneTapGeo(inner(d)!, r - wall, yTop, dir, tr), inside));
+    const rib = ribOf(d);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new ConeSaddleLoop(t, r, rib * 0.35, dir), tr * 2, rib, 8, true), seam));
+    // seam where the cone meets the collar
+    const ring = new THREE.TorusGeometry(d / 2 + rib * 0.2, rib * 0.8, 8, tr);
+    ring.rotateX(Math.PI / 2);
+    ring.translate(0, dir * yTop, 0);
+    group.add(new THREE.Mesh(ring, seam));
+    const f = new THREE.Group();
+    f.position.set(0, dir * (yTop + COLLAR), 0);
+    f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, dir, 0));
+    f.add(buildCollar(d, style, mats, rib * 0.8, tr));
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends };
+}
+
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
@@ -1090,8 +1327,12 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 = "t90" }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType }) {
   const spec = ELBOWS[kind];
+  // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
+  const conical = kind === "ctee";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -1099,7 +1340,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
     setConnection: (c: Connection) => void;
     setVanes: (n: number) => void;
     setRun: (b: number, c: number) => void;
-    setCross: (type: TeeType, sizes: readonly number[]) => void;
+    setCross: (type: string, sizes: readonly number[]) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
@@ -1113,12 +1354,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
   const [runB, setRunB] = useState(TEE_RUN_DEFAULT);
   const [runC, setRunC] = useState(TEE_RUN_DEFAULT);
   // Tees & crosses: the type, and its sizes (A first, the rest no bigger than A).
-  const [teeType, setTeeType] = useState<TeeType>(teeType0);
-  const [teeSizes, setTeeSizes] = useState<readonly number[]>(TEES[teeType0].defaults);
+  const [teeType, setTeeType] = useState<string>(teeType0);
+  const [teeSizes, setTeeSizes] = useState<readonly number[]>(fam[teeType0].defaults);
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee";
+  const cross = kind === "tee" || conical;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -1293,7 +1534,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
       const solid: Mats = { metal, inside, seam };
       const { group: elbow, ends } =
         kind === "tee"
-          ? buildCross(currentTee, currentTeeSizes, solid, style)
+          ? buildCross(currentTee as TeeType, currentTeeSizes, solid, style)
+          : kind === "ctee"
+          ? buildConeCross(currentTee as CteeType, currentTeeSizes, solid, style)
           : kind === "me90"
           ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
           : kind === "bt90"
@@ -1305,7 +1548,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
-      elbow.rotation.y = kind === "bt90" || kind === "tee" ? 0 : Math.PI;
+      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -1324,9 +1567,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
       renderer.domElement.style.height = "100%";
       project();
     };
-    let currentTee: TeeType = teeType0;
-    let currentTeeSizes: readonly number[] = TEES[teeType0].defaults;
-    let currentD = kind === "tee" ? currentTeeSizes[0] : spec.defaultD;
+    let currentTee: string = teeType0;
+    let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
+    let currentD = kind === "tee" || kind === "ctee" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -1435,8 +1678,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
     return () => ro.disconnect();
   }, [connection, failed]);
   const tee = kind === "bt90";
-  const teeSpec = TEES[teeType];
-  const dims = teeDims(teeType, teeSizes);
+  const teeSpec = fam[teeType];
+  const dims = conical ? cteeDims(teeType as CteeType, teeSizes) : teeDims(teeType as TeeType, teeSizes);
+  const bound = (i: number) => teeSpec.bound?.[i] ?? 0;
   const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
     cross
@@ -1459,14 +1703,21 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
   const rB = reducerLength(diameter, runB);
   const rC = reducerLength(diameter, runC);
   /** Pick a tee/cross type: its default sizes, and the link in the address bar follows (no new history step). */
-  const pickType = (t: TeeType) => {
+  const pickType = (t: string) => {
     if (t === teeType) return;
     setTeeType(t);
-    setTeeSizes(TEES[t].defaults);
-    if (location.hash.startsWith(SWF_TEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + teeHash(t));
+    setTeeSizes(fam[t].defaults);
+    if (conical) {
+      if (location.hash.startsWith(SWF_CTEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + cteeHash(t as CteeType));
+    } else if (location.hash.startsWith(SWF_TEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + teeHash(t as TeeType));
   };
+  // Set one size, then keep each later size within its bound (A, or the top tap for a conical cross's bottom tap).
   const setTeeSize = (i: number, d: number) =>
-    setTeeSizes((s) => (i === 0 ? s.map((x, k) => (k === 0 ? d : Math.min(x, d))) : s.map((x, k) => (k === i ? d : x))));
+    setTeeSizes((s) => {
+      const n = s.map((x, k) => (k === i ? d : x));
+      for (let k = 1; k < n.length; k++) n[k] = Math.min(n[k], n[bound(k)]);
+      return n;
+    });
   const resetButton = (
         <button
           type="button"
@@ -1590,18 +1841,18 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Tee or cross type">
-            {TEE_TYPES.map((t) => (
+          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
                 role="radio"
                 aria-checked={teeType === t}
-                aria-label={`${TEES[t].name} (${TEES[t].code})`}
+                aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
                 className="btn-raised btn-raised-sm h-9 min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-8"
               >
-                {TEES[t].code}
+                {fam[t].code}
               </button>
             ))}
           </div>
@@ -1615,7 +1866,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeType0 
                   aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
                   className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
                 >
-                  {(i === 0 ? spec.sizes : spec.sizes.filter((d) => d <= teeSizes[0])).map((d) => (
+                  {(i === 0 ? spec.sizes : spec.sizes.filter((d) => d <= teeSizes[bound(i)])).map((d) => (
                     <option key={d} value={d}>
                       {d}&Prime;
                     </option>
