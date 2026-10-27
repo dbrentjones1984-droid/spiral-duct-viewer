@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "436 KB",
+  sizeLabel: "596 KB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -106,6 +106,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1146,
     h: 1373,
     alt: "Single Wall Round, Mitered Elbows: MEV90 90° 2-piece mitered elbow with vanes (8-9 inch 2 vanes, 10-14 inch 3, 15-19 inch 4, 20-60 inch 5), ME90 90° 2-piece mitered elbow, 3P90 and 3P90H 90° 3-piece elbows; 2 inch collars, 4 inch leg; standard centerline radius 1-1/2 times diameter (R = 1.5 x A).",
+  },
+  {
+    n: 3,
+    title: "Bullhead Tees",
+    src: `${base}sheets/single-wall-round-fittings-3.webp`,
+    w: 1113,
+    h: 1414,
+    alt: "Single Wall Round, Bullhead Tees: BT90 bullhead tee 90° and BTV90 bullhead tee 90° with vanes; branch A, run outlets B and C with 2 inch ends, body length L = A + 3 inch, reducers R (refer to reducer drawing).",
   },
 ] as const;
 

@@ -35,6 +35,12 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * wall (the sheet's 4" dimension), ending in a 2" beaded collar. With Vanes on (MEV90, 8" and up) it adds the curved
  * quarter-arc turning vanes set along the miter, across the full duct, counted by size as on the sheet, and shows
  * the walls see-through so the vanes read on a phone.
+ * And the 90° bullhead tee (kind "bt90", catalog sheet "Bullhead Tees"): a straight body of diameter A, L = A + 3"
+ * long, with the branch A coming out of the bottom centre (TEE_BRANCH below the body, ending in a 2" beaded collar),
+ * and on each run end a concentric reducer down to B (left) and C (right), each with a 2" beaded end. The sheet says
+ * "R = refer to reducer drawing", which we don't have yet, so reducerLength() is an assumption. With Vanes on (BTV90)
+ * it adds curved splitter vanes in a mirrored pair of sets, turning the branch flow out to both run ends (count by A,
+ * same table as the MEV90 - an assumption), walls see-through. Connections go on the branch end.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -62,8 +68,21 @@ export function vaneSpec(d: number) {
   return row ? { n: row.n, range: `${row.from}″–${row.to}″` } : null;
 }
 
+/** Bullhead tee: body length L = A + TEE_EXTRA (sheet); the branch runs TEE_BRANCH below the body, collar included. */
+const TEE_EXTRA = 3;
+const TEE_BRANCH = 4;
+/**
+ * Reducer length R from the body (A) down to an outlet (B or C). ASSUMED until Brent sends the reducer sheet: none when
+ * the outlet is the full size, else 1.25 x the size drop (the sheet's drawing: about 5" for 12" to 8"), at least 2" and
+ * at most 12", in 1/2" steps.
+ */
+export function reducerLength(a: number, b: number) {
+  if (b >= a) return 0;
+  return Math.min(12, Math.max(2, Math.ceil(1.25 * (a - b) * 2) / 2));
+}
+
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -104,7 +123,22 @@ const ELBOWS: Record<
     },
     note: "Galvanized · mitered",
   },
+  bt90: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Bullhead Tee 90° (BT90)",
+    aria: "3D model: single wall round 90 degree bullhead tee",
+    canvas: "3D 90 degree bullhead tee. Drag to turn, pinch to zoom.",
+    none: {
+      title: "Bullhead Tee 90° (BT90)",
+      text: `Branch A in the bottom of a straight body, L = A + ${TEE_EXTRA}″. Reducers down to B and C on the run ends, 2″ beaded ends.`,
+    },
+    note: "Galvanized · bullhead",
+  },
 };
+/** Bullhead tee run outlets by default (B and C; the branch A defaults to 12"). */
+const TEE_RUN_DEFAULT = 10;
 
 const B = new THREE.Vector3(0, 0, 1);
 const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
@@ -303,40 +337,90 @@ function buildVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Mater
     return Math.sqrt(Math.max(0, rin * rin - c * c));
   };
   const us = 24;
-  const vs = 10;
   for (let k = 0; k < n; k++) {
     const t = -r + step * (k + 1) - a * 0.1;
     const cx = t - a * H;
-    const pos: number[] = [];
-    const idx: number[] = [];
+    const arc: [number, number][] = [];
     for (let i = 0; i <= us; i++) {
       const th = (i / us) * (Math.PI / 2);
-      const x = cx + a * Math.cos(th);
-      const y = cx + a * Math.sin(th);
-      const h = half(x, y);
-      for (let j = 0; j <= vs; j++) pos.push(x, y, -h + (2 * h * j) / vs);
+      arc.push([cx + a * Math.cos(th), cx + a * Math.sin(th)]);
     }
-    for (let i = 0; i < us; i++) {
-      for (let j = 0; j < vs; j++) {
-        const p0 = i * (vs + 1) + j;
-        const p1 = p0 + vs + 1;
-        idx.push(p0, p1, p0 + 1, p1, p1 + 1, p0 + 1);
+    vaneBlade(g, arc, half, d, mat, edge);
+  }
+  return g;
+}
+
+/**
+ * One vane blade: the curve arc (x, y points) swept across the duct in z, out to the round wall on each side
+ * (half(x, y) = half-height there), with a dark outline tube round its edges so its shape reads.
+ */
+function vaneBlade(g: THREE.Group, arc: [number, number][], half: (x: number, y: number) => number, d: number, mat: THREE.Material, edge: THREE.Material) {
+  const us = arc.length - 1;
+  const vs = 10;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (const [x, y] of arc) {
+    const h = half(x, y);
+    for (let j = 0; j <= vs; j++) pos.push(x, y, -h + (2 * h * j) / vs);
+  }
+  for (let i = 0; i < us; i++) {
+    for (let j = 0; j < vs; j++) {
+      const p0 = i * (vs + 1) + j;
+      const p1 = p0 + vs + 1;
+      idx.push(p0, p1, p0 + 1, p1, p1 + 1, p0 + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  g.add(new THREE.Mesh(geo, mat));
+  // Outline the blade (curved edges along the wall, straight leading and trailing edges) so its shape reads.
+  const ring: THREE.Vector3[] = [];
+  const at = (i: number, j: number) => new THREE.Vector3(pos[(i * (vs + 1) + j) * 3], pos[(i * (vs + 1) + j) * 3 + 1], pos[(i * (vs + 1) + j) * 3 + 2]);
+  for (let i = 0; i <= us; i++) ring.push(at(i, vs));
+  for (let j = vs - 1; j >= 0; j--) ring.push(at(us, j));
+  for (let i = us - 1; i >= 0; i--) ring.push(at(i, 0));
+  for (let j = 1; j < vs; j++) ring.push(at(0, j));
+  const path = new THREE.CatmullRomCurve3(ring, true, "centripetal");
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(path, ring.length * 2, Math.max(0.05, d * 0.007), 5, true), edge));
+}
+
+/**
+ * Bullhead tee splitter vanes (BTV90), in the tee's frame (body along x, branch down -y, centre at the origin). Flow
+ * comes up the branch and splits both ways; on each side n quarter-arc blades turn it from up (+y) to out (+-x), set
+ * at even steps from the top of the body over the branch's centre (the heel) to the branch's corner with the body's
+ * bottom (the throat), mirrored left and right. Each spans the duct to the round wall.
+ */
+function buildTeeVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
+  const g = new THREE.Group();
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const rin = r - wall - 0.02;
+  // Inside the body (|z| <= its circle at y) or, below the body's axis and over the branch, the branch (circle at x).
+  const half = (x: number, y: number) => {
+    const c2 = y < 0 && Math.abs(x) < rin ? Math.min(x * x, y * y) : y * y;
+    return Math.sqrt(Math.max(0, rin * rin - c2));
+  };
+  const sx = r / (n + 1);
+  const sy = (-2 * r) / (n + 1);
+  const a = Math.hypot(sx, sy) * 0.9; // blade radius: about one vane spacing
+  const H = Math.SQRT1_2;
+  const us = 24;
+  for (const side of [1, -1]) {
+    for (let k = 0; k < n; k++) {
+      // the blade's middle on the heel-throat line; centre of its arc off to the outside and down
+      const px = sx * (k + 1);
+      const py = r + sy * (k + 1);
+      const cx = px + a * H;
+      const cy = py - a * H;
+      const arc: [number, number][] = [];
+      for (let i = 0; i <= us; i++) {
+        const th = Math.PI - (i / us) * (Math.PI / 2); // from pointing down (leading edge) to pointing out
+        arc.push([side * (cx + a * Math.cos(th)), cy + a * Math.sin(th)]);
       }
+      vaneBlade(g, arc, half, d, mat, edge);
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    g.add(new THREE.Mesh(geo, mat));
-    // Outline the blade (curved edges along the wall, straight leading and trailing edges) so its shape reads.
-    const ring: THREE.Vector3[] = [];
-    const at = (i: number, j: number) => new THREE.Vector3(pos[(i * (vs + 1) + j) * 3], pos[(i * (vs + 1) + j) * 3 + 1], pos[(i * (vs + 1) + j) * 3 + 2]);
-    for (let i = 0; i <= us; i++) ring.push(at(i, vs));
-    for (let j = vs - 1; j >= 0; j--) ring.push(at(us, j));
-    for (let i = us - 1; i >= 0; i--) ring.push(at(i, 0));
-    for (let j = 1; j < vs; j++) ring.push(at(0, j));
-    const path = new THREE.CatmullRomCurve3(ring, true, "centripetal");
-    g.add(new THREE.Mesh(new THREE.TubeGeometry(path, ring.length * 2, Math.max(0.05, d * 0.007), 5, true), edge));
   }
   return g;
 }
@@ -450,6 +534,151 @@ function buildMitered(d: number, mats: Mats, style: EndStyle, vanes: number, van
     f.add(buildCollar(d, style, mats, bead, radial));
     group.add(f);
     return f;
+  });
+  return { group, ends };
+}
+
+/**
+ * Grid surface (rows x cols vertices, row-major) with outward normals given; the triangles are wound to face along
+ * those normals, whichever way the grid runs.
+ */
+function gridGeo(pos: number[], nor: number[], uv: number[], rows: number, cols: number) {
+  const idx: number[] = [];
+  for (let i = 0; i < rows - 1; i++) {
+    for (let j = 0; j < cols - 1; j++) {
+      const a = i * cols + j;
+      const b = a + cols;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  // Which way the triangles face, against the given normals (summed, so degenerate ones don't matter).
+  const v = (k: number) => new THREE.Vector3(pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]);
+  let facing = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    const p0 = v(idx[t]);
+    const c = new THREE.Vector3().crossVectors(v(idx[t + 1]).sub(p0), v(idx[t + 2]).sub(p0));
+    facing += c.dot(new THREE.Vector3(nor[idx[t] * 3], nor[idx[t] * 3 + 1], nor[idx[t] * 3 + 2]));
+  }
+  if (facing < 0) for (let t = 0; t < idx.length; t += 3) [idx[t + 1], idx[t + 2]] = [idx[t + 2], idx[t + 1]];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/**
+ * Tee body (radius rr, along x from -L/2 to L/2, centre at the origin), open where the branch comes in: the branch is
+ * the same size, so at the angle theta around the body (y = rr cos, z = rr sin) the bottom half is cut away for
+ * |x| < rr |cos theta| (the two cylinders' intersection). Built as a left and a right strip that meet along the top.
+ */
+function teeBody(rr: number, L: number, radial: number) {
+  const rows = 8;
+  return ([-1, 1] as const).map((side) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= radial; j++) {
+        const th = (j / radial) * Math.PI * 2;
+        const cy = Math.cos(th);
+        const w = rr * Math.max(0, -cy);
+        const x = side * (w + ((L / 2 - w) * i) / rows);
+        pos.push(x, rr * cy, rr * Math.sin(th));
+        nor.push(0, cy, Math.sin(th));
+        uv.push(j / radial, (x + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+  });
+}
+
+/** Tee branch (radius rr, down -y from where it meets the body, |x| = ... y = -rr |cos phi|, to y = -yTo). */
+function teeBranch(rr: number, yTo: number, radial: number) {
+  const rows = 8;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const s0 = rr * Math.abs(Math.cos(phi));
+      const s = s0 + ((yTo - s0) * i) / rows;
+      pos.push(rr * Math.cos(phi), -s, rr * Math.sin(phi));
+      nor.push(Math.cos(phi), 0, Math.sin(phi));
+      uv.push(j / radial, (11 + yTo - s) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/** The seam where the branch meets the body: the intersection of two equal cylinders (two ellipses crossing at the sides). */
+class TeeLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(private rr: number) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    return target.set(this.rr * Math.cos(phi), -this.rr * Math.abs(Math.cos(phi)), this.rr * Math.sin(phi));
+  }
+}
+
+/**
+ * Bullhead tee (A branch and body, B left and C right outlets): body, branch and seam, the reducers and 2" ends, and
+ * (BTV90) the vanes. ends[0] is the branch end (the connection goes there), then the B and C ends; +X out of each.
+ */
+function buildTee(a: number, b: number, c: number, mats: Mats, style: EndStyle, vanes: number, vaneMat: THREE.Material, vaneEdge: THREE.Material) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribOf = (d: number) => Math.min(0.34, 0.04 + d * 0.012);
+  const rib = ribOf(a);
+  const L = a + TEE_EXTRA;
+  for (const g of teeBody(r, L, radial)) group.add(new THREE.Mesh(g, metal));
+  for (const g of teeBody(r - wall, L, radial)) group.add(new THREE.Mesh(g, inside));
+  const yTo = r + TEE_BRANCH - COLLAR; // branch body ends where its 2" collar starts
+  group.add(new THREE.Mesh(teeBranch(r, yTo, radial), metal));
+  group.add(new THREE.Mesh(teeBranch(r - wall, yTo, radial), inside));
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new TeeLoop(r + rib * 0.35), radial * 2, rib, 8, true), seam));
+  if (vanes > 0) group.add(buildTeeVanes(a, vanes, vaneMat, vaneEdge));
+  // Branch end.
+  const down = new THREE.Vector3(0, -1, 0);
+  const fb = new THREE.Group();
+  fb.position.set(0, -(r + TEE_BRANCH), 0);
+  fb.quaternion.setFromUnitVectors(X_AXIS, down);
+  fb.add(buildCollar(a, style, mats, rib * 0.8, radial));
+  group.add(fb);
+  const ends = [fb];
+  // Run ends: reducer (concentric, A down to B or C over R), then the 2" end.
+  ([
+    [-1, b],
+    [1, c],
+  ] as const).forEach(([side, d]) => {
+    const R = reducerLength(a, d);
+    const rd = d / 2;
+    const wd = Math.max(0.05, d * 0.006);
+    const radialD = Math.min(144, 64 + Math.round(d * 4));
+    const f = new THREE.Group();
+    f.position.set(side * (L / 2 + R + COLLAR), 0, 0);
+    f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(side, 0, 0));
+    if (R > 0) {
+      const x0 = -COLLAR - R;
+      const k = (x: number) => (x - x0) / R;
+      const xs = [x0, -COLLAR];
+      f.add(new THREE.Mesh(shell(xs, radial, (x) => r + (rd - r) * k(x), 1 / TEX_LENGTH), metal));
+      f.add(new THREE.Mesh(shell(xs, radial, (x) => r - wall + (rd - wd - (r - wall)) * k(x), 1 / TEX_LENGTH), inside));
+      // raised seam where the reducer joins the body
+      const t = new THREE.TorusGeometry(r + rib * 0.2, rib * 0.8, 8, radial);
+      t.rotateY(Math.PI / 2);
+      t.translate(x0, 0, 0);
+      f.add(new THREE.Mesh(t, seam));
+    }
+    f.add(buildCollar(d, style, mats, ribOf(d) * 0.8, radialD));
+    group.add(f);
+    ends.push(f);
   });
   return { group, ends };
 }
@@ -581,6 +810,18 @@ const ELBOW_CONNECTION_INFO: Record<Connection, { title: string; text: string }>
   },
 };
 
+/** Tee connections: same, shown on the branch (A) end. */
+const TEE_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "Shown on the branch (A) end: it is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "Shown on the branch (A) end: straight ends, no beads. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 /** Play timing, same as the duct: slide together, short pause, drive the screws. */
 const SLIDE_MS = 2300;
 const SCREW_PAUSE_MS = 200;
@@ -597,6 +838,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     setDiameter: (d: number) => void;
     setConnection: (c: Connection) => void;
     setVanes: (n: number) => void;
+    setRun: (b: number, c: number) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
@@ -604,7 +846,11 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
   const [diameter, setDiameter] = useState(spec.defaultD);
   const [connection, setConnection] = useState<Connection>("none");
   const [vanesOn, setVanesOn] = useState(false);
-  const vanes = kind === "me90" && vanesOn ? vaneSpec(diameter) : null; // shown only from 8" (sheet's table)
+  const hasVanes = kind === "me90" || kind === "bt90";
+  const vanes = hasVanes && vanesOn ? vaneSpec(diameter) : null; // shown only from 8" (sheet's table)
+  // Bullhead tee run outlets B (left) and C (right), each no bigger than A.
+  const [runB, setRunB] = useState(TEE_RUN_DEFAULT);
+  const [runC, setRunC] = useState(TEE_RUN_DEFAULT);
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
@@ -778,17 +1024,21 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
         disposeGroup(model);
       }
       const style: EndStyle = c === "coupling" ? "crimp" : c === "flange" ? "plain" : "bead";
-      view = v > 0 ? new THREE.Vector3(-0.85, 0.42, 1) : new THREE.Vector3(0.3, 0.32, 1);
+      view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
+      const solid: Mats = { metal, inside, seam };
       const { group: elbow, ends } =
         kind === "me90"
-          ? buildMitered(d, v > 0 ? ghostMats : { metal, inside, seam }, style, v, vaneMat, vaneEdge)
-          : buildElbow(d, { metal, inside, seam }, style, kind);
+          ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
+          : kind === "bt90"
+            ? buildTee(d, Math.min(currentB, d), Math.min(currentRunC, d), v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
+            : buildElbow(d, solid, style, kind);
       // The bottom end reads best on a phone: the duct hangs straight down under the elbow, in the tall screen.
       const joint = c === "coupling" ? slipJoint(d, ends[0], pipeMats, screwMat) : c === "flange" ? flangeJoint(d, ends[0], pipeMats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
       screws = joint ? joint.screws.items : [];
       stopPlay();
-      elbow.rotation.y = Math.PI; // bottom end on the left, other end out to the right, as drawn on the sheet
+      // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
+      elbow.rotation.y = kind === "bt90" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -810,6 +1060,8 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     let currentD = spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
+    let currentB = TEE_RUN_DEFAULT;
+    let currentRunC = TEE_RUN_DEFAULT;
     resize();
     build(currentD, currentC, currentV);
     const ro = new ResizeObserver(() => {
@@ -832,6 +1084,12 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
       setVanes: (n) => {
         if (n === currentV) return;
         currentV = n;
+        build(currentD, currentC, currentV);
+      },
+      setRun: (b, c) => {
+        if (b === currentB && c === currentRunC) return;
+        currentB = b;
+        currentRunC = c;
         build(currentD, currentC, currentV);
       },
       setTopInset: (px) => {
@@ -870,6 +1128,10 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     };
   }, []);
 
+  // Run sizes (clamped to A in the same change as A; the model then rebuilds with the new A).
+  useEffect(() => {
+    api.current?.setRun(runB, runC);
+  }, [runB, runC]);
   useEffect(() => {
     api.current?.setDiameter(diameter);
   }, [diameter]);
@@ -893,13 +1155,29 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
     ro.observe(h);
     return () => ro.disconnect();
   }, [connection, failed]);
-  const name = vanes ? "Mitered 90° Elbow (MEV90)" : spec.name;
+  const tee = kind === "bt90";
+  const name = vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
     connection !== "none"
-      ? ELBOW_CONNECTION_INFO[connection]
+      ? tee
+        ? TEE_CONNECTION_INFO[connection]
+        : ELBOW_CONNECTION_INFO[connection]
       : vanes
-        ? { title: "Mitered 90° Elbow w/ Vanes (MEV90)", text: `${vanes.n} curved turning vanes along the miter, across the full duct (${vanes.n} for ${vanes.range}). Walls shown see-through.` }
+        ? tee
+          ? {
+              title: "Bullhead Tee 90° w/ Vanes (BTV90)",
+              text: `${vanes.n} curved splitter vanes each side, turning the branch flow out both ways (${vanes.n} for A = ${vanes.range}, assumed). Walls shown see-through.`,
+            }
+          : { title: "Mitered 90° Elbow w/ Vanes (MEV90)", text: `${vanes.n} curved turning vanes along the miter, across the full duct (${vanes.n} for ${vanes.range}). Walls shown see-through.` }
         : spec.none;
+  const teeL = diameter + TEE_EXTRA;
+  const rB = reducerLength(diameter, runB);
+  const rC = reducerLength(diameter, runC);
+  const setA = (a: number) => {
+    setDiameter(a);
+    setRunB((b) => Math.min(b, a));
+    setRunC((c) => Math.min(c, a));
+  };
 
   return (
     <div
@@ -982,8 +1260,8 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           ))}
         </div>
       </div>
-      {kind === "me90" && (
-        // Turning vanes (MEV90), separate from the connection. Made from 8" up (sheet's table).
+      {hasVanes && (
+        // Turning vanes (MEV90 / BTV90), separate from the connection. Made from 8" up (sheet's table).
         <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Turning vanes">
           <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
             Vanes
@@ -1005,6 +1283,61 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           ))}
         </div>
       )}
+      {tee ? (
+        <>
+          {/* Bullhead tee sizes: branch A, run outlets B (left) and C (right), each no bigger than A. */}
+          <div className="grid grid-cols-3 gap-2 bg-surface/90 px-3 pt-2">
+            {(
+              [
+                ["A · branch", diameter, setA, spec.sizes],
+                ["B · left", runB, setRunB, spec.sizes.filter((d) => d <= diameter)],
+                ["C · right", runC, setRunC, spec.sizes.filter((d) => d <= diameter)],
+              ] as const
+            ).map(([label, value, set, sizes]) => (
+              <label key={label} className="flex min-w-0 flex-col">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted uppercase">{label}</span>
+                <select
+                  value={value}
+                  onChange={(e) => set(Number(e.target.value))}
+                  aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {sizes.map((d) => (
+                    <option key={d} value={d}>
+                      {d}&Prime;
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+            <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="tee-info">
+              <p className="truncate">
+                <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{inches(teeL)}&Prime;</b> · R ={" "}
+                <b className="font-semibold">{inches(rB)}&Prime;</b> / <b className="font-semibold">{inches(rC)}&Prime;</b>
+              </p>
+              <p className={`truncate ${vanes ? "" : "text-muted"}`}>
+                {vanes ? (
+                  <>
+                    Vanes: <b className="font-semibold">{vanes.n}</b> each side ({vanes.range})
+                  </>
+                ) : (
+                  `${spec.note} · R assumed`
+                )}
+              </p>
+            </div>
+        <button
+          type="button"
+          onClick={() => api.current?.reset()}
+          className="btn-raised btn-raised-sm grid size-11 shrink-0 place-items-center rounded-[0.65rem]"
+          aria-label="Reset view"
+        >
+          <RotateCcw className="size-5" />
+        </button>
+          </div>
+        </>
+      ) : (
       <div className="flex items-center gap-2 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
         <label className="flex max-w-44 min-w-0 flex-1 flex-col">
           <span className="text-[11px] font-medium tracking-wide text-muted uppercase">Diameter</span>
@@ -1054,6 +1387,7 @@ export default function GoredElbow3D({ onClose, kind = "e90" }: { onClose: () =>
           <RotateCcw className="size-5" />
         </button>
       </div>
+      )}
     </div>
   );
 }

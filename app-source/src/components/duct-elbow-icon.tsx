@@ -6,6 +6,8 @@
  * innerWall={false} gives the same drawing without the dashed lines (Single Wall Fittings tab).
  * gores={false} draws a smooth (die-stamped) elbow: no gore seams, curved walls.
  * miter draws a 2-piece mitered elbow: straight walls meeting at a sharp corner, one seam along the 45° cut.
+ * tee draws a 90° bullhead tee, front view as on its sheet: straight body, reducers and 2" ends on both run ends,
+ * branch out of the bottom with its 2" end, and the branch's arch.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -13,12 +15,26 @@ export function DuctElbowIcon({
   innerWall = true,
   gores = true,
   miter = false,
+  tee = false,
 }: {
   className?: string;
   innerWall?: boolean;
   gores?: boolean;
   miter?: boolean;
+  tee?: boolean;
 }) {
+  if (tee) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* body top, reducers and 2" ends */}
+        <path d="M9 10 L16 7 L44 7 L51 10" strokeWidth={2} />
+        <path d="M9 22 L16 25 L21 25 L21 37 L39 37 L39 25 L44 25 L51 22" strokeWidth={2} />
+        <path d="M9 10 L4 10 L4 22 L9 22 Z M51 10 L56 10 L56 22 L51 22 Z" strokeWidth={2} />
+        {/* body seams at the reducers, beads on the ends, the branch's arch */}
+        <path d="M16 7 L16 25 M44 7 L44 25 M8 10 L8 22 M52 10 L52 22 M21 34 L39 34 M21 25 A9 9 0 0 1 39 25" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   return (
     <svg
       viewBox="0 0 60 40"
