@@ -16,7 +16,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { cteeHash, CTEE_TYPES, SWF_CTEE_3D_HASH, SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type CteeType, type TeeType } from "@/lib/route";
+import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_TEE_3D_HASH, teeHash, TEE_TYPES, type CteeType, type LatType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -58,6 +58,14 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  *   RCT90  reducing conical tee 90°: A in, reducer R to outlet B on the right, cone tap C on top.
  *   CC180  conical cross 180°: A both ends, cone taps B on top and C on the bottom (C up to B).
  *   RCC180 reducing conical cross 180°: A in, reducer R to B, cone taps C on top and D on the bottom (D up to C).
+ * And the laterals (kind "lat", catalog sheet "Laterals"), same layout with a type picker, L = top branch x 1.414 + 3"
+ * between the 2" beaded ends (rounded to the nearest 1/2"), each branch a round pipe at 45° leaning to the outlet (right),
+ * meeting the main in a true saddle with a seam, LAT_STRAIGHT (the sheet's inner 2", read as the straight branch between
+ * the main and the bead on the branch's short side) then a 2" beaded collar:
+ *   L45    lateral 45°: A both ends, branch B on top.
+ *   RL45   reducing lateral 45°: A in, reducer R to outlet B on the right, branch C on top.
+ *   LC45   lateral cross 45°: A both ends, branches B on top and C on the bottom (C up to B).
+ *   RLC45  reducing lateral cross 45°: A in, reducer R to B, branches C on top and D on the bottom (D up to C).
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
@@ -93,6 +101,10 @@ const CONE_H = 5;
 const CTEE_EXTRA = 5;
 /** Cone flare each side along the main, at the main's top line (base = tap + 2"; assumed, sheet shows no number). */
 const CONE_FLARE = 1;
+/** Laterals (sheet): L = top branch x LAT_FACTOR + LAT_EXTRA; LAT_STRAIGHT of straight branch before its 2" collar. */
+const LAT_FACTOR = 1.414;
+const LAT_EXTRA = 3;
+const LAT_STRAIGHT = 2;
 /**
  * Reducer length R from the body (A) down to an outlet (B or C). ASSUMED until Brent sends the reducer sheet: none when
  * the outlet is the full size, else 1.25 x the size drop (the sheet's drawing: about 5" for 12" to 8"), at least 2" and
@@ -104,7 +116,7 @@ export function reducerLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -176,6 +188,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round conical tees and conical crosses",
     canvas: "3D conical tee or cross. Drag to turn, pinch to zoom.",
     none: { title: "Conical Tee 90° (CT90)", text: "" },
+    note: "Galvanized",
+  },
+  lat: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Lateral 45° (L45)",
+    aria: "3D model: single wall round laterals and lateral crosses",
+    canvas: "3D lateral or lateral cross. Drag to turn, pinch to zoom.",
+    none: { title: "Lateral 45° (L45)", text: "" },
     note: "Galvanized",
   },
 };
@@ -1168,6 +1190,224 @@ function buildConeCross(type: CteeType, sizes: readonly number[], mats: Mats, st
   return { group, ends };
 }
 
+/**
+ * Laterals types (sheet "Laterals"), same fields as TEES; each "tap" is a branch at 45°. The bottom branch is limited by
+ * the top one (sheet: "B > C" / "C > D"; equal is allowed here, L still follows the top branch), the rest by A.
+ */
+const LATS: Record<LatType, CrossSpec> = {
+  l45: {
+    code: "L45",
+    name: "Lateral 45°",
+    labels: ["A · main", "B · branch"],
+    defaults: [12, 8],
+    out: 0,
+    top: 1,
+    bottom: null,
+    lRule: "B × 1.414 + 3″",
+    text: "Main A straight through, branch B on top at 45°, leaning to the outlet: 2″ straight, then a 2″ beaded collar. L = B × 1.414 + 3″.",
+  },
+  rl45: {
+    code: "RL45",
+    name: "Reducing Lateral 45°",
+    labels: ["A · inlet", "B · outlet", "C · branch"],
+    defaults: [12, 10, 8],
+    out: 1,
+    top: 2,
+    bottom: null,
+    lRule: "C × 1.414 + 3″",
+    text: "Main A in on the left, reducer R down to outlet B on the right, branch C on top at 45°. L = C × 1.414 + 3″, 2″ beaded ends.",
+  },
+  lc45: {
+    code: "LC45",
+    name: "Lateral Cross 45°",
+    labels: ["A · main", "B · top", "C · bottom"],
+    defaults: [12, 8, 6],
+    out: 0,
+    top: 1,
+    bottom: 2,
+    bound: [0, 0, 1],
+    lRule: "B × 1.414 + 3″, C ≤ B",
+    text: "Main A straight through, branch B on top and branch C on the bottom, both at 45° leaning to the outlet (C up to B). L = B × 1.414 + 3″.",
+  },
+  rlc45: {
+    code: "RLC45",
+    name: "Reducing Lateral Cross 45°",
+    labels: ["A · inlet", "B · outlet", "C · top", "D · bottom"],
+    defaults: [12, 10, 8, 6],
+    out: 1,
+    top: 2,
+    bottom: 3,
+    bound: [0, 0, 0, 2],
+    lRule: "C × 1.414 + 3″, D ≤ C",
+    text: "Main A in, reducer R down to outlet B, branches C on top and D on the bottom at 45°, leaning to the outlet (D up to C). L = C × 1.414 + 3″.",
+  },
+};
+/** Lateral sizes, L (sheet: top branch x 1.414 + 3", rounded to the nearest 1/2" as the shop would mark it; Lx unrounded) and R. */
+function latDims(type: LatType, sizes: readonly number[]) {
+  const t = LATS[type];
+  const a = sizes[0];
+  const out = sizes[t.out];
+  const top = sizes[t.top];
+  const bottom = t.bottom === null ? 0 : sizes[t.bottom];
+  const Lx = top * LAT_FACTOR + LAT_EXTRA;
+  return { a, out, top, bottom, L: Math.round(Lx * 2) / 2, Lx, R: reducerLength(a, out), reducing: t.out !== 0 };
+}
+
+const C45 = Math.SQRT1_2;
+/**
+ * A 45° branch (radius rb) out of a main (radius rr): its axis runs from (xc, 0, 0) on the main's axis up and to the
+ * right along (C45, C45, 0). Around the branch, phi = 0 is its upper-left (heel) side, phi = PI its lower-right side (the
+ * short side, at 45° to the main), and z = rb sin(phi). s0 is how far along the axis that line meets the main's wall.
+ */
+const latS0 = (rb: number, rr: number, phi: number) => (Math.sqrt(Math.max(0, rr * rr - rb * rb * Math.sin(phi) ** 2)) - rb * Math.cos(phi) * C45) / C45;
+
+/**
+ * Lateral main (radius rr, x from -L/2 to L/2): open where the branches meet it, a top branch of radius rt and a bottom one
+ * of radius rb (0 = none), axes through (xc, 0, 0). At the angle theta around the main (y = rr cos, z = rr sin) the hole
+ * runs from xc + |y| - sqrt2 sqrt(t^2 - z^2) to xc + |y| + sqrt2 sqrt(t^2 - z^2) on the branch's side. Built as a left
+ * and a right strip that meet at the hole (or, where there is none, at the hole's side point); the angles are refined
+ * where the hole's edge moves fast, so the saddle reads round.
+ */
+function latBody(rr: number, L: number, radial: number, rt: number, rb: number, xc: number) {
+  const side = (t: number) => (t > 0 ? xc + Math.sqrt(Math.max(0, rr * rr - t * t)) : NaN);
+  const mt = side(rt);
+  const mb = rb > 0 ? side(rb) : mt;
+  const edge = (th: number): [number, number] => {
+    const c = Math.cos(th);
+    const z = rr * Math.sin(th);
+    const t = c >= 0 ? rt : rb;
+    const m = c >= 0 ? mt : mb;
+    if (!(t > 0) || Math.abs(z) >= t) return [m, m];
+    const h = Math.SQRT2 * Math.sqrt(t * t - z * z);
+    const x = xc + rr * Math.abs(c);
+    return [x - h, x + h];
+  };
+  let ths = Array.from({ length: radial + 1 }, (_, j) => (j / radial) * Math.PI * 2);
+  for (const t of [rt, rb]) {
+    if (t <= 0 || t >= rr) continue;
+    const a = Math.asin(t / rr);
+    ths.push(...(t === rt ? [a, -a + Math.PI * 2] : [Math.PI - a, Math.PI + a]));
+  }
+  ths.sort((p, q) => p - q);
+  for (let pass = 0; pass < 6; pass++) {
+    const next: number[] = [ths[0]];
+    for (let j = 1; j < ths.length; j++) {
+      const [l0, h0] = edge(ths[j - 1]);
+      const [l1, h1] = edge(ths[j]);
+      if (Math.max(Math.abs(l1 - l0), Math.abs(h1 - h0)) > rr * 0.04 && ths[j] - ths[j - 1] > 1e-4) next.push((ths[j] + ths[j - 1]) / 2);
+      next.push(ths[j]);
+    }
+    ths = next;
+  }
+  const rows = 8;
+  const cols = ths.length;
+  return ([-1, 1] as const).map((s) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (const th of ths) {
+        const cy = Math.cos(th);
+        const w = edge(th)[s < 0 ? 0 : 1];
+        const x = w + ((s * L) / 2 - w) * (i / rows);
+        pos.push(x, rr * cy, rr * Math.sin(th));
+        nor.push(0, cy, Math.sin(th));
+        uv.push(th / (Math.PI * 2), (x + 40) / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, cols);
+  });
+}
+
+/** A 45° branch (radius rb) out of the main (radius rr) on the dir side (+1 up, -1 down, mirrored): saddle to s = sTo. */
+function latBranch(rb: number, rr: number, xc: number, sTo: number, dir: 1 | -1, radial: number) {
+  const rows = 10;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const s0 = latS0(rb, rr, phi);
+      const s = s0 + ((sTo - s0) * i) / rows;
+      const cp = Math.cos(phi);
+      pos.push(xc + (s - rb * cp) * C45, dir * (s + rb * cp) * C45, rb * Math.sin(phi));
+      nor.push(-cp * C45, dir * cp * C45, Math.sin(phi));
+      uv.push(j / radial, (11 + sTo - s) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/** The saddle seam where a 45° branch (radius rb) meets the main (radius rr), pushed out by k so it sits on the surface. */
+class LatSaddleLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private rb: number,
+    private rr: number,
+    private xc: number,
+    private k: number,
+    private dir: 1 | -1,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const phi = u * Math.PI * 2;
+    const rp = this.rb + this.k;
+    const R = this.rr + this.k;
+    const z = rp * Math.sin(phi);
+    const y = Math.sqrt(Math.max(0, R * R - z * z));
+    return target.set(this.xc + y - Math.SQRT2 * rp * Math.cos(phi), this.dir * y, z);
+  }
+}
+
+/**
+ * Lateral or lateral cross (sheet "Laterals"): the main, its 45° branches leaning to the outlet (right), each with its
+ * saddle seam, LAT_STRAIGHT of straight branch on its short side and the 2" beaded collar; the left A end and the right
+ * end (reducer to the outlet on RL45 / RLC45). The branch axes cross the main's axis at x = -A/2, which centres each
+ * branch's footprint (top branch x 1.414 long) on the body. ends[0] is the A inlet end on the left (connections go
+ * there), then the right end and the branches.
+ */
+function buildLateral(type: LatType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const { a, out, top, bottom, L } = latDims(type, sizes);
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribOf = (d: number) => Math.min(0.34, 0.04 + d * 0.012);
+  const wallOf = (d: number) => Math.max(0.05, d * 0.006);
+  const xc = -r;
+  const rt = top / 2;
+  const rb = bottom / 2;
+  for (const g of latBody(r, L, radial, rt, rb, xc)) group.add(new THREE.Mesh(g, metal));
+  for (const g of latBody(r - wall, L, radial, rt - wallOf(top), bottom ? rb - wallOf(bottom) : 0, xc)) group.add(new THREE.Mesh(g, inside));
+  const ends = [runEnd(-1, a, a, L, mats, style), runEnd(1, a, out, L, mats, style)];
+  ends.forEach((f) => group.add(f));
+  ([
+    [1, top],
+    [-1, bottom],
+  ] as const).forEach(([dir, d]) => {
+    if (!d) return;
+    const rr = d / 2;
+    const tw = wallOf(d);
+    const tr = Math.min(144, 64 + Math.round(d * 4));
+    // branch body ends where its 2" collar starts: LAT_STRAIGHT past the main on its short (lower-right) side
+    const sTo = latS0(rr, r, Math.PI) + LAT_STRAIGHT;
+    group.add(new THREE.Mesh(latBranch(rr, r, xc, sTo, dir, tr), metal));
+    group.add(new THREE.Mesh(latBranch(rr - tw, r - wall, xc, sTo, dir, tr), inside));
+    const rib = ribOf(d);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new LatSaddleLoop(rr, r, xc, rib * 0.35, dir), tr * 2, rib, 8, true), seam));
+    const axis = new THREE.Vector3(C45, dir * C45, 0);
+    const f = new THREE.Group();
+    f.position.set(xc, 0, 0).addScaledVector(axis, sTo + COLLAR);
+    f.quaternion.setFromUnitVectors(X_AXIS, axis);
+    f.add(buildCollar(d, style, mats, rib * 0.8, tr));
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends };
+}
+
 function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e90") {
   const { metal, inside, seam } = mats;
   const group = new THREE.Group();
@@ -1327,12 +1567,13 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : "t90");
+  const lateral = kind === "lat";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -1359,7 +1600,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical;
+  const cross = kind === "tee" || conical || lateral;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -1537,6 +1778,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           ? buildCross(currentTee as TeeType, currentTeeSizes, solid, style)
           : kind === "ctee"
           ? buildConeCross(currentTee as CteeType, currentTeeSizes, solid, style)
+          : kind === "lat"
+          ? buildLateral(currentTee as LatType, currentTeeSizes, solid, style)
           : kind === "me90"
           ? buildMitered(d, v > 0 ? ghostMats : solid, style, v, vaneMat, vaneEdge)
           : kind === "bt90"
@@ -1548,7 +1791,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Elbows: bottom end on the left, other end out to the right, as drawn on the sheet. Tee: B left, C right, as drawn.
-      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" ? 0 : Math.PI;
+      elbow.rotation.y = kind === "bt90" || kind === "tee" || kind === "ctee" || kind === "lat" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       const center = new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3());
       elbow.position.sub(center);
@@ -1569,7 +1812,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -1679,7 +1922,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   }, [connection, failed]);
   const tee = kind === "bt90";
   const teeSpec = fam[teeType];
-  const dims = conical ? cteeDims(teeType as CteeType, teeSizes) : teeDims(teeType as TeeType, teeSizes);
+  const dims: { L: number; R: number; reducing: boolean; Lx?: number } = conical
+    ? cteeDims(teeType as CteeType, teeSizes)
+    : lateral
+    ? latDims(teeType as LatType, teeSizes)
+    : teeDims(teeType as TeeType, teeSizes);
   const bound = (i: number) => teeSpec.bound?.[i] ?? 0;
   const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
@@ -1707,7 +1954,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (conical) {
+    if (lateral) {
+      if (location.hash.startsWith(SWF_LAT_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + latHash(t as LatType));
+    } else if (conical) {
       if (location.hash.startsWith(SWF_CTEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + cteeHash(t as CteeType));
     } else if (location.hash.startsWith(SWF_TEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + teeHash(t as TeeType));
   };
@@ -1841,8 +2090,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -1879,6 +2128,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
               <p className="truncate">
                 <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{inches(dims.L)}&Prime;</b>
+                {dims.Lx !== undefined && <span className="text-muted"> ({dims.Lx.toFixed(2)}&Prime;)</span>}
                 {dims.reducing && (
                   <>
                     {" "}

@@ -8,7 +8,7 @@ import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { FittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_ME90_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_ME90_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, useHashRoute } from "@/lib/route";
 import { SW_OVAL_DOC, SW_ROUND_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -82,8 +82,9 @@ export default function App() {
         model3d={route.model3d}
         teeType={route.teeType}
         cteeType={route.cteeType}
+        latType={route.latType}
         onBack={() => goBack(SWF_ROUND_HASH)}
-        onOpen3d={(id) => navigate(id === "ds90" ? SWF_DS90_3D_HASH : id === "me90" ? SWF_ME90_3D_HASH : id === "bt90" ? SWF_BT90_3D_HASH : id === "tee" ? SWF_TEE_3D_HASH : id === "ctee" ? SWF_CTEE_3D_HASH : SWF_E90_3D_HASH)}
+        onOpen3d={(id) => navigate(id === "ds90" ? SWF_DS90_3D_HASH : id === "me90" ? SWF_ME90_3D_HASH : id === "bt90" ? SWF_BT90_3D_HASH : id === "tee" ? SWF_TEE_3D_HASH : id === "ctee" ? SWF_CTEE_3D_HASH : id === "lat" ? SWF_LAT_3D_HASH : SWF_E90_3D_HASH)}
         onClose3d={() => goBack(SWF_MODELS_HASH)}
       />
     );
