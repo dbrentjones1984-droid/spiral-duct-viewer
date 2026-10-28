@@ -20,6 +20,8 @@
  * the curve on a saddle plate, the pipe dashed (reference only).
  * red draws a concentric reducer (Reducers card), side view as on its sheet: the large end A's 2" collar, the cone R
  * and the small end B's 2" collar.
+ * cap draws a pipe coupling (Couplings, Caps & Collars card), side view: the 2" band with its centre bead, the two
+ * pipe ends it joins dashed (reference only).
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -34,6 +36,7 @@ export function DuctElbowIcon({
   tap = false,
   ltap = false,
   red = false,
+  cap = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -46,7 +49,19 @@ export function DuctElbowIcon({
   tap?: boolean;
   ltap?: boolean;
   red?: boolean;
+  cap?: boolean;
 }) {
+  if (cap) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* the two pipe ends it joins (dashed, reference only) */}
+        <path d="M4 9 L22 9 M4 31 L22 31 M38 9 L56 9 M38 31 L56 31" strokeWidth={1.1} strokeDasharray="3 2.5" />
+        {/* the 2" band, its centre bead (the stop) */}
+        <path d="M22 7 L38 7 L38 33 L22 33 Z" strokeWidth={2} />
+        <path d="M30 5 L30 35" strokeWidth={2} />
+      </svg>
+    );
+  }
   if (red) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import {
+  buildCoupling,
   buildFlange,
   CONNECTIONS,
   JOIN_LENGTH,
@@ -16,7 +17,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
+import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, type CapType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -142,7 +143,7 @@ export function eccentricLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -254,6 +255,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round concentric and eccentric reducers",
     canvas: "3D concentric or eccentric reducer. Drag to turn, pinch to zoom.",
     none: { title: "Concentric Reducer (CR)", text: "" },
+    note: "Galvanized",
+  },
+  cap: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Pipe Coupling (PC)",
+    aria: "3D model: single wall round couplings, end cap, start collar and bellmouth",
+    canvas: "3D coupling, end cap, start collar or bellmouth, with see-through duct. Drag to turn, pinch to zoom.",
+    none: { title: "Pipe Coupling (PC)", text: "" },
     note: "Galvanized",
   },
 };
@@ -2040,6 +2051,322 @@ function flangeJoint(d: number, frame: THREE.Group, pipeMats: PipeMats, metal: T
   };
 }
 
+/**
+ * Couplings, caps & collars (sheet 10 "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug,
+ * Bellmouth"), one model with a type picker and one size A. Each part is shown with what it goes on, see-through
+ * (reference only, like the taps' pipe), pulled apart; Play puts it together and drives the screws.
+ *   PC  pipe coupling: the Round pipe viewer's slip coupling (inside both pipe ends, raised centre bead = the sheet's
+ *       solid centre line, crimped ends), at the sheet's 2" length, joining two spiral pipes (pipe ends are female).
+ *   FC  fitting coupling: a plain 2" sleeve that goes OVER two fitting ends (fitting ends are male), with a ring of
+ *       pressed-in dimples at its centre as the stop (the sheet's dashed centre line: a stop you can't see as a bead).
+ *   EC  end cap: a flat disc A with a rolled rim and a short skirt that slips into a pipe end (plug style).
+ *   SC  start collar: a 2" collar A with a 1" flange (OD A + 2) screwed to a flat duct / plenum wall over its hole.
+ *   BM  bellmouth: ordered by A; 3" high: a 1" collar A on top (crimped, the duct slides over it up to the bead) and a
+ *       2" radius flare out to B = A + 4 at the bottom, rolled edge.
+ */
+type CapSpec = CrossSpec & { short: string };
+const CAPS: Record<CapType, CapSpec> = {
+  pc: {
+    code: "PC",
+    name: "Pipe Coupling",
+    short: "pipe",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Pipe to pipe: a 2″ band A that slides inside both pipe ends; the raised centre bead stops each pipe. Crimped ends, screwed. Shown pulled apart.",
+  },
+  fc: {
+    code: "FC",
+    name: "Fitting Coupling",
+    short: "fitting",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Fitting to fitting: a plain 2″ sleeve A that slides over both fitting ends, stopped by dimples at its centre. Screwed. Shown pulled apart.",
+  },
+  ec: {
+    code: "EC",
+    name: "End Cap",
+    short: "cap",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Closes an open end: a flat disc A with a rolled rim and a short skirt that slips into the pipe end, then screwed. Shown pulled apart.",
+  },
+  sc: {
+    code: "SC",
+    name: "Start Collar",
+    short: "collar",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Starts a run off a duct or plenum wall: a 2″ collar A with a 1″ flange (A + 2″ across), screwed to the wall over the hole. Shown pulled apart.",
+  },
+  bm: {
+    code: "BM",
+    name: "Bellmouth",
+    short: "bell",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Ordered by A. Open intake: 3″ high, the collar A on top, a smooth flare out to B = A + 4″ at the bottom. The duct slides over the collar.",
+  },
+};
+const CAP_LEN = 2; // PC / FC band, SC collar (sheet)
+const BM_H = 3;
+const BM_FLARE = 2; // flare out (each side) and its height: B = A + 4
+/** A sheet 10 part's dims for the info row. */
+function capDims(type: CapType, a: number) {
+  return { a, b: a + 2 * BM_FLARE, flange: a + 2, type };
+}
+
+/** Screws around a pipe of radius r at each x (one row per x), driven one after another. */
+function ringScrews(d: number, r: number, xs: number[], mat: THREE.Material, n = screwCount(d)) {
+  const k = screwScale(d);
+  const group = new THREE.Group();
+  const items: NonNullable<BuiltConnection["screws"]>["items"] = [];
+  const win = 1 / xs.length;
+  const each = win * 0.55;
+  xs.forEach((x, side) => {
+    for (let i = 0; i < n; i++) {
+      const a = ((i + side * 0.5) / n) * Math.PI * 2 + Math.PI / 4;
+      const obj = new THREE.Group();
+      obj.position.set(x, r * Math.cos(a), r * Math.sin(a));
+      obj.rotation.x = a; // local +Y -> radial
+      const s = screwMesh(k, mat);
+      obj.add(s.obj);
+      group.add(obj);
+      const start = side * win + (i / Math.max(1, n - 1)) * (win - each);
+      items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+    }
+  });
+  return { group, items };
+}
+
+/** A fitting's end, see-through (reference): a short straight body and its 2" beaded collar, open end at x = 0, +X out. */
+function ghostFittingEnd(d: number, ref: PipeMats, len = 4.5) {
+  const g = new THREE.Group();
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const radial = Math.min(144, 64 + Math.round(d * 4));
+  const uv = 1 / TEX_LENGTH;
+  const xs = [-len, -COLLAR];
+  g.add(new THREE.Mesh(shell(xs, radial, () => r, uv), ref.metal));
+  g.add(new THREE.Mesh(shell(xs, radial, () => r - wall, uv), ref.inside));
+  g.add(buildCollar(d, "bead", { metal: ref.metal, inside: ref.inside, seam: ref.rim }, Math.min(0.34, 0.04 + d * 0.012) * 0.8, radial));
+  return g;
+}
+
+/** Flat ring in the YZ plane, thickness 0..t along +X. */
+function flatRing(ri: number, ro: number, t: number, segs: number, uvScale: number) {
+  const shape = new THREE.Shape(new THREE.EllipseCurve(0, 0, ro, ro, 0, Math.PI * 2, false, 0).getPoints(segs));
+  shape.holes.push(new THREE.Path(new THREE.EllipseCurve(0, 0, ri, ri, 0, Math.PI * 2, true, 0).getPoints(segs)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 1 });
+  geo.rotateY(Math.PI / 2);
+  const puv = geo.getAttribute("uv") as THREE.BufferAttribute;
+  for (let i = 0; i < puv.count; i++) puv.setXY(i, puv.getX(i) * uvScale, puv.getY(i) * uvScale);
+  return geo;
+}
+
+/**
+ * Build one sheet 10 part with what it goes on (see-through), along X; SC and BM are turned to stand up (+X -> up).
+ * Returns the group and the Play motion (X offsets of the moving parts in their parent frame) and screws.
+ */
+function buildCap(type: CapType, a: number, sheet: THREE.Material, ref: PipeMats, seam: THREE.Material, screwMat: THREE.Material) {
+  const d = a;
+  const r = d / 2;
+  const wall = Math.max(0.05, d * 0.006);
+  const radial = Math.min(160, 64 + Math.round(d * 4));
+  const uv = 1 / TEX_LENGTH;
+  const group = new THREE.Group();
+  const gap = d <= 8 ? 1.5 : d <= 16 ? 2 : 2.5;
+  const PIPE = 5; // see-through pipe / duct pieces (short, so the part itself fills the view)
+  let moving: Joint["moving"] = [];
+  let screws: Joint["screws"] = { group: new THREE.Group(), items: [] };
+
+  if (type === "pc") {
+    // The pipe viewer's slip coupling at 2": main pipe (ends at 0) | gap | coupling | gap | pipe.
+    const c = buildCoupling(d, 0, sheet, uv, screwMat, { length: CAP_LEN, screwBack: 0.4 });
+    group.add(c.group);
+    const p0 = buildPipe(d, ref, PIPE);
+    p0.position.x = -PIPE / 2;
+    const p1 = buildPipe(d, ref, PIPE);
+    p1.position.x = c.joinStart + PIPE / 2;
+    group.add(p0, p1);
+    if (c.screws) screws = c.screws;
+    moving = [...c.motion.parts, { obj: p1, ...c.motion.piece }];
+  } else if (type === "fc") {
+    // Plain sleeve over both fitting ends; centre dimples (the stop) read as a dashed ring.
+    const ri = r + 0.05;
+    const ro = ri + wall;
+    const nd = Math.max(10, Math.round((Math.PI * 2 * ro) / 1.1));
+    const dw = 0.14;
+    const depth = 0.07 + d * 0.002;
+    const xs = samples(-CAP_LEN / 2, CAP_LEN / 2, (x) => Math.abs(x) < dw + 0.05, 0.025, 0.25);
+    const dent = (x: number, ang: number) => {
+      if (Math.abs(x) >= dw) return 0;
+      const p = 0.5 * (1 + Math.cos(nd * ang));
+      const dash = Math.min(1, Math.max(0, (p - 0.35) / 0.3));
+      return depth * 0.5 * (1 + Math.cos((Math.PI * x) / dw)) * dash * dash * (3 - 2 * dash);
+    };
+    const segs = Math.min(900, nd * 14);
+    const sleeve = new THREE.Group();
+    sleeve.add(new THREE.Mesh(shell(xs, segs, (x, ang) => ro - dent(x, ang), uv), sheet));
+    for (const x of [-CAP_LEN / 2, CAP_LEN / 2]) {
+      const hem = new THREE.TorusGeometry(ro - wall / 2, Math.max(0.045, wall * 0.9), 6, radial);
+      hem.rotateY(Math.PI / 2);
+      hem.translate(x, 0, 0);
+      sleeve.add(new THREE.Mesh(hem, sheet));
+    }
+    group.add(sleeve);
+    const stop = 0.06; // each fitting end stops just short of the centre (on the dimples)
+    const fL = ghostFittingEnd(d, ref);
+    fL.position.x = -CAP_LEN / 2 - gap;
+    const fR = ghostFittingEnd(d, ref);
+    fR.rotation.y = Math.PI;
+    fR.position.x = CAP_LEN / 2 + gap;
+    group.add(fL, fR);
+    moving = [
+      { obj: fL, from: 0, to: CAP_LEN / 2 + gap - stop },
+      { obj: fR, from: 0, to: -(CAP_LEN / 2 + gap - stop) },
+    ];
+    screws = ringScrews(d, ro, [-CAP_LEN / 4 - stop / 2, CAP_LEN / 4 + stop / 2], screwMat);
+  } else if (type === "ec") {
+    // Disc A (rolled rim) facing +X, skirt -1..0 that slips into the pipe end (pipe ends at x = 0).
+    const SKIRT = 1;
+    const rs = r - wall - 0.03;
+    const cap = new THREE.Group();
+    const face = new THREE.CircleGeometry(r + 0.02, radial);
+    face.rotateY(Math.PI / 2);
+    const fuv = face.getAttribute("uv") as THREE.BufferAttribute;
+    for (let i = 0; i < fuv.count; i++) fuv.setXY(i, (fuv.getX(i) * d) / TEX_LENGTH, (fuv.getY(i) * d) / TEX_LENGTH);
+    cap.add(new THREE.Mesh(face, sheet));
+    const rim = new THREE.TorusGeometry(r + 0.02, Math.max(0.07, d * 0.006), 8, radial);
+    rim.rotateY(Math.PI / 2);
+    cap.add(new THREE.Mesh(rim, sheet));
+    cap.add(new THREE.Mesh(shell([-SKIRT, -0.05], radial, () => rs, uv), sheet));
+    // A shallow stiffening bead pressed in the face.
+    const emb = new THREE.TorusGeometry(r * 0.62, Math.min(0.12, 0.04 + d * 0.004), 8, radial);
+    emb.rotateY(Math.PI / 2);
+    emb.translate(0.01, 0, 0);
+    cap.add(new THREE.Mesh(emb, sheet));
+    cap.position.x = gap + SKIRT;
+    group.add(cap);
+    const p = buildPipe(d, ref, PIPE);
+    p.position.x = -PIPE / 2;
+    group.add(p);
+    moving = [{ obj: cap, from: 0, to: -(gap + SKIRT) }];
+    screws = ringScrews(d, r, [-SKIRT / 2], screwMat);
+  } else if (type === "sc") {
+    // Wall (see-through) in the YZ plane at x = 0 with the hole; collar + flange on its +X face, pulled off by gap.
+    const t = 0.075;
+    const side = d + 6;
+    const wallShape = new THREE.Shape([
+      new THREE.Vector2(-side / 2, -side / 2),
+      new THREE.Vector2(side / 2, -side / 2),
+      new THREE.Vector2(side / 2, side / 2),
+      new THREE.Vector2(-side / 2, side / 2),
+    ]);
+    wallShape.holes.push(new THREE.Path(new THREE.EllipseCurve(0, 0, r, r, 0, Math.PI * 2, true, 0).getPoints(radial)));
+    const wallGeo = new THREE.ExtrudeGeometry(wallShape, { depth: 0.06, bevelEnabled: false, curveSegments: 1 });
+    wallGeo.rotateY(Math.PI / 2);
+    wallGeo.translate(-0.06, 0, 0);
+    const wallMesh = new THREE.Mesh(wallGeo, ref.metal);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(wallGeo, 30), new THREE.LineBasicMaterial({ color: 0x8e9bab, transparent: true, opacity: 0.55 }));
+    group.add(wallMesh, edges);
+    const col = new THREE.Group();
+    col.add(new THREE.Mesh(flatRing(r - 0.01, r + 1, t, radial, uv), sheet));
+    const lip = new THREE.TorusGeometry(r + 1, 0.07, 8, radial);
+    lip.rotateY(Math.PI / 2);
+    lip.translate(t / 2, 0, 0);
+    col.add(new THREE.Mesh(lip, sheet));
+    col.add(new THREE.Mesh(shell([0, CAP_LEN], radial, () => r, uv), sheet));
+    const crim = new THREE.RingGeometry(r - wall, r + 0.005, radial);
+    crim.rotateY(Math.PI / 2);
+    crim.translate(CAP_LEN, 0, 0);
+    col.add(new THREE.Mesh(crim, sheet));
+    col.position.x = gap;
+    group.add(col);
+    moving = [{ obj: col, from: 0, to: -gap }];
+    // Screws through the flange into the wall, parallel to the collar (heads on the flange, facing +X).
+    const n = screwCount(d);
+    const k = screwScale(d);
+    const sg = new THREE.Group();
+    const items: Joint["screws"]["items"] = [];
+    const each = 0.4;
+    for (let i = 0; i < n; i++) {
+      const ang = ((i + 0.5) / n) * Math.PI * 2;
+      const obj = new THREE.Group();
+      obj.position.set(t, (r + 0.5) * Math.cos(ang), (r + 0.5) * Math.sin(ang));
+      obj.rotation.z = -Math.PI / 2;
+      const s = screwMesh(k * 0.85, screwMat);
+      obj.add(s.obj);
+      sg.add(obj);
+      const start = (i / Math.max(1, n - 1)) * (1 - each);
+      items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+    }
+    screws = { group: sg, items };
+    group.rotation.z = Math.PI / 2; // stand it up: the wall level, the collar pointing up
+  } else {
+    // Bellmouth along +X (up): flare x 0..2 from B/2 to A/2 (quarter circle, radius 2), bead at 2, crimped collar 2..3.
+    const rB = r + BM_FLARE;
+    const flare = (x: number) => r + BM_FLARE - Math.sqrt(Math.max(0, BM_FLARE * BM_FLARE - (x - BM_FLARE) * (x - BM_FLARE)));
+    const fx: number[] = [];
+    for (let i = 0; i <= 28; i++) fx.push(BM_FLARE - BM_FLARE * Math.sin((i / 28) * (Math.PI / 2)));
+    fx.reverse();
+    const bm = new THREE.Group();
+    bm.add(new THREE.Mesh(shell(fx, radial, (x) => flare(x), uv), sheet));
+    // Collar: steps in past the bead and is fluted (like the fittings' crimped ends) so the duct slides over it.
+    const flutes = Math.max(24, Math.round((Math.PI * 2 * (r - wall - 0.05)) / 0.42));
+    const cd = 0.1 + d * 0.003;
+    const c0 = BM_FLARE + 0.3;
+    const rcr = r - wall - 0.05;
+    const crad = (x: number, ang: number) => {
+      if (x < c0) return r;
+      const e = Math.min(1, (x - c0) / CRIMP_TAPER);
+      const k = e * e * (3 - 2 * e);
+      return r - (r - rcr) * k - cd * k * 0.5 * (1 - Math.cos(flutes * ang));
+    };
+    const cx = samples(BM_FLARE, BM_H, (x) => x > c0 - 0.05, 0.05, 0.3);
+    bm.add(new THREE.Mesh(shell(cx, flutes * 4, crad, uv), sheet));
+    const bead = new THREE.TorusGeometry(r + 0.04, Math.min(0.34, 0.04 + d * 0.012) * 0.8, 8, radial);
+    bead.rotateY(Math.PI / 2);
+    bead.translate(BM_FLARE + 0.12, 0, 0);
+    bm.add(new THREE.Mesh(bead, seam));
+    const roll = new THREE.TorusGeometry(rB, 0.12, 8, Math.min(200, radial + 24));
+    roll.rotateY(Math.PI / 2);
+    roll.translate(0.06, 0, 0);
+    bm.add(new THREE.Mesh(roll, sheet));
+    group.add(bm);
+    // Duct above, pulled off; Play slides it down over the collar up to the bead.
+    const stopX = BM_FLARE + 0.3;
+    const duct = buildPipe(d, ref, PIPE);
+    duct.position.x = BM_H + gap + PIPE / 2;
+    group.add(duct);
+    moving = [{ obj: duct, from: 0, to: stopX - (BM_H + gap) }];
+    screws = ringScrews(d, r, [(stopX + BM_H) / 2 + 0.1], screwMat);
+    group.rotation.z = Math.PI / 2;
+  }
+  // Screws are placed in the assembled pose, in the parts' frame (turned with the group).
+  group.add(screws.group);
+  return { group, moving, screws };
+}
+
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
@@ -2120,7 +2447,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -2132,8 +2459,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const tapFam: Record<string, TapSpec> = ltaps ? LTAPS : TAPS;
   // Reducers: same picker and size selects (A, then B below A).
   const reds = kind === "red";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : "t90");
+  // Couplings, caps & collars (sheet 10): same picker, one size A; no connection buttons (Play puts the part on).
+  const caps = kind === "cap";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -2160,7 +2489,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps || reds;
+  const cross = kind === "tee" || conical || lateral || taps || reds || caps;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -2340,6 +2669,28 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
       if (kind === "tap") view = new THREE.Vector3(0.35, 0.55, 1); // taps: more from above, so the saddle plate reads
       if (kind === "ltap") view = new THREE.Vector3(0.22, 0.42, 1); // lateral taps: a bit lower, so the 45° lean reads too
+      if (kind === "cap") {
+        // Sheet 10 parts: built with their see-through duct / wall, own Play motion; no connection.
+        const t = currentTee as CapType;
+        view = t === "sc" ? new THREE.Vector3(0.35, 0.6, 1) : t === "bm" ? new THREE.Vector3(0.3, 0.38, 1) : t === "ec" ? new THREE.Vector3(0.75, 0.32, 1) : new THREE.Vector3(0.3, 0.32, 1);
+        const part = buildCap(t, currentTeeSizes[0], sheet, refMats, seam, screwMat);
+        moving = part.moving.map((m) => ({ ...m, base: m.obj.position.x }));
+        screws = part.screws.items;
+        stopPlay();
+        part.group.updateMatrixWorld(true);
+        const box = new THREE.Box3();
+        // Frame on the solid part and the reference pieces alike (the whole scene must stay in view while it spins).
+        box.setFromObject(part.group);
+        const holder = new THREE.Group();
+        holder.add(part.group);
+        part.group.position.sub(box.getCenter(new THREE.Vector3()));
+        model = new THREE.Group();
+        model.add(holder);
+        scene.add(model);
+        spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), TEX_LENGTH / 10);
+        frame(d);
+        return;
+      }
       const solid: Mats = { metal, inside, seam };
       const { group: elbow, ends } =
         kind === "tee"
@@ -2388,7 +2739,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -2502,8 +2853,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const tapD = taps && !ltaps ? tapDims(teeType as TapType, teeSizes) : null;
   const ltapD = ltaps ? ltapDims(teeType as LtapType, teeSizes) : null;
   const redD = reds ? redDims(teeType as RedType, teeSizes) : null;
+  const capD = caps ? capDims(teeType as CapType, teeSizes[0]) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
     ? { L: 0, R: redD.R, reducing: true }
+    : caps
+    ? { L: 0, R: 0, reducing: false }
     : conical
     ? cteeDims(teeType as CteeType, teeSizes)
     : ltapD
@@ -2542,7 +2896,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (reds) {
+    if (caps) {
+      if (location.hash.startsWith(SWF_CAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + capHash(t as CapType));
+    } else if (reds) {
       if (location.hash.startsWith(SWF_RED_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + redHash(t as RedType));
     } else if (ltaps) {
       if (location.hash.startsWith(SWF_LTAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + ltapHash(t as LtapType));
@@ -2631,6 +2987,31 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </p>
         )}
       </div>
+      {caps ? (
+        // Sheet 10 parts are the connection themselves: no Coupling / Flange buttons, just Play to put the part on.
+        <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5">
+          <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
+            <span className="col-span-2 pb-2 text-[11px] font-medium tracking-wide text-muted uppercase">How it goes on</span>
+            {!failed && (
+              <button
+                type="button"
+                onClick={() => api.current?.play()}
+                aria-label={play === "playing" ? "Pause" : play === "done" ? "Replay how it goes together" : "Play how it goes together"}
+                className="btn-raised btn-raised-sm mb-1 flex h-8 items-center justify-center gap-1.5 rounded-[0.65rem] font-display text-base leading-none short:h-7"
+              >
+                {play === "playing" ? (
+                  <Pause className="size-4" aria-hidden="true" />
+                ) : play === "done" ? (
+                  <RotateCw className="size-4" aria-hidden="true" />
+                ) : (
+                  <Play className="size-4" aria-hidden="true" />
+                )}
+                {play === "playing" ? "Pause" : play === "done" ? "Replay" : "Play"}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
       <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5" role="radiogroup" aria-label="Connection">
         {/* Label row; the Play button sits in the right column, over Flange (same as the duct). */}
         <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
@@ -2668,6 +3049,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           ))}
         </div>
       </div>
+      )}
       {hasVanes && (
         // Turning vanes (MEV90 / BTV90), separate from the connection. Made from 8" up (sheet's table).
         <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Turning vanes">
@@ -2694,8 +3076,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps || reds ? "grid-cols-2" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -2703,11 +3085,15 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {(taps || reds) && <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{reds ? REDS[t as RedType].short : tapFam[t].short}</span>}
+                {(taps || reds || caps) && (
+                  <span className={`font-sans text-[10px] leading-none font-medium uppercase opacity-75 ${caps ? "tracking-normal" : "tracking-wider"}`}>
+                    {caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -2737,7 +3123,42 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {redD ? (
+              {capD ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{gauge.fitting} ga</b> fitting ·{" "}
+                    {capD.type === "bm" ? (
+                      <>
+                        B = <b className="font-semibold">{capD.b}&Prime;</b> · H = <b className="font-semibold">{BM_H}&Prime;</b>
+                      </>
+                    ) : capD.type === "sc" ? (
+                      <>
+                        collar <b className="font-semibold">{CAP_LEN}&Prime;</b> · flange <b className="font-semibold">{capD.flange}&Prime;</b> OD
+                      </>
+                    ) : capD.type === "ec" ? (
+                      <>
+                        disc <b className="font-semibold">{capD.a}&Prime;</b>
+                      </>
+                    ) : (
+                      <>
+                        band <b className="font-semibold">{capD.a}&Prime;</b> × <b className="font-semibold">{CAP_LEN}&Prime;</b>
+                      </>
+                    )}
+                  </p>
+                  <p className="truncate text-muted">
+                    {spec.note} ·{" "}
+                    {capD.type === "pc"
+                      ? "pipe to pipe · bead stop"
+                      : capD.type === "fc"
+                      ? "fitting to fitting · dimple stop"
+                      : capD.type === "ec"
+                      ? "into the pipe end"
+                      : capD.type === "sc"
+                      ? "1″ flange · on a wall"
+                      : `B = A + ${2 * BM_FLARE}″ · order by A`}
+                  </p>
+                </>
+              ) : redD ? (
                 <>
                   <p className="truncate">
                     <b className="font-semibold">{gauge.fitting} ga</b> fitting · R = <b className="font-semibold">{inches(redD.R)}&Prime;</b> · reduction{" "}

@@ -179,11 +179,19 @@ function jointFocus(d: number, from: number, to: number, outerR: number) {
  * Slip coupling: sleeve that fits inside the pipe, raised center bead, corrugated (crimped) ends.
  * Shown pulled most of the way out of the pipe end so the bead and both crimped ends read.
  */
-export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material, uvScale: number, screwMat: THREE.Material): BuiltConnection {
+export function buildCoupling(
+  d: number,
+  pipeEnd: number,
+  sheet: THREE.Material,
+  uvScale: number,
+  screwMat: THREE.Material,
+  /** Optional overrides (the fittings viewer's PC uses its sheet's 2" length, screws closer to the bead). */
+  opts: { length?: number; screwBack?: number } = {},
+): BuiltConnection {
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);
   const rc = r - wall - 0.03; // sleeve just inside the pipe
-  const C = d <= 12 ? 4 : 6; // overall length
+  const C = opts.length ?? (d <= 12 ? 4 : 6); // overall length
   const bw = 0.5; // bead width
   const bh = r + 0.14 - rc; // bead stands a little proud of the pipe (it's the stop)
   const cl = Math.min(1.25, C * 0.3); // crimped length at each end
@@ -219,7 +227,7 @@ export function buildCoupling(d: number, pipeEnd: number, sheet: THREE.Material,
     joinStart,
     motion: { parts: [{ obj: coupling, from: 0, to: coupleShift }], piece: { from: 0, to: pieceShift } },
     // Assembled: main pipe ends at pipeEnd, bead pipeEnd..pipeEnd+bw, 12" piece starts at pipeEnd+bw. Screws 1" back each side.
-    screws: buildScrews(d, pipeEnd - 1, pipeEnd + bw + 1, screwMat),
+    screws: buildScrews(d, pipeEnd - (opts.screwBack ?? 1), pipeEnd + bw + (opts.screwBack ?? 1), screwMat),
     ...jointFocus(d, pipeEnd - 4, joinStart + JOIN_LENGTH, r + 0.1),
   };
 }

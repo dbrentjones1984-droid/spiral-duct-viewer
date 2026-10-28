@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "1.8 MB",
+  sizeLabel: "2.1 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -162,6 +162,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1333,
     alt: "Single Wall Round, Concentric and Eccentric Reducer: large end A and small end B, each a 2 inch end, with the reducer R between. CR concentric reducer, R by reduction A - B: 1 to 4 inch R 4, 5 to 8 inch R 8, 9 to 12 inch R 12, 13 to 16 inch R 16. ER eccentric reducer (flat on one side): reduction 1 to 3 inch R 6, else R = (A - B) x 1.5.",
+  },
+  {
+    n: 10,
+    title: "Pipe Coupling, Fitting Coupling, End Cap, Start Collar, Bellmouth",
+    src: `${base}sheets/single-wall-round-fittings-10.webp`,
+    w: 1132,
+    h: 1319,
+    alt: "Single Wall Round, Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth: PC pipe coupling (pipe to pipe connections) and FC fitting coupling (fitting to fitting connections), each a 2 inch band of diameter A; EC end cap, diameter A; SC start collar, a 2 inch collar A with a 1 inch collar (flange) around it; BM bell mouth, 3 inch high, to order list A, B equals A + 4 inch.",
   },
 ] as const;
 
