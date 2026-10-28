@@ -17,7 +17,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, type CapType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
+import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -143,7 +143,7 @@ export function eccentricLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -265,6 +265,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round couplings, end cap, start collar and bellmouth",
     canvas: "3D coupling, end cap, start collar or bellmouth, with see-through duct. Drag to turn, pinch to zoom.",
     none: { title: "Pipe Coupling (PC)", text: "" },
+    note: "Galvanized",
+  },
+  wye: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Wye 45° (Y45)",
+    aria: "3D model: single wall round wye and reducing wye",
+    canvas: "3D wye or reducing wye. Drag to turn, pinch to zoom.",
+    none: { title: "Wye 45° (Y45)", text: "" },
     note: "Galvanized",
   },
 };
@@ -1036,6 +1046,18 @@ class SaddleLoop extends THREE.Curve<THREE.Vector3> {
  * reducerLength(a, d) (none when d = a), then the 2" end. Returns the end frame (+X out of the fitting).
  */
 function runEnd(side: -1 | 1, a: number, d: number, L: number, mats: Mats, style: EndStyle) {
+  const f = reducedEnd(a, d, mats, style);
+  f.position.set(side * (L / 2 + reducerLength(a, d) + COLLAR), 0, 0);
+  f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(side, 0, 0));
+  return f;
+}
+
+/**
+ * An end of size d on a body of size a, in its end frame (+X out, origin at the cut end): the concentric reducer R =
+ * reducerLength(a, d) from x = -2 - R to -2 with its raised seam where it meets the body (none when d = a), then the
+ * 2" end. Shared by the tees/laterals' run ends and the wye's legs.
+ */
+function reducedEnd(a: number, d: number, mats: Mats, style: EndStyle) {
   const { metal, inside, seam } = mats;
   const r = a / 2;
   const wall = Math.max(0.05, a * 0.006);
@@ -1047,8 +1069,6 @@ function runEnd(side: -1 | 1, a: number, d: number, L: number, mats: Mats, style
   const wd = Math.max(0.05, d * 0.006);
   const radialD = Math.min(144, 64 + Math.round(d * 4));
   const f = new THREE.Group();
-  f.position.set(side * (L / 2 + R + COLLAR), 0, 0);
-  f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(side, 0, 0));
   if (R > 0) {
     const x0 = -COLLAR - R;
     const k = (x: number) => (x - x0) / R;
@@ -1473,6 +1493,160 @@ function buildLateral(type: LatType, sizes: readonly number[], mats: Mats, style
     ends.push(f);
   });
   return { group, ends };
+}
+
+/**
+ * Wye and Reducing Wye (sheet 11): inlet A at the bottom, two legs at 45° each side of its centreline (90° apart). The
+ * sheet dimensions every end as a 2" straight end (its ".2″" on the Y45 inlet read as 2″) and gives R by the reducer
+ * drawing; RY45 is ordered A, B, C (B the left leg, C the right, each up to A). Labels are the size selects.
+ */
+type WyeSpec = CrossSpec & { short: string };
+const WYES: Record<WyeType, WyeSpec> = {
+  y45: {
+    code: "Y45",
+    name: "Wye 45°",
+    short: "wye",
+    labels: ["A · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Inlet A at the bottom, splitting into two legs at 45° each side (90° apart), all ends A with 2″ beaded ends. Gored body, centre seam between the legs.",
+  },
+  ry45: {
+    code: "RY45",
+    name: "Reducing Wye 45°",
+    short: "reducing",
+    labels: ["A · inlet", "B · left", "C · right"],
+    defaults: [12, 10, 8],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Inlet A at the bottom, left leg B and right leg C at 45°, each with a reducer R (by the reducer table) to its 2″ beaded end. Order A, B, C.",
+  },
+};
+/** A wye's sizes (Y45: all A) and each leg's reducer R, from the CR table (past it, assumed). */
+function wyeDims(type: WyeType, sizes: readonly number[]) {
+  const a = sizes[0];
+  const b = type === "ry45" ? sizes[1] : a;
+  const c = type === "ry45" ? sizes[2] : a;
+  return { type, a, b, c, RB: reducerLength(a, b), RC: reducerLength(a, c), past: a - Math.min(b, c) > CR_TABLE_MAX };
+}
+/**
+ * Assumed: past the body (the inlet's lowest mitre point; on a leg, the crotch) each end has WYE_STRAIGHT of straight
+ * before its reducer / 2" end, as on the laterals. With it the overall proportions match the sheet's drawing (legs about
+ * 0.8 A from the junction to the end, inlet about 0.5 A).
+ */
+const WYE_STRAIGHT = 2;
+const T22 = Math.tan(Math.PI / 8);
+
+/**
+ * Wye leg (radius rr) on the side sd (+1 right, -1 left): axis b = (sd C45, C45, 0) out of the junction O at the origin.
+ * Around it, phi = 0 is the crotch side (towards the other leg), p = (-sd C45, C45, 0), z = rr sin(phi). It starts at the
+ * mitre with the inlet (t1, outer half) or the centre plane x = 0 (t2, crotch half), whichever is further out, and runs
+ * to t = tEnd.
+ */
+const wyeT0 = (rr: number, phi: number) => {
+  const cp = Math.cos(phi);
+  return Math.max((-rr * C45 * cp) / (1 + C45), rr * cp);
+};
+function wyeLeg(rr: number, tEnd: number, sd: 1 | -1, radial: number) {
+  const rows = 10;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const phi = (j / radial) * Math.PI * 2;
+      const t0 = wyeT0(rr, phi);
+      const t = t0 + ((tEnd - t0) * i) / rows;
+      const cp = Math.cos(phi);
+      const sp = Math.sin(phi);
+      const nx = -sd * C45 * cp;
+      const ny = C45 * cp;
+      pos.push(sd * C45 * t + rr * nx, C45 * t + rr * ny, rr * sp);
+      nor.push(nx, ny, sp);
+      uv.push(j / radial, (11 + tEnd - t) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+/** Wye inlet (radius rr) along y, from yBot up to the two mitres: y = -|x| tan 22.5° (the pentagon's top edges). */
+function wyeInlet(rr: number, yBot: number, radial: number) {
+  const rows = 8;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= radial; j++) {
+      const th = (j / radial) * Math.PI * 2;
+      const x = rr * Math.cos(th);
+      const z = rr * Math.sin(th);
+      const yTop = -Math.abs(x) * T22;
+      const y = yBot + ((yTop - yBot) * i) / rows;
+      pos.push(x, y, z);
+      nor.push(Math.cos(th), 0, Math.sin(th));
+      uv.push(j / radial, (y + 40) / TEX_LENGTH);
+    }
+  }
+  return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+}
+
+/**
+ * Wye or reducing wye (sheet 11), made like a gored fitting: the inlet A (a cylinder mitred at 22.5° each side, so the
+ * front reads as the sheet's pentagon), two A-size legs at 45° mitred onto it and onto each other along the centre plane
+ * (the centre seam from the junction up to the crotch), WYE_STRAIGHT of leg past the crotch, then on RY45 the reducer R
+ * to B / C, and every end's 2" collar. ends: [inlet A, left leg B, right leg C].
+ */
+function buildWye(type: WyeType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const { a, b, c } = wyeDims(type, sizes);
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const rib = Math.min(0.34, 0.04 + a * 0.012);
+  const yBot = -(r * T22 + WYE_STRAIGHT);
+  group.add(new THREE.Mesh(wyeInlet(r, yBot, radial), metal));
+  group.add(new THREE.Mesh(wyeInlet(r - wall, yBot, radial), inside));
+  const tEnd = r + WYE_STRAIGHT;
+  const kr = r + rib * 0.35; // seams sit a little proud of the surface
+  const seamTube = (f: (u: number, v: THREE.Vector3) => THREE.Vector3) =>
+    new THREE.Mesh(new THREE.TubeGeometry(new FnCurve(f), radial, rib, 8, false), seam);
+  // centre seam: the half-ellipse on x = 0 from the front, over the crotch, to the back
+  group.add(seamTube((u, v) => {
+    const phi = -Math.PI / 2 + u * Math.PI;
+    return v.set(0, Math.SQRT2 * kr * Math.cos(phi), kr * Math.sin(phi));
+  }));
+  const inlet = new THREE.Group();
+  inlet.position.set(0, yBot - COLLAR, 0);
+  inlet.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, -1, 0));
+  inlet.add(buildCollar(a, style, mats, rib * 0.8, radial));
+  group.add(inlet);
+  const ends: THREE.Group[] = [inlet];
+  ([
+    [-1, b],
+    [1, c],
+  ] as const).forEach(([sd, d]) => {
+    group.add(new THREE.Mesh(wyeLeg(r, tEnd, sd, radial), metal));
+    group.add(new THREE.Mesh(wyeLeg(r - wall, tEnd, sd, radial), inside));
+    // mitre seam with the inlet, round the leg's outer half
+    group.add(seamTube((u, v) => {
+      const phi = Math.PI / 2 + u * Math.PI;
+      const cp = Math.cos(phi);
+      const t = (-kr * C45 * cp) / (1 + C45);
+      return v.set(sd * C45 * (t - kr * cp), C45 * (t + kr * cp), kr * Math.sin(phi));
+    }));
+    const axis = new THREE.Vector3(sd * C45, C45, 0);
+    const f = reducedEnd(a, d, mats, style);
+    f.position.copy(axis).multiplyScalar(tEnd + reducerLength(a, d) + COLLAR);
+    f.quaternion.setFromUnitVectors(X_AXIS, axis);
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends, sizes: [a, b, c] };
 }
 
 /**
@@ -2403,6 +2577,18 @@ const TEE_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; 
   },
 };
 
+/** Wye connections: on all three ends at once (on RY45 the legs' small B / C ends, past their reducers). */
+const WYE_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "On all three ends (reducing legs: the small end): each is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "On all three ends (reducing legs: the small end): straight ends, no beads. A flange goes in each end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 /** Tee/cross connections: same, shown on the A inlet end (left). */
 const CROSS_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
@@ -2447,7 +2633,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -2461,8 +2647,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const reds = kind === "red";
   // Couplings, caps & collars (sheet 10): same picker, one size A; no connection buttons (Play puts the part on).
   const caps = kind === "cap";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : "t90");
+  // Wyes (sheet 11): same picker and size selects (A, then B and C up to A on RY45); connections on all three ends.
+  const wyes = kind === "wye";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -2489,7 +2677,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps || reds || caps;
+  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes;
   const gauge = stockGauge(cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
@@ -2692,6 +2880,22 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
         return;
       }
       const solid: Mats = { metal, inside, seam };
+      if (kind === "wye") {
+        // Wyes: the connection goes on every end, each its own size (reducing legs: the small end), all played at once.
+        const w = buildWye(currentTee as WyeType, currentTeeSizes, solid, style);
+        const joints = c === "none" ? [] : w.ends.map((f, i) => (c === "coupling" ? slipJoint(w.sizes[i], f, pipeMats, screwMat) : flangeJoint(w.sizes[i], f, pipeMats, metal, sheet, gasketMat, screwMat)));
+        moving = joints.flatMap((j) => j.moving.map((m) => ({ ...m, base: m.obj.position.x })));
+        screws = joints.flatMap((j) => j.screws.items);
+        stopPlay();
+        w.group.updateMatrixWorld(true);
+        w.group.position.sub(new THREE.Box3().setFromObject(w.group).getCenter(new THREE.Vector3()));
+        model = new THREE.Group();
+        model.add(w.group);
+        scene.add(model);
+        spangle.repeat.set(Math.max(2, Math.round((Math.PI * d) / 10)), TEX_LENGTH / 10);
+        frame(d);
+        return;
+      }
       const { group: elbow, ends } =
         kind === "tee"
           ? buildCross(currentTee as TeeType, currentTeeSizes, solid, style)
@@ -2739,7 +2943,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" ? currentTeeSizes[0] : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -2854,9 +3058,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const ltapD = ltaps ? ltapDims(teeType as LtapType, teeSizes) : null;
   const redD = reds ? redDims(teeType as RedType, teeSizes) : null;
   const capD = caps ? capDims(teeType as CapType, teeSizes[0]) : null;
+  const wyeD = wyes ? wyeDims(teeType as WyeType, teeSizes) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
     ? { L: 0, R: redD.R, reducing: true }
-    : caps
+    : caps || wyes
     ? { L: 0, R: 0, reducing: false }
     : conical
     ? cteeDims(teeType as CteeType, teeSizes)
@@ -2874,7 +3079,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const info =
     cross
       ? connection !== "none"
-        ? (reds ? RED_CONNECTION_INFO : ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
+        ? (wyes ? WYE_CONNECTION_INFO : reds ? RED_CONNECTION_INFO : ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
         : { title: name, text: teeSpec.text }
       : connection !== "none"
       ? tee
@@ -2896,7 +3101,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (caps) {
+    if (wyes) {
+      if (location.hash.startsWith(SWF_WYE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + wyeHash(t as WyeType));
+    } else if (caps) {
       if (location.hash.startsWith(SWF_CAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + capHash(t as CapType));
     } else if (reds) {
       if (location.hash.startsWith(SWF_RED_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + redHash(t as RedType));
@@ -3076,8 +3283,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps || reds ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds || wyes ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -3085,13 +3292,13 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {(taps || reds || caps) && (
+                {(taps || reds || caps || wyes) && (
                   <span className={`font-sans text-[10px] leading-none font-medium uppercase opacity-75 ${caps ? "tracking-normal" : "tracking-wider"}`}>
-                    {caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
+                    {wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
                   </span>
                 )}
               </button>
@@ -3123,7 +3330,27 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {capD ? (
+              {wyeD ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{gauge.fitting} ga</b> fitting · legs 45°
+                    {wyeD.type === "ry45" ? (
+                      <>
+                        {" "}
+                        · R = <b className="font-semibold">{inches(wyeD.RB)}&Prime;</b> (B) / <b className="font-semibold">{inches(wyeD.RC)}&Prime;</b> (C)
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        · all ends <b className="font-semibold">{wyeD.a}&Prime;</b>
+                      </>
+                    )}
+                  </p>
+                  <p className="truncate text-muted">
+                    {spec.note} · {wyeD.type === "ry45" ? `R by the reducer table${wyeD.past ? " · assumed" : ""}` : `gored body · ${COLLAR}″ ends`}
+                  </p>
+                </>
+              ) : capD ? (
                 <>
                   <p className="truncate">
                     <b className="font-semibold">{gauge.fitting} ga</b> fitting ·{" "}

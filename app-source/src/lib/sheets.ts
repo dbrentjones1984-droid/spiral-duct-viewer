@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "2.1 MB",
+  sizeLabel: "2.4 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -170,6 +170,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1319,
     alt: "Single Wall Round, Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth: PC pipe coupling (pipe to pipe connections) and FC fitting coupling (fitting to fitting connections), each a 2 inch band of diameter A; EC end cap, diameter A; SC start collar, a 2 inch collar A with a 1 inch collar (flange) around it; BM bell mouth, 3 inch high, to order list A, B equals A + 4 inch.",
+  },
+  {
+    n: 11,
+    title: "Wye and Reducing Wye",
+    src: `${base}sheets/single-wall-round-fittings-11.webp`,
+    w: 1132,
+    h: 1339,
+    alt: "Single Wall Round, Wye and Reducing Wye: Y45 wye 45 degree, inlet A at the bottom with a 2 inch end, splitting into two branches at 45 degrees, each branch end A with a 2 inch end. RY45 reducing wye 45 degree, to order list A, B and C: inlet A, left branch B and right branch C, each branch with a reducer R and a 2 inch end; R = refer to reducer drawing.",
   },
 ] as const;
 

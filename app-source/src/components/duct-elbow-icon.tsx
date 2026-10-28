@@ -22,6 +22,8 @@
  * and the small end B's 2" collar.
  * cap draws a pipe coupling (Couplings, Caps & Collars card), side view: the 2" band with its centre bead, the two
  * pipe ends it joins dashed (reference only).
+ * wye draws a 45° wye (Wye & Reducing Wye card), front view as on its sheet: inlet A at the bottom with its 2" collar,
+ * the pentagonal lower body, the centre seam up to the crotch and the two 45° legs, each with its 2" collar.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -37,6 +39,7 @@ export function DuctElbowIcon({
   ltap = false,
   red = false,
   cap = false,
+  wye = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -50,7 +53,18 @@ export function DuctElbowIcon({
   ltap?: boolean;
   red?: boolean;
   cap?: boolean;
+  wye?: boolean;
 }) {
+  if (wye) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* outline: inlet A and the two 45° legs, meeting at the crotch */}
+        <path d="M18 29.6 L18 37.6 L42 37.6 L42 29.6 L52.6 18.9 L35.7 2 L30 7.6 L24.3 2 L7.4 18.9 Z" strokeWidth={2} />
+        {/* the 2" collar lines, the mitre seams (pentagon top) and the centre seam */}
+        <path d="M18 33.6 L42 33.6 M49.8 21.8 L32.8 4.8 M10.2 21.8 L27.2 4.8 M18 29.6 L30 24.6 L42 29.6 M30 24.6 L30 7.6" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (cap) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
