@@ -5,7 +5,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_ELBOW_TYPES, ovalElbowHash, SWFO_ELBOW_3D_HASH, type OvalBend, type OvalElbowType } from "@/lib/route";
+import { OVAL_BENDS, OVAL_ELBOW_TYPES, ovalElbowHash, ovalMiterHash, SWFO_ELBOW_3D_HASH, SWFO_MITER_3D_HASH, type OvalBend, type OvalElbowType } from "@/lib/route";
 import { OVAL_MAJORS, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
@@ -24,6 +24,11 @@ import { OVAL_MAJORS, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
  * Gores, like the round gored elbows: an N-piece elbow of angle θ has two end gores of θ / (2(N - 1)) and N - 2
  * middle gores of θ / (N - 1) (90HB5: 11-1/4°, 22-1/2° x 3, 11-1/4°; 30HB2: two 15° gores), each a straight oval
  * piece mitred on the joint planes, with a raised seam at each joint, and a 2" straight collar at each end.
+ *
+ * The same viewer also shows the Mitered Elbows sheet (oval fittings sheet 2), kind "miter": 02PV90 H / E, a 90°
+ * 2-piece mitered elbow with turning vanes. Hard (H) = A in the bend plane, easy (E) = α in it, as above. Each leg runs
+ * 4" past the other leg's wall (the throat corner), its 2" collar included, as drawn; vanes as the round MEV90's (count
+ * by the size in the bend plane), with the walls shown see-through so they read.
  * Units are inches.
  */
 
@@ -381,6 +386,207 @@ function buildOvalElbow(kit: Kit, type: OvalElbowType, hard: boolean, mats: Mats
   return { group, ends, R };
 }
 
+// ---- Mitered elbow with vanes (02PV90 H / E, oval fittings sheet 2). ----
+/** Each leg runs MITER_LEG past the other leg's wall (the throat corner), its 2" collar included (sheet's 4"). */
+const MITER_LEG = 4;
+/**
+ * Turning vanes by the size in the bend plane (A for hard, α for easy): the round MEV90 table (sheet), plus one vane
+ * under 8" (assumed: the oval sheet draws every 02PV90 with vanes, the round table starts at 8").
+ */
+const VANE_TABLE = [
+  { from: 0, to: 7, n: 1 },
+  { from: 8, to: 9, n: 2 },
+  { from: 10, to: 14, n: 3 },
+  { from: 15, to: 19, n: 4 },
+  { from: 20, to: 999, n: 5 },
+] as const;
+export function ovalVanes(p: number) {
+  const row = VANE_TABLE.find((v) => p >= v.from && p <= v.to) ?? VANE_TABLE[VANE_TABLE.length - 1];
+  return { n: row.n, range: row.from === 0 ? `under 8″` : row.to >= 999 ? `${row.from}″ and up` : `${row.from}″–${row.to}″` };
+}
+
+/** Half the in-plane size of the section (q runs -h..h) and the out-of-plane half height at q, for end radius rho. */
+function sectionHalf(kit: Kit, hard: boolean, rho: number) {
+  const F2 = kit.F / 2;
+  const h = hard ? F2 + rho : rho;
+  const w = (q: number) => {
+    const a = Math.abs(q);
+    if (a >= h) return 0;
+    return hard ? (a <= F2 ? rho : Math.sqrt(Math.max(0, rho * rho - (a - F2) * (a - F2)))) : F2 + Math.sqrt(Math.max(0, rho * rho - a * a));
+  };
+  return { h, w };
+}
+
+/** Grid (rows x cols, row-major) with the given normals; triangles wound to face along them. */
+function orientedGrid(pos: number[], nor: number[], uv: number[], rows: number, cols: number) {
+  const idx: number[] = [];
+  for (let i = 0; i < rows - 1; i++) {
+    for (let j = 0; j < cols - 1; j++) {
+      const a = i * cols + j;
+      const b = a + cols;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const v = (k: number) => new THREE.Vector3(pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]);
+  let dot = 0;
+  for (let t = 0; t < idx.length; t += 3) {
+    const p0 = v(idx[t]);
+    const n = new THREE.Vector3().crossVectors(v(idx[t + 1]).sub(p0), v(idx[t + 2]).sub(p0));
+    dot += n.x * nor[idx[t] * 3] + n.y * nor[idx[t] * 3 + 1] + n.z * nor[idx[t] * 3 + 2];
+  }
+  if (dot < 0) for (let t = 0; t < idx.length; t += 3) [idx[t + 1], idx[t + 2]] = [idx[t + 2], idx[t + 1]];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/**
+ * Miter frame (bend plane XY, B = Z): leg 0 comes up along +Y (centreline x = 0), leg 1 leaves along +X (centreline
+ * y = 0). In-plane offset q: leg 0 at x = q, leg 1 at y = -q (q > 0 is the throat side). The cut is the line y = -x,
+ * from the heel (-h, h) to the throat corner (h, -h). Points on the leg surface at section point u, along-leg s.
+ */
+function miterLegGeo(kit: Kit, hard: boolean, leg: 0 | 1, rho: number, end: number, S: number) {
+  const rows = 3;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j <= S; j++) {
+      const { q, w, nq, nw } = profile(kit, hard, j / S, rho);
+      // leg 0 runs from y = end (< 0) up to the cut y = -q; leg 1 from the cut x = q out to x = end (> 0)
+      const s0 = leg === 0 ? end : q;
+      const s1 = leg === 0 ? -q : end;
+      const s = s0 + ((s1 - s0) * i) / (rows - 1);
+      if (leg === 0) {
+        pos.push(q, s, w);
+        nor.push(nq, 0, nw);
+        uv.push(j / S, s / TEX_LENGTH);
+      } else {
+        pos.push(s, -q, w);
+        nor.push(0, -nq, nw);
+        uv.push(j / S, (s + 37) / TEX_LENGTH);
+      }
+    }
+  }
+  return orientedGrid(pos, nor, uv, rows, S + 1);
+}
+
+/** The seam along the cut: the stretched oval where the two pieces meet. */
+class MiterCut extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private kit: Kit,
+    private hard: boolean,
+    private rho: number,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const { q, w } = profile(this.kit, this.hard, u, this.rho);
+    return target.set(q, -q, w);
+  }
+}
+
+/**
+ * Turning vanes along the cut, same style as the round MEV90's: n quarter-arc blades, each with its middle on the cut,
+ * leading edge along the incoming flow (+Y) and trailing edge along the outgoing flow (+X), at even steps from heel to
+ * throat; each spans the duct's full height out of the bend plane (out to the oval wall at that point).
+ */
+function buildMiterVanes(kit: Kit, hard: boolean, n: number, mat: THREE.Material, edge: THREE.Material) {
+  const g = new THREE.Group();
+  const rin = kit.R0 - kit.wall - 0.02;
+  const { h, w } = sectionHalf(kit, hard, rin);
+  const step = (2 * h) / (n + 1);
+  const a = step * 1.05;
+  const H = Math.SQRT1_2;
+  // which leg a point is in (below the cut: leg 0, offset x; above: leg 1, offset -y)
+  const half = (x: number, y: number) => w(y < -x ? x : -y);
+  const us = 24;
+  for (let k = 0; k < n; k++) {
+    const m = -h + step * (k + 1);
+    const cx = m + a * H;
+    const cy = -m - a * H;
+    const arc: [number, number][] = [];
+    for (let i = 0; i <= us; i++) {
+      const th = (i / us) * (Math.PI / 2);
+      arc.push([cx - a * Math.cos(th), cy + a * Math.sin(th)]);
+    }
+    vaneBlade(g, arc, half, Math.max(0.05, kit.eqD * 0.007), mat, edge);
+  }
+  return g;
+}
+
+/** One vane blade (as the round MEV90's): the arc swept across the duct, out to the wall each side, edged in a dark tube. */
+function vaneBlade(g: THREE.Group, arc: [number, number][], half: (x: number, y: number) => number, edgeR: number, mat: THREE.Material, edge: THREE.Material) {
+  const us = arc.length - 1;
+  const vs = 10;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (const [x, y] of arc) {
+    const hh = half(x, y);
+    for (let j = 0; j <= vs; j++) pos.push(x, y, -hh + (2 * hh * j) / vs);
+  }
+  for (let i = 0; i < us; i++) {
+    for (let j = 0; j < vs; j++) {
+      const p0 = i * (vs + 1) + j;
+      const p1 = p0 + vs + 1;
+      idx.push(p0, p1, p0 + 1, p1, p1 + 1, p0 + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  g.add(new THREE.Mesh(geo, mat));
+  const ring: THREE.Vector3[] = [];
+  const at = (i: number, j: number) => new THREE.Vector3(pos[(i * (vs + 1) + j) * 3], pos[(i * (vs + 1) + j) * 3 + 1], pos[(i * (vs + 1) + j) * 3 + 2]);
+  for (let i = 0; i <= us; i++) ring.push(at(i, vs));
+  for (let j = vs - 1; j >= 0; j--) ring.push(at(us, j));
+  for (let i = us - 1; i >= 0; i--) ring.push(at(i, 0));
+  for (let j = 1; j < vs; j++) ring.push(at(0, j));
+  const path = new THREE.CatmullRomCurve3(ring, true, "centripetal");
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(path, ring.length * 2, edgeR, 5, true), edge));
+}
+
+/** End frame of a miter leg: origin at the open end's centre, +X out, local Z along the major axis (as endFrame). */
+function miterEndFrame(leg: 0 | 1, h: number, hard: boolean) {
+  const out = leg === 0 ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(1, 0, 0);
+  const inPlane = leg === 0 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, -1, 0);
+  const major = hard ? inPlane : B.clone();
+  const y = new THREE.Vector3().crossVectors(major, out);
+  const g = new THREE.Group();
+  g.position.copy(out).multiplyScalar(h + MITER_LEG);
+  g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(out, y, major));
+  return g;
+}
+
+/** 02PV90: two straight oval legs meeting on a sharp 45° cut, the seam along it, 2" collars, and the turning vanes. */
+function buildOvalMiter(kit: Kit, hard: boolean, mats: Mats, style: EndStyle, vanes: number, vaneMat: THREE.Material, vaneEdge: THREE.Material) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const S = Math.min(220, 96 + Math.round(kit.perimeter(kit.R0) * 1.2));
+  const rib = Math.min(0.34, 0.04 + kit.eqD * 0.012);
+  const bead = rib * 0.8;
+  const { h } = sectionHalf(kit, hard, kit.R0);
+  const reach = h + MITER_LEG - COLLAR; // body ends where the collar starts
+  ([0, 1] as const).forEach((leg) => {
+    const end = leg === 0 ? -reach : reach;
+    group.add(new THREE.Mesh(miterLegGeo(kit, hard, leg, kit.R0, end, S), metal));
+    group.add(new THREE.Mesh(miterLegGeo(kit, hard, leg, kit.R0 - kit.wall, end, S), inside));
+  });
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new MiterCut(kit, hard, kit.R0 + rib * 0.35), S, rib, 8, true), seam));
+  if (vanes > 0) group.add(buildMiterVanes(kit, hard, vanes, vaneMat, vaneEdge));
+  const ends = ([0, 1] as const).map((leg) => {
+    const f = miterEndFrame(leg, h, hard);
+    f.add(buildCollar(kit, style, mats, bead, S));
+    group.add(f);
+    return f;
+  });
+  return { group, ends };
+}
+
 type Screws = NonNullable<BuiltConnection["screws"]>;
 type Joint = { moving: { obj: THREE.Object3D; from: number; to: number }[]; screws: Screws };
 
@@ -489,8 +695,22 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
 };
 
 type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number };
+export type OvalElbowKind = "gored" | "miter";
+const MITER_NAME = "90° 2-Piece Mitered Elbow";
+const miterCode = (hard: boolean) => `02PV90 ${hard ? "H" : "E"}`;
 
-export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { type: OvalElbowType; bend: OvalBend; onClose: () => void }) {
+export default function OvalElbow3D({
+  kind = "gored",
+  type: type0,
+  bend: bend0,
+  onClose,
+}: {
+  kind?: OvalElbowKind;
+  type: OvalElbowType;
+  bend: OvalBend;
+  onClose: () => void;
+}) {
+  const miter = kind === "miter";
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -547,6 +767,17 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
     const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
     const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4 });
     const mats: Mats = { metal, inside, seam };
+    // Mitered elbow (vanes): its walls go see-through so the vanes inside read, as the round MEV90 (connections stay solid).
+    const ghost = (m: THREE.MeshStandardMaterial, opacity: number) => {
+      const g = m.clone();
+      g.transparent = true;
+      g.opacity = opacity;
+      g.depthWrite = false;
+      return g;
+    };
+    const ghostMats: Mats = { metal: ghost(metal, 0.28), inside: ghost(inside, 0.16), seam: ghost(seam, 0.85) };
+    const vaneMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, map: spangle, metalness: 0.5, roughness: 0.42, envMapIntensity: 1, side: THREE.DoubleSide });
+    const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -576,7 +807,8 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
     };
 
     let model: THREE.Group | null = null;
-    const view = new THREE.Vector3(0.3, 0.32, 1);
+    // Mitered: more from the side (looking into the outlet a little), so the vane faces show, as the round MEV90.
+    const view = miter ? new THREE.Vector3(0.85, 0.42, -1) : new THREE.Vector3(0.3, 0.32, 1);
     let scale = DEFAULT_A;
     const frame = () => {
       if (!model) return;
@@ -664,14 +896,16 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
       const kit = ovalKit(A, minor);
       const hard = bend === "hard";
       const style: EndStyle = currentC === "coupling" ? "crimp" : currentC === "flange" ? "plain" : "bead";
-      const { group: elbow, ends } = buildOvalElbow(kit, type, hard, mats, style);
+      const { group: elbow, ends } = miter
+        ? buildOvalMiter(kit, hard, ghostMats, style, ovalVanes(hard ? A : minor).n, vaneMat, vaneEdge)
+        : buildOvalElbow(kit, type, hard, mats, style);
       // Connection on the bottom end (the duct hangs straight down under the elbow), same as the round elbows.
       const joint = currentC === "coupling" ? slipJoint(kit, ends[0], mats, screwMat) : currentC === "flange" ? flangeJoint(kit, ends[0], mats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
       screws = joint ? joint.screws.items : [];
       stopPlay();
-      // Bottom end on the left, the other end out to the right, as drawn on the sheet.
-      elbow.rotation.y = Math.PI;
+      // Bottom end on the left, the other end out to the right, as drawn on the sheet (the miter is built that way round).
+      if (!miter) elbow.rotation.y = Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -681,7 +915,7 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
       scale = A;
       renderer.domElement.setAttribute(
         "aria-label",
-        `3D ${OVAL_ELBOWS[type].code} oval elbow, ${A} by ${minor} inches, ${hard ? "hard" : "easy"} bend. Drag to turn, pinch to zoom.`,
+        `3D ${miter ? `${miterCode(hard)} oval mitered elbow with vanes` : `${OVAL_ELBOWS[type].code} oval elbow`}, ${A} by ${minor} inches, ${hard ? "hard" : "easy"} bend. Drag to turn, pinch to zoom.`,
       );
       frame();
     };
@@ -740,7 +974,7 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seam, inside, sheet, screwMat, gasketMat].forEach((m) => m.dispose());
+      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), vaneMat, vaneEdge].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -757,8 +991,9 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    if (location.hash.startsWith(SWFO_ELBOW_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + ovalElbowHash(type, bend));
-  }, [type, bend]);
+    const [prefix, hash] = miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
+    if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
+  }, [type, bend, miter]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -786,20 +1021,27 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
     spec.pieces > 2
       ? `two ${degs(endGore)} end gores, ${spec.pieces - 2} × ${degs(midGore)} middle`
       : `two ${degs(endGore)} gores`;
+  const vanes = ovalVanes(hard ? A : minor);
+  const title = miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
   const info =
     connection !== "none"
       ? CONNECTION_TEXT[connection]
-      : {
+      : miter
+        ? {
+            title: `${MITER_NAME} w/ Vanes (${miterCode(hard)})`,
+            text: `${hard ? "Hard: turns the wide way, A in the bend" : "Easy: turns the flat way, α in the bend"}. Sharp 90° miter, ${vanes.n} turning vane${vanes.n === 1 ? "" : "s"} along the cut (${vanes.range}, assumed). Each leg runs 4″ past the throat, 2″ collar included. Walls shown see-through.`,
+          }
+        : {
           title: `${spec.name} (${spec.code})`,
           text: `${hard ? "Hard" : "Easy"} bend: turns ${hard ? "the wide way, A in the bend" : "the flat way, α in the bend"}, R = 1.5 × ${hard ? "A" : "α"}. ${spec.pieces} pieces (${goreText}), 2″ straight collars.`,
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label="Oval elbows 3D model">
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
-          <p className="truncate text-xs text-white/80">Single Wall Oval · {spec.name} ({spec.code})</p>
+          <p className="truncate text-xs text-white/80">Single Wall Oval · {title}</p>
         </div>
         <button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-full bg-white/15 active:bg-white/25" aria-label="Close 3D model">
           <X className="size-6" />
@@ -854,26 +1096,28 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
           ))}
         </div>
       </div>
-      <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
-        {OVAL_ELBOW_TYPES.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="radio"
-            aria-checked={type === t}
-            aria-label={`${OVAL_ELBOWS[t].name} (${OVAL_ELBOWS[t].code})`}
-            onClick={() => setType(t)}
-            className="btn-raised btn-raised-sm flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-9"
-          >
-            {OVAL_ELBOWS[t].code}
-            <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_ELBOWS[t].short}</span>
-          </button>
-        ))}
-      </div>
+      {!miter && (
+        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
+          {OVAL_ELBOW_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={type === t}
+              aria-label={`${OVAL_ELBOWS[t].name} (${OVAL_ELBOWS[t].code})`}
+              onClick={() => setType(t)}
+              className="btn-raised btn-raised-sm flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-9"
+            >
+              {OVAL_ELBOWS[t].code}
+              <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_ELBOWS[t].short}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Bend">
         <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
           Bend
-          <span className="block tracking-normal normal-case">R = 1.5 × {hard ? "A" : "α"}</span>
+          <span className="block tracking-normal normal-case">{miter ? miterCode(hard) : `R = 1.5 × ${hard ? "A" : "α"}`}</span>
         </span>
         {OVAL_BENDS.map((b) => (
           <button
@@ -881,7 +1125,7 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
             type="button"
             role="radio"
             aria-checked={bend === b}
-            aria-label={b === "hard" ? "Hard bend (R = 1.5 × A)" : "Easy bend (R = 1.5 × α)"}
+            aria-label={miter ? `${b === "hard" ? "Hard" : "Easy"} bend (${miterCode(b === "hard")})` : b === "hard" ? "Hard bend (R = 1.5 × A)" : "Easy bend (R = 1.5 × α)"}
             onClick={() => setBend(b)}
             className="btn-raised btn-raised-sm h-9 rounded-[0.65rem] font-display text-lg leading-none short:h-8"
           >
@@ -924,7 +1168,15 @@ export default function OvalElbow3D({ type: type0, bend: bend0, onClose }: { typ
         </label>
         <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="oval-elbow-info">
           <p className="truncate">
-            R = <b className="font-semibold">{inches(R)}&Prime;</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+            {miter ? (
+              <>
+                Vanes <b className="font-semibold">{vanes.n}</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+              </>
+            ) : (
+              <>
+                R = <b className="font-semibold">{inches(R)}&Prime;</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+              </>
+            )}
           </p>
           <p className="truncate text-muted">Gauge assumed (oval chart)</p>
         </div>

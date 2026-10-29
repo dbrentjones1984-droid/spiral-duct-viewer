@@ -39,6 +39,7 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d"          list of oval fitting 3D models
  *   "#/single-wall-fittings/oval/3d/elbow"    same, with the oval elbows 3D model open on top (90HB5, hard bend shown);
  *   "#/single-wall-fittings/oval/3d/elbow?type=60hb3&bend=easy"   ... opened on that type (90hb5, 60hb3, 45hb3 or 30hb2)
+ *   "#/single-wall-fittings/oval/3d/miter"    same, with the oval mitered elbow (02PV90 H) open; "?bend=easy" for 02PV90 E
  *                                             and bend (hard or easy)
  */
 export type Route =
@@ -47,7 +48,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
   | { page: "swf-oval" }
-  | { page: "swfo-models"; model3d: "elbow" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend }
+  | { page: "swfo-models"; model3d: "elbow" | "miter" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -146,6 +147,9 @@ export const ovalElbowHash = (t: OvalElbowType, bend: OvalBend = "hard") => {
   const q = [t !== "90hb5" ? `type=${t}` : "", bend !== "hard" ? `bend=${bend}` : ""].filter(Boolean).join("&");
   return q ? `${SWFO_ELBOW_3D_HASH}?${q}` : SWFO_ELBOW_3D_HASH;
 };
+export const SWFO_MITER_3D_HASH = "#/single-wall-fittings/oval/3d/miter";
+/** Deep link to the oval mitered elbow (02PV90 H is the default; "?bend=easy" for 02PV90 E). */
+export const ovalMiterHash = (bend: OvalBend = "hard") => (bend !== "hard" ? `${SWFO_MITER_3D_HASH}?bend=${bend}` : SWFO_MITER_3D_HASH);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -211,6 +215,10 @@ function parse(hash: string): Route {
       ovalElbowType: OVAL_ELBOW_TYPES.find((x) => x === t) ?? "90hb5",
       bend: OVAL_BENDS.find((x) => x === b) ?? "hard",
     };
+  }
+  if (h === SWFO_MITER_3D_HASH || h.startsWith(`${SWFO_MITER_3D_HASH}?`)) {
+    const b = new URLSearchParams(h.slice(SWFO_MITER_3D_HASH.length + 1)).get("bend")?.toLowerCase();
+    return { page: "swfo-models", model3d: "miter", bend: OVAL_BENDS.find((x) => x === b) ?? "hard" };
   }
   if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
   if (h === SWF_OVAL_HASH) return { page: "swf-oval" };

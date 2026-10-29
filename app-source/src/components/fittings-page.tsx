@@ -263,13 +263,19 @@ export function FittingsPage({
   );
 }
 
-/** Oval fittings shown on the oval models page (sheet 1: Elbows); more cards get added as the oval sheets come in. */
+/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows); more cards get added as the oval sheets come in. */
 const OVAL_FITTINGS = [
   {
     id: "elbow",
     name: "Oval Elbows",
     text: "90HB5 / 60HB3 / 45HB3 / 30HB2 gored elbows · hard or easy bend · 2″ collars",
     source: "Elbows · R = 1.5 × A (hard) or 1.5 × α (easy)",
+  },
+  {
+    id: "miter",
+    name: "Oval Mitered Elbow",
+    text: "02PV90 H / E · 90° 2-piece mitered elbow with turning vanes · hard or easy · 2″ collars",
+    source: "Mitered Elbows · 4″ legs past the throat",
   },
 ] as const;
 
@@ -285,11 +291,11 @@ export function OvalFittingsPage({
   onOpen3d,
   onClose3d,
 }: {
-  model3d: "elbow" | null;
+  model3d: "elbow" | "miter" | null;
   elbowType?: OvalElbowType;
   bend?: OvalBend;
   onBack: () => void;
-  onOpen3d: (id: "elbow") => void;
+  onOpen3d: (id: "elbow" | "miter") => void;
   onClose3d: () => void;
 }) {
   return (
@@ -317,7 +323,7 @@ export function OvalFittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -351,7 +357,13 @@ export function OvalFittingsPage({
         <Suspense
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
-          <OvalElbow3D key={`oelbow-${elbowType}-${bend}`} type={elbowType ?? "90hb5"} bend={bend ?? "hard"} onClose={onClose3d} />
+          <OvalElbow3D
+            key={`o${model3d}-${elbowType}-${bend}`}
+            kind={model3d === "miter" ? "miter" : "gored"}
+            type={elbowType ?? "90hb5"}
+            bend={bend ?? "hard"}
+            onClose={onClose3d}
+          />
         </Suspense>
       )}
     </main>
