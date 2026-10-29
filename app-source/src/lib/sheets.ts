@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "2.6 MB",
+  sizeLabel: "2.9 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -186,6 +186,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1375,
     alt: "Single Wall Round, Offset and Square-to-Round Transition: OS offset, diameter A both ends with 2 inch ends, the centerline shifted by the OFFSET, L = A x 2. SQ2RD square to round transition, rectangular end H x W to round A with a 2 inch end, length L. Table: A (largest length H or W minus round diameter) 3 to 8 inch, L 12 inch; 9 to 14 inch, L 18; 15 to 26 inch, L 24; 27 inch and larger, L 36.",
+  },
+  {
+    n: 13,
+    title: "Clam Shell Hangers",
+    src: `${base}sheets/single-wall-round-fittings-13.webp`,
+    w: 1132,
+    h: 1288,
+    alt: "Single Wall Round, Clam Shell Hangers: whole clam shell hanger, two half-round straps around the pipe with their flat 2 inch ears stacked on each side, each with a pre-drilled 7/16 inch hole for the threaded rod; half clam shell hanger, the bottom half only, a U strap with 2 inch ears and 7/16 inch holes hung on threaded rods. To order list pipe size; threaded rod not included. Strap width and gauge by pipe diameter: 3 to 15 inch, 1 inch wide x 20 gauge; 16 to 28 inch, 1 inch x 18 gauge; 30 to 38 inch, 1 inch x 16 gauge; 40 to 64 inch, 1-1/2 inch wide x 16 gauge.",
   },
 ] as const;
 

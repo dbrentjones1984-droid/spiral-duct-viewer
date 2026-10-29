@@ -26,6 +26,8 @@
  * the pentagonal lower body, the centre seam up to the crotch and the two 45° legs, each with its 2" collar.
  * os draws an offset (Offset & Square to Round card), side view as on its sheet: the left A end's 2" collar, a straight
  * piece to the first mitre, the angled middle, the second mitre and the right end OFFSET higher with its 2" collar.
+ * hanger draws a whole clam shell hanger, end view as on its sheet: the pipe's circle in the two strap halves, the flat
+ * ears stacked on each side at the centreline, and the threaded rods through them (dashed: not included).
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -43,6 +45,7 @@ export function DuctElbowIcon({
   cap = false,
   wye = false,
   os = false,
+  hanger = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -58,7 +61,19 @@ export function DuctElbowIcon({
   cap?: boolean;
   wye?: boolean;
   os?: boolean;
+  hanger?: boolean;
 }) {
+  if (hanger) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* threaded rods (dashed: not included) */}
+        <path d="M13 2 L13 38 M47 2 L47 38" strokeWidth={1.1} strokeDasharray="2.4 2" />
+        {/* the strap ring round the pipe, and the stacked ears on each side */}
+        <circle cx={30} cy={20} r={12.5} strokeWidth={2} />
+        <path d="M17.5 18.6 L8.5 18.6 L8.5 21.4 L17.5 21.4 M42.5 18.6 L51.5 18.6 L51.5 21.4 L42.5 21.4 M8.5 20 L17.5 20 M42.5 20 L51.5 20" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (os) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

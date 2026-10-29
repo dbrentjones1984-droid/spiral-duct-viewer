@@ -17,7 +17,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, osHash, OS_TYPES, SWF_OS_3D_HASH, type OsType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
+import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, osHash, OS_TYPES, SWF_OS_3D_HASH, type OsType, hangerHash, HANGER_TYPES, SWF_HANGER_3D_HASH, type HangerType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -72,11 +72,19 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  *   CR  concentric reducer: the cone centred; R by the reduction A - B from the sheet's table (reducerLength()).
  *   ER  eccentric reducer: flat along one side (the bottom, as drawn); R = 6" for A - B of 1"-3", else (A - B) x 1.5.
  * Connections go on the small B end.
+ * And the clam shell hangers (kind "hanger", catalog sheet "Clam Shell Hangers"), see buildHanger(): whole or half, on a
+ * see-through pipe and rods, no connection buttons; Play shows how it goes on.
  */
 
 const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
 const COLLAR = 2; // straight ends, as dimensioned on the sheet
 const DEG = Math.PI / 180;
+/**
+ * Clam shell hanger sizes: the sheet covers 3"-64". The stock round list (3"-10", then even sizes to 24") extended in
+ * even sizes to 64", plus 15" (the end of the sheet's 3"-15" table row). No odd sizes past 15", so the table's gaps
+ * (29", 39") never come up.
+ */
+const HANGER_SIZES = [...STOCK_DIAMETERS, 15, ...Array.from({ length: 20 }, (_, i) => 26 + i * 2)].sort((a, b) => a - b);
 /** Gore joints along the 90° turn: end gores 11-1/4°, middle gores 22-1/2°. */
 const SEAMS = [0, 11.25, 33.75, 56.25, 78.75, 90].map((a) => a * DEG);
 
@@ -143,7 +151,7 @@ export function eccentricLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -285,6 +293,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round offset and square to round transition",
     canvas: "3D offset or square to round transition. Drag to turn, pinch to zoom.",
     none: { title: "Offset (OS)", text: "" },
+    note: "Galvanized",
+  },
+  hanger: {
+    clr: 0,
+    sizes: HANGER_SIZES,
+    defaultD: 12,
+    name: "Whole Clam Shell Hanger",
+    aria: "3D model: single wall round whole and half clam shell hangers",
+    canvas: "3D clam shell hanger on a see-through pipe and threaded rods. Drag to turn, pinch to zoom.",
+    none: { title: "Whole Clam Shell Hanger", text: "" },
     note: "Galvanized",
   },
 };
@@ -2872,6 +2890,231 @@ function buildCap(type: CapType, a: number, sheet: THREE.Material, ref: PipeMats
   return { group, moving, screws };
 }
 
+/**
+ * Clam shell hangers (sheet 13 "Clam Shell Hangers"), one model with a type picker and one size, the pipe it holds.
+ * Only the hanger is the product: the pipe, the threaded rods and the nuts are shown see-through (rod not included).
+ *   WHOLE  two half-round straps around the pipe, each ending in a flat 2" ear on each side at the horizontal
+ *          centreline, the upper half's ears stacked on the lower half's, each with a pre-drilled 7/16" hole; a
+ *          threaded rod runs up through the holes on each side.
+ *   HALF   the bottom half only: a U strap cradling the pipe, its 2" ears hung on the rods.
+ * Strap width and gauge come from the sheet's own table by pipe size (hangerStrap(), not the duct gauge table).
+ * Assumed (the sheet shows no number): the hole is centred on the 2" ear; a 3/8" rod (fits the 7/16" hole); a nut and
+ * washer each side of the ears; the strap hugs the pipe. Play ("how it goes on"): the rods are in place, the halves
+ * come in around the pipe along the rods (the lower half up onto the rod ends, the upper half down), then the nuts
+ * run along the rods and snug. Pipe axis along Z (the end view faces the camera, as drawn), rods vertical (Y).
+ */
+type HangerSpec = CrossSpec & { short: string };
+const HANGERS: Record<HangerType, HangerSpec> = {
+  whole: {
+    code: "WHOLE",
+    name: "Whole Clam Shell Hanger",
+    short: "2 halves",
+    labels: ["Pipe · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Two half-round straps clamp round the pipe; their flat 2″ ears stack on each side, each with a 7/16″ hole for the threaded rod. Pipe, rods and nuts see-through.",
+  },
+  half: {
+    code: "HALF",
+    name: "Half Clam Shell Hanger",
+    short: "bottom U",
+    labels: ["Pipe · size"],
+    defaults: [12],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "The bottom half only: a U strap cradles the pipe, its flat 2″ ears (7/16″ holes) hung on the threaded rods. Pipe, rods and nuts see-through.",
+  },
+};
+/** The sheet's strap table by pipe diameter (sizes between rows, e.g. 29″ or 39″, would take the row below). */
+const HANGER_TABLE = [
+  { to: 15, w: 1, ga: 20, row: "3″–15″" },
+  { to: 29, w: 1, ga: 18, row: "16″–28″" },
+  { to: 39, w: 1, ga: 16, row: "30″–38″" },
+  { to: Infinity, w: 1.5, ga: 16, row: "40″–64″" },
+] as const;
+const GAUGE_IN: Record<number, number> = { 20: 0.0359, 18: 0.0478, 16: 0.0598 };
+const EAR = 2; // flat ear past the strap (sheet)
+const HOLE_D = 7 / 16; // pre-drilled hole (sheet)
+const ROD_D = 3 / 8; // threaded rod (assumed: fits the 7/16" hole)
+function hangerStrap(d: number) {
+  const row = HANGER_TABLE.find((r) => d <= r.to)!;
+  return { w: row.w, ga: row.ga, t: GAUGE_IN[row.ga], row: row.row };
+}
+function hangerDims(type: HangerType, d: number) {
+  return { type, d, ...hangerStrap(d) };
+}
+
+/** Part of a flat strap bent round the Z axis: inner radius R, thickness t, width w (along Z), angles a0..a1. */
+function bandArc(R: number, t: number, w: number, a0: number, a1: number, segs: number, uvU: number, uvV: number) {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const idx: number[] = [];
+  const at = (i: number) => a0 + ((a1 - a0) * i) / segs;
+  // Outer (normal out) and inner (normal in) faces.
+  for (const [rr, out] of [
+    [R + t, true],
+    [R, false],
+  ] as const) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= segs; i++) {
+      const a = at(i);
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      for (const z of [-w / 2, w / 2]) {
+        pos.push(rr * c, rr * s, z);
+        nor.push(out ? c : -c, out ? s : -s, 0);
+        uv.push(rr * (a - a0) * uvU, (z + w / 2) * uvV);
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      const k = base + i * 2;
+      if (out) idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+      else idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    }
+  }
+  // The two edges (z = ±w/2).
+  for (const z of [-w / 2, w / 2]) {
+    const base = pos.length / 3;
+    for (let i = 0; i <= segs; i++) {
+      const a = at(i);
+      for (const rr of [R, R + t]) {
+        pos.push(rr * Math.cos(a), rr * Math.sin(a), z);
+        nor.push(0, 0, Math.sign(z));
+        uv.push(rr * (a - a0) * uvU, rr * uvV);
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      const k = base + i * 2;
+      if (z > 0) idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      else idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+
+/** A flat ear: x0..x1 (either side of 0), w wide along Z, thickness t from y0 up, with the 7/16" hole at xh. */
+function earPlate(x0: number, x1: number, w: number, t: number, y0: number, xh: number, uvU: number, uvV: number) {
+  const lo = Math.min(x0, x1);
+  const hi = Math.max(x0, x1);
+  const shape = new THREE.Shape([new THREE.Vector2(lo, -w / 2), new THREE.Vector2(hi, -w / 2), new THREE.Vector2(hi, w / 2), new THREE.Vector2(lo, w / 2)]);
+  shape.holes.push(new THREE.Path(new THREE.EllipseCurve(xh, 0, HOLE_D / 2, HOLE_D / 2, 0, Math.PI * 2, true, 0).getPoints(28)));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: t, bevelEnabled: false, curveSegments: 1 });
+  geo.rotateX(-Math.PI / 2); // extrusion -> up (+Y), the shape's width -> Z
+  geo.translate(0, y0, 0);
+  const puv = geo.getAttribute("uv") as THREE.BufferAttribute;
+  for (let i = 0; i < puv.count; i++) puv.setXY(i, puv.getX(i) * uvU, puv.getY(i) * uvV);
+  return geo;
+}
+
+/** Hex nut on a flat washer, sitting on y = 0 and going up (+Y), round a 3/8" rod. */
+function nutMesh(mat: THREE.Material) {
+  const g = new THREE.Group();
+  const WASHER_T = 0.06;
+  const washer = new THREE.CylinderGeometry(0.5, 0.5, WASHER_T, 28);
+  washer.translate(0, WASHER_T / 2, 0);
+  const hex = new THREE.Shape(Array.from({ length: 6 }, (_, i) => new THREE.Vector2(0.325 * Math.cos((i * Math.PI) / 3), 0.325 * Math.sin((i * Math.PI) / 3))));
+  hex.holes.push(new THREE.Path(new THREE.EllipseCurve(0, 0, ROD_D / 2, ROD_D / 2, 0, Math.PI * 2, true, 0).getPoints(16)));
+  const nut = new THREE.ExtrudeGeometry(hex, { depth: 0.33, bevelEnabled: false, curveSegments: 1 });
+  nut.rotateX(-Math.PI / 2);
+  nut.translate(0, WASHER_T, 0);
+  g.add(new THREE.Mesh(washer, mat), new THREE.Mesh(nut, mat));
+  return { obj: g, height: WASHER_T + 0.33 };
+}
+
+/**
+ * Build one clam shell hanger on its see-through pipe, rods and nuts, in the pulled-apart pose (Play moves it together).
+ * Returns the group, the Play motion and the nuts (driven like the screws: along the rod, turning).
+ */
+function buildHanger(type: HangerType, d: number, strapMat: THREE.Material, ref: PipeMats, rodMat: THREE.Material, nutMat: THREE.Material) {
+  const group = new THREE.Group();
+  const r = d / 2;
+  const s = hangerStrap(d);
+  const t = Math.max(s.t, 0.05); // drawn a touch thicker at 20 ga so the edge shows
+  const R = r + 0.02; // the strap hugs the pipe
+  const xh = R + t + EAR / 2; // hole centred on the ear (assumed)
+  const segs = Math.min(160, 48 + Math.round(d * 2));
+  const uvU = 1 / (Math.PI * d);
+  const uvV = 1 / TEX_LENGTH;
+  const halfLift = Math.max(3, d * 0.2); // how far each half starts off the pipe
+  const nutLift = Math.max(1.5, d * 0.05); // how far each nut starts along the rod
+
+  // See-through pipe along Z.
+  const pipe = buildPipe(d, ref, Math.max(8, d * 0.45));
+  pipe.rotation.y = Math.PI / 2;
+  group.add(pipe);
+
+  // One strap half: the arc and its two ears (upper: ears on top of the centreline, lower: under it).
+  const half = (upper: boolean) => {
+    const h = new THREE.Group();
+    h.add(new THREE.Mesh(bandArc(R, t, s.w, upper ? 0 : Math.PI, upper ? Math.PI : Math.PI * 2, segs, uvU, uvV), strapMat));
+    const y0 = upper ? 0 : -t;
+    h.add(new THREE.Mesh(earPlate(R, R + t + EAR, s.w, t, y0, xh, uvU, uvV), strapMat));
+    h.add(new THREE.Mesh(earPlate(-R, -(R + t + EAR), s.w, t, y0, -xh, uvU, uvV), strapMat));
+    return h;
+  };
+  // Moves along Y: a frame turned so its X is world +Y (Play moves X), the half turned back inside it.
+  const moving: Joint["moving"] = [];
+  const slideY = (obj: THREE.Object3D, y0: number) => {
+    const f = new THREE.Group();
+    f.rotation.z = Math.PI / 2;
+    const slider = new THREE.Group();
+    slider.position.x = y0;
+    obj.rotation.z = -Math.PI / 2;
+    slider.add(obj);
+    f.add(slider);
+    group.add(f);
+    moving.push({ obj: slider, from: 0, to: -y0 });
+  };
+  slideY(half(false), -halfLift);
+  if (type === "whole") slideY(half(true), halfLift);
+
+  // Nuts: the stack's top (whole: upper ear) and bottom (lower ear); one under and one over the ears on each side.
+  const top = type === "whole" ? t : 0;
+  const bottom = -t;
+  const nut = nutMesh(nutMat);
+  const items: Joint["screws"]["items"] = [];
+  const sg = new THREE.Group();
+  const each = 0.4;
+  const placed: [number, boolean][] = [
+    [-xh, false],
+    [xh, false],
+    [-xh, true],
+    [xh, true],
+  ];
+  placed.forEach(([x, over], i) => {
+    const obj = new THREE.Group();
+    obj.position.set(x, over ? top : bottom, 0);
+    if (!over) obj.rotation.x = Math.PI; // under the ear: local +Y points down, so it runs up the rod
+    const n = nut.obj.clone();
+    obj.add(n);
+    sg.add(obj);
+    const start = (i / (placed.length - 1)) * (1 - each);
+    items.push({ obj, drive: n, start, end: start + each, lift: nutLift });
+  });
+
+  // Rods: from above the pipe down past the lower nuts (the hanger halves slide onto their ends).
+  const rodTop = R + t + Math.max(3, d * 0.15);
+  const rodBottom = bottom - nut.height - nutLift - 0.75;
+  for (const x of [-xh, xh]) {
+    const rod = new THREE.CylinderGeometry(ROD_D / 2, ROD_D / 2, rodTop - rodBottom, 16, 1, false);
+    rod.translate(x, (rodTop + rodBottom) / 2, 0);
+    group.add(new THREE.Mesh(rod, rodMat));
+  }
+  group.add(sg);
+  return { group, moving, screws: { group: sg, items } };
+}
+
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
@@ -2988,7 +3231,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType | OsType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType | OsType | HangerType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -3006,8 +3249,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const wyes = kind === "wye";
   // Offset / square to round (sheet 12): same picker; OS sizes A and the offset, SQ2RD H, W and the round A.
   const oss = kind === "os";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : oss ? OSS : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : oss ? "os" : "t90");
+  // Clam shell hangers (sheet 13): same picker (whole / half), one pipe size; no connection buttons (Play puts it on).
+  const hangers = kind === "hanger";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : oss ? OSS : hangers ? HANGERS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : oss ? "os" : hangers ? "whole" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -3034,7 +3279,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes || oss;
+  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes || oss || hangers;
+  const hangerD = hangers ? hangerDims(teeType as HangerType, teeSizes[0]) : null;
   const osD = oss ? osDims(teeType as OsType, teeSizes) : null;
   // SQ2RD: gauge by the larger of H and W (the sheet's biggest dimension); everything else by A.
   const gauge = stockGauge(osD ? osD.gaugeD : cross ? teeSizes[0] : diameter);
@@ -3094,6 +3340,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     const refMats: PipeMats = { metal: ghost(metal, 0.16), inside: ghost(inside, 0.08), seam: ghost(seam, 0.22), rim: ghost(seam, 0.6) };
     const vaneMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, map: spangle, metalness: 0.5, roughness: 0.42, envMapIntensity: 1, side: THREE.DoubleSide });
     const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
+    // Clam shell hangers: the threaded rods and nuts are not included, so see-through (a bit stronger than the pipe).
+    const rodMat = ghost(screwMat, 0.42);
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -3216,11 +3464,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
       if (kind === "tap") view = new THREE.Vector3(0.35, 0.55, 1); // taps: more from above, so the saddle plate reads
       if (kind === "ltap") view = new THREE.Vector3(0.22, 0.42, 1); // lateral taps: a bit lower, so the 45° lean reads too
-      if (kind === "cap") {
+      if (kind === "cap" || kind === "hanger") {
         // Sheet 10 parts: built with their see-through duct / wall, own Play motion; no connection.
+        // Sheet 13 hangers: the same, on their see-through pipe, rods and nuts.
         const t = currentTee as CapType;
-        view = t === "sc" ? new THREE.Vector3(0.35, 0.6, 1) : t === "bm" ? new THREE.Vector3(0.3, 0.38, 1) : t === "ec" ? new THREE.Vector3(0.75, 0.32, 1) : new THREE.Vector3(0.3, 0.32, 1);
-        const part = buildCap(t, currentTeeSizes[0], sheet, refMats, seam, screwMat);
+        view = kind === "hanger" ? new THREE.Vector3(0.42, 0.2, 1) : t === "sc" ? new THREE.Vector3(0.35, 0.6, 1) : t === "bm" ? new THREE.Vector3(0.3, 0.38, 1) : t === "ec" ? new THREE.Vector3(0.75, 0.32, 1) : new THREE.Vector3(0.3, 0.32, 1);
+        const part = kind === "hanger" ? buildHanger(currentTee as HangerType, currentTeeSizes[0], sheet, refMats, rodMat, rodMat) : buildCap(t, currentTeeSizes[0], sheet, refMats, seam, screwMat);
         moving = part.moving.map((m) => ({ ...m, base: m.obj.position.x }));
         screws = part.screws.items;
         stopPlay();
@@ -3303,7 +3552,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" ? currentTeeSizes[0] : kind === "os" ? osDims(currentTee as OsType, currentTeeSizes).gaugeD : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" || kind === "hanger" ? currentTeeSizes[0] : kind === "os" ? osDims(currentTee as OsType, currentTeeSizes).gaugeD : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -3372,7 +3621,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), ...new Set(Object.values(refMats)), plateMat, vaneMat, vaneEdge].forEach((m) => m.dispose());
+      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), ...new Set(Object.values(refMats)), plateMat, vaneMat, vaneEdge, rodMat].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -3421,7 +3670,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const wyeD = wyes ? wyeDims(teeType as WyeType, teeSizes) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
     ? { L: 0, R: redD.R, reducing: true }
-    : caps || wyes || oss
+    : caps || wyes || oss || hangers
     ? { L: 0, R: 0, reducing: false }
     : conical
     ? cteeDims(teeType as CteeType, teeSizes)
@@ -3435,7 +3684,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const bound = (i: number) => teeSpec.bound?.[i] ?? 0;
   /** Largest size select i may take, given the others (taps: A up to P - gap; else up to its bound, A unlimited). */
   const maxSize = (i: number, s: readonly number[]) => (tapSpec ? (i === 0 ? s[1] - tapSpec.gap : Infinity) : i === 0 ? Infinity : reds ? s[0] - 1 : s[bound(i)]);
-  const name = cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
+  const name = hangers ? teeSpec.name : cross ? `${teeSpec.name} (${teeSpec.code})` : vanes ? (tee ? "Bullhead Tee 90° (BTV90)" : "Mitered 90° Elbow (MEV90)") : spec.name;
   const info =
     cross
       ? connection !== "none"
@@ -3461,7 +3710,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (oss) {
+    if (hangers) {
+      if (location.hash.startsWith(SWF_HANGER_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + hangerHash(t as HangerType));
+    } else if (oss) {
       if (location.hash.startsWith(SWF_OS_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + osHash(t as OsType));
     } else if (wyes) {
       if (location.hash.startsWith(SWF_WYE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + wyeHash(t as WyeType));
@@ -3562,8 +3813,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </p>
         )}
       </div>
-      {caps ? (
-        // Sheet 10 parts are the connection themselves: no Coupling / Flange buttons, just Play to put the part on.
+      {caps || hangers ? (
+        // Sheet 10 parts and sheet 13 hangers are the connection themselves: no Coupling / Flange buttons, just Play to put the part on.
         <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5">
           <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
             <span className="col-span-2 pb-2 text-[11px] font-medium tracking-wide text-muted uppercase">How it goes on</span>
@@ -3651,22 +3902,22 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps || reds || wyes || oss ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={oss ? "Offset or transition type" : wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(oss ? OS_TYPES : wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds || wyes || oss || hangers ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={hangers ? "Hanger type" : oss ? "Offset or transition type" : wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(hangers ? HANGER_TYPES : oss ? OS_TYPES : wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
                 role="radio"
                 aria-checked={teeType === t}
-                aria-label={`${fam[t].name} (${fam[t].code})`}
+                aria-label={hangers ? fam[t].name : `${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes || oss ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes || oss || hangers ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {(taps || reds || caps || wyes || oss) && (
+                {(taps || reds || caps || wyes || oss || hangers) && (
                   <span className={`font-sans text-[10px] leading-none font-medium uppercase opacity-75 ${caps ? "tracking-normal" : "tracking-wider"}`}>
-                    {oss ? OSS[t as OsType].short : wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
+                    {hangers ? HANGERS[t as HangerType].short : oss ? OSS[t as OsType].short : wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
                   </span>
                 )}
               </button>
@@ -3706,7 +3957,17 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {osD ? (
+              {hangerD ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{hangerD.w === 1 ? "1" : "1½"}&Prime; × {hangerD.ga} ga</b> strap · ears <b className="font-semibold">{EAR}&Prime;</b> ·{" "}
+                    <b className="font-semibold">7/16&Prime;</b> holes
+                  </p>
+                  <p className="truncate text-muted" data-testid="rod-note">
+                    Order by pipe size · threaded rod not included
+                  </p>
+                </>
+              ) : osD ? (
                 osD.type === "os" ? (
                   <>
                     <p className="truncate">
