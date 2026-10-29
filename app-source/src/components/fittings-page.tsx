@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
-import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType } from "@/lib/route";
+import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -263,7 +263,7 @@ export function FittingsPage({
   );
 }
 
-/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows, sheet 3: Tees and Crosses, sheet 4: Conical Tees and Conical Crosses); more cards get added as the oval sheets come in. */
+/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows, sheet 3: Tees and Crosses, sheet 4: Conical Tees and Conical Crosses, sheet 5: Low-Loss Tees and Crosses); more cards get added as the oval sheets come in. */
 const OVAL_FITTINGS = [
   {
     id: "elbow",
@@ -289,6 +289,12 @@ const OVAL_FITTINGS = [
     text: "OCT90 / ORCT90 / OCC180 / ORCC180 · conical oval branches on the rounded side, reducers on the R types · 2″ collars",
     source: "Conical Tees and Conical Crosses · L = branch + 5″",
   },
+  {
+    id: "lltee",
+    name: "Oval Low-Loss Tees & Crosses",
+    text: "OT90-L / ORT90-L / OC180-L / ORC180-L · low-loss oval branches on the rounded side, swept on the inlet side, T = 4″ · 2″ collars",
+    source: "Low-Loss Tees and Crosses · L = branch + 7″",
+  },
 ] as const;
 
 /**
@@ -301,17 +307,19 @@ export function OvalFittingsPage({
   bend,
   teeType,
   cteeType,
+  llteeType,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
-  model3d: "elbow" | "miter" | "tee" | "ctee" | null;
+  model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | null;
   elbowType?: OvalElbowType;
   bend?: OvalBend;
   teeType?: OvalTeeType;
   cteeType?: OvalCteeType;
+  llteeType?: OvalLlteeType;
   onBack: () => void;
-  onOpen3d: (id: "elbow" | "miter" | "tee" | "ctee") => void;
+  onOpen3d: (id: "elbow" | "miter" | "tee" | "ctee" | "lltee") => void;
   onClose3d: () => void;
 }) {
   return (
@@ -339,7 +347,7 @@ export function OvalFittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} cross={f.id === "tee" || f.id === "ctee"} conical={f.id === "ctee"} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} cross={f.id === "tee" || f.id === "ctee" || f.id === "lltee"} conical={f.id === "ctee"} lowLoss={f.id === "lltee"} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -374,11 +382,11 @@ export function OvalFittingsPage({
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
           <OvalElbow3D
-            key={`o${model3d}-${elbowType}-${bend}-${teeType}-${cteeType}`}
-            kind={model3d === "miter" ? "miter" : model3d === "tee" ? "tee" : model3d === "ctee" ? "ctee" : "gored"}
+            key={`o${model3d}-${elbowType}-${bend}-${teeType}-${cteeType}-${llteeType}`}
+            kind={model3d === "miter" ? "miter" : model3d === "tee" ? "tee" : model3d === "ctee" ? "ctee" : model3d === "lltee" ? "lltee" : "gored"}
             type={elbowType ?? "90hb5"}
             bend={bend ?? "hard"}
-            teeType={model3d === "ctee" ? (cteeType ?? "oct90") : (teeType ?? "0t90")}
+            teeType={model3d === "ctee" ? (cteeType ?? "oct90") : model3d === "lltee" ? (llteeType ?? "ot90-l") : (teeType ?? "0t90")}
             onClose={onClose3d}
           />
         </Suspense>

@@ -12,6 +12,8 @@
  * top and one on the bottom, each with its 2" end and its saddle arch.
  * cross + conical draws a conical cross (Conical Tees & Crosses card): the same main, each tap a 2" collar then a cone
  * flaring wider down to the main, with its saddle arch.
+ * cross + lowLoss draws a low-loss cross (Low-Loss Tees & Crosses card): the same main, each tap a 2" collar, straight
+ * on the right (downstream) side and sweeping out to the left (upstream) down to the main, with its saddle arch.
  * lateral draws a 45° lateral cross (Laterals card), front view as on its sheet: straight main with 2" ends, a branch on
  * top and one on the bottom, both at 45° leaning right, each with its beaded 2" collar and its saddle curve.
  * tap draws a straight saddle tap (Straight & Conical Taps card), front view as on its sheet: the 2" beaded collar on a
@@ -40,6 +42,7 @@ export function DuctElbowIcon({
   tee = false,
   cross = false,
   conical = false,
+  lowLoss = false,
   lateral = false,
   tap = false,
   ltap = false,
@@ -57,6 +60,7 @@ export function DuctElbowIcon({
   tee?: boolean;
   cross?: boolean;
   conical?: boolean;
+  lowLoss?: boolean;
   lateral?: boolean;
   tap?: boolean;
   ltap?: boolean;
@@ -162,6 +166,16 @@ export function DuctElbowIcon({
         <path d="M4 14 L21.6 14 L31.9 3.7 L38.3 10.1 L34.4 14 L56 14 L56 26 L34.4 26 L38.3 29.9 L31.9 36.3 L21.6 26 L4 26 Z" strokeWidth={2} />
         {/* beads on the ends and the branch collars, the branches' saddle curves */}
         <path d="M9 14 L9 26 M51 14 L51 26 M29.7 5.9 L36.2 12.2 M29.7 34.1 L36.2 27.8 M21.6 14 Q25 19.5 34.4 14 M21.6 26 Q25 20.5 34.4 26" strokeWidth={1.1} />
+      </svg>
+    );
+  }
+  if (cross && lowLoss) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* main with 2" ends, low-loss taps top and bottom (collar, straight right side, swept left side) */}
+        <path d="M4 13 L18 13 Q24 12 26 6 L26 2 L38 2 L38 13 L56 13 L56 27 L38 27 L38 38 L26 38 L26 34 Q24 28 18 27 L4 27 Z" strokeWidth={2} />
+        {/* beads on the ends, collar seams, the taps' saddle arches */}
+        <path d="M9 13 L9 27 M51 13 L51 27 M26 6 L38 6 M26 34 L38 34 M18 13 A10 5 0 0 0 38 13 M18 27 A10 5 0 0 1 38 27" strokeWidth={1.1} />
       </svg>
     );
   }
