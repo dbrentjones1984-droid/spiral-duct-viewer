@@ -1,4 +1,5 @@
-// Single Wall Duct · Round: Brent's redesigned catalog sheets 1-5 (single-wall-round.pdf).
+// Single Wall Duct · Round: Brent's redesigned catalog sheets 1-5 (single-wall-round.pdf), plus sheet 6 "Manifolding"
+// (Manifold Spiral Pipe; sheet only, no 3D model), also added as page 6 of the PDF.
 // The PDF is image-only (one ~1100x1430 scan per page), so the sheets are shown as WebP images at that full
 // resolution; the original PDF is offered as a download.
 
@@ -7,7 +8,7 @@ const base = import.meta.env.BASE_URL;
 export const SW_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Duct.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Duct.pdf",
-  sizeLabel: "7.4 MB",
+  sizeLabel: "8.7 MB",
 };
 
 export const SW_ROUND_SHEETS = [
@@ -50,6 +51,14 @@ export const SW_ROUND_SHEETS = [
     w: 1133,
     h: 1388,
     alt: "Sheet 5, Single Wall Round, Spiral Pipe and Fittings Material and Fabrication Options: galvanized, paint grade, aluminum, PVC coated and stainless steel gauges and fitting construction.",
+  },
+  {
+    n: 6,
+    title: "Manifolding",
+    src: `${base}sheets/single-wall-round-6.webp`,
+    w: 1117,
+    h: 1408,
+    alt: "Sheet 6, Single Wall Round, Manifolding (Manifold Spiral Pipe): 14 inch spiral pipe with an 8 inch conical tap (CT) and 8 inch straight tap (ST) installed and a 10 inch reducer installed, and the same pipe with grille taps installed. Reduces installation cost by eliminating most pipe and fitting connections; sections up to 20 feet, numbered and color-coded by floor or AHU; factory installed flanges available; taps installed as specified by the drawing; fewer joints means less duct leakage; standard taps tack welded and sealed (continuously welded taps available).",
   },
 ] as const;
 
@@ -227,7 +236,7 @@ export type SheetDoc = {
 
 export const SW_ROUND_DOC: SheetDoc = {
   title: "SINGLE WALL ROUND",
-  subtitle: "Spiral duct · sheets 1-5",
+  subtitle: "Spiral duct · sheets 1-6",
   sheets: SW_ROUND_SHEETS,
   pdf: SW_ROUND_PDF,
   model: "round",

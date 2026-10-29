@@ -23,7 +23,7 @@ const PILL_H = 64;
 type Layout = { vw: number; barH: number; availH: number };
 
 /**
- * A sheet page (Single Wall Duct > Round: catalog sheets 1-5; > Oval: the gauge chart) as full-resolution images, with Back, View 3D Model,
+ * A sheet page (Single Wall Duct > Round: catalog sheets 1-6, sheet 6 Manifolding; > Oval: the gauge chart) as full-resolution images, with Back, View 3D Model,
  * Download PDF and zoom (Fit / Width / % steps, plus normal pinch-zoom). The 3D model opens on top as its own
  * history step, so the phone's back button closes it.
  */
