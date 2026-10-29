@@ -42,6 +42,8 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/miter"    same, with the oval mitered elbow (02PV90 H) open; "?bend=easy" for 02PV90 E
  *   "#/single-wall-fittings/oval/3d/tee"      same, with the oval tees & crosses 3D model open on top (0T90 shown);
  *   "#/single-wall-fittings/oval/3d/tee?type=0rt90"   ... opened on that type (0t90, 0rt90, 0c180 or 0rc180)
+ *   "#/single-wall-fittings/oval/3d/conical-tee"   same, with the oval conical tees & crosses open on top (OCT90 shown);
+ *   "#/single-wall-fittings/oval/3d/conical-tee?type=orct90"   ... opened on that type (oct90, orct90, occ180 or orcc180)
  *                                             and bend (hard or easy)
  */
 export type Route =
@@ -50,7 +52,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
   | { page: "swf-oval" }
-  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType }
+  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -97,6 +99,9 @@ export type OvalElbowType = (typeof OVAL_ELBOW_TYPES)[number];
 /** Single Wall Oval Tees and Crosses sheet types (one model, picked in the viewer). */
 export const OVAL_TEE_TYPES = ["0t90", "0rt90", "0c180", "0rc180"] as const;
 export type OvalTeeType = (typeof OVAL_TEE_TYPES)[number];
+/** Single Wall Oval Conical Tees and Conical Crosses sheet types (one model, picked in the viewer). */
+export const OVAL_CTEE_TYPES = ["oct90", "orct90", "occ180", "orcc180"] as const;
+export type OvalCteeType = (typeof OVAL_CTEE_TYPES)[number];
 export const OVAL_BENDS = ["hard", "easy"] as const;
 export type OvalBend = (typeof OVAL_BENDS)[number];
 
@@ -158,6 +163,9 @@ export const ovalMiterHash = (bend: OvalBend = "hard") => (bend !== "hard" ? `${
 export const SWFO_TEE_3D_HASH = "#/single-wall-fittings/oval/3d/tee";
 /** Deep link to one oval tee/cross type (0T90 is the default, so it gets the plain link). */
 export const ovalTeeHash = (t: OvalTeeType = "0t90") => (t !== "0t90" ? `${SWFO_TEE_3D_HASH}?type=${t}` : SWFO_TEE_3D_HASH);
+export const SWFO_CTEE_3D_HASH = "#/single-wall-fittings/oval/3d/conical-tee";
+/** Deep link to one oval conical tee/cross type (OCT90 is the default, so it gets the plain link). */
+export const ovalCteeHash = (t: OvalCteeType = "oct90") => (t !== "oct90" ? `${SWFO_CTEE_3D_HASH}?type=${t}` : SWFO_CTEE_3D_HASH);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -231,6 +239,10 @@ function parse(hash: string): Route {
   if (h === SWFO_TEE_3D_HASH || h.startsWith(`${SWFO_TEE_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWFO_TEE_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swfo-models", model3d: "tee", ovalTeeType: OVAL_TEE_TYPES.find((x) => x === t) ?? "0t90" };
+  }
+  if (h === SWFO_CTEE_3D_HASH || h.startsWith(`${SWFO_CTEE_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWFO_CTEE_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swfo-models", model3d: "ctee", ovalCteeType: OVAL_CTEE_TYPES.find((x) => x === t) ?? "oct90" };
   }
   if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
   if (h === SWF_OVAL_HASH) return { page: "swf-oval" };

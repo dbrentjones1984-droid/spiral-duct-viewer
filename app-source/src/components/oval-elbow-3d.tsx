@@ -5,7 +5,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_ELBOW_TYPES, OVAL_TEE_TYPES, ovalElbowHash, ovalMiterHash, ovalTeeHash, SWFO_ELBOW_3D_HASH, SWFO_MITER_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalElbowType, type OvalTeeType } from "@/lib/route";
+import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_TEE_TYPES, ovalCteeHash, ovalElbowHash, ovalMiterHash, ovalTeeHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_MITER_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalTeeType } from "@/lib/route";
 import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
@@ -33,6 +33,9 @@ import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-siz
  * oval branches on the main's rounded (minor) side in a saddle (major axis along the main), L = branch + 3" between the 2" ends, the R types
  * through a concentric oval reducer to the outlet (round CR table by the major axis reduction). Connection on the
  * right (outlet) end; see buildOvalTee().
+ * And the Conical Tees and Conical Crosses sheet (oval fittings sheet 4), kind "ctee": OCT90 / ORCT90 / OCC180 / ORCC180,
+ * the same fitting with conical branches (the round CT90's cone: 5" tall from the main's crown to the 2" collar, flaring
+ * 1" each side along the main), L = branch + 5".
  * Units are inches.
  */
 
@@ -602,11 +605,28 @@ function buildOvalMiter(kit: Kit, hard: boolean, mats: Mats, style: EndStyle, va
  */
 const OTEE_BRANCH = 4;
 const OTEE_EXTRA = 3;
+/**
+ * Conical branches (sheet 4), the round CT90's convention: the cone runs OCONE_H (5") from the main's crown (the top of
+ * its rounded edge) to the 2" collar, flaring OCONE_FLARE (1") each side along the main (base = B + 2" at the crown; the
+ * sheet shows no number), keeping the branch's minor b across. L = B + OCTEE_EXTRA (5").
+ */
+const OCONE_H = 5;
+const OCONE_FLARE = 1;
+const OCTEE_EXTRA = 5;
 export type OvalSz = { A: number; a: number };
-export const OVAL_TEES: Record<
-  OvalTeeType,
-  { code: string; name: string; short: string; reducing: boolean; cross: boolean; labels: { out?: string; top: string; bottom?: string }; lRule: string; defaults: { out?: OvalSz; top: OvalSz; bottom?: OvalSz } }
-> = {
+export type OvalAnyTee = OvalTeeType | OvalCteeType;
+type OvalTeeSpec = {
+  code: string;
+  name: string;
+  short: string;
+  reducing: boolean;
+  cross: boolean;
+  cone?: boolean;
+  labels: { out?: string; top: string; bottom?: string };
+  lRule: string;
+  defaults: { out?: OvalSz; top: OvalSz; bottom?: OvalSz };
+};
+export const OVAL_TEES: Record<OvalAnyTee, OvalTeeSpec> = {
   "0t90": { code: "0T90", name: "Tee 90°", short: "Tee", reducing: false, cross: false, labels: { top: "B×b · branch" }, lRule: "B + 3″", defaults: { top: { A: 18, a: 10 } } },
   "0rt90": {
     code: "0RT90",
@@ -638,7 +658,50 @@ export const OVAL_TEES: Record<
     lRule: "C + 3″",
     defaults: { out: { A: 19, a: 10 }, top: { A: 14, a: 8 }, bottom: { A: 12, a: 6 } },
   },
+  oct90: { code: "OCT90", name: "Conical Tee 90°", short: "Con. tee", reducing: false, cross: false, cone: true, labels: { top: "B×b · branch" }, lRule: "B + 5″", defaults: { top: { A: 18, a: 10 } } },
+  orct90: {
+    code: "ORCT90",
+    name: "Reducing Conical Tee 90°",
+    short: "Red. c. tee",
+    reducing: true,
+    cross: false,
+    cone: true,
+    labels: { out: "B×b · outlet", top: "C×c · branch" },
+    lRule: "C + 5″",
+    defaults: { out: { A: 19, a: 10 }, top: { A: 14, a: 8 } },
+  },
+  occ180: {
+    code: "OCC180",
+    name: "Conical Cross 180°",
+    short: "Con. cross",
+    reducing: false,
+    cross: true,
+    cone: true,
+    labels: { top: "B×b · top", bottom: "C×c · bottom" },
+    lRule: "B + 5″",
+    defaults: { top: { A: 18, a: 10 }, bottom: { A: 14, a: 8 } },
+  },
+  orcc180: {
+    code: "ORCC180",
+    name: "Reducing Conical Cross 180°",
+    short: "Red. c. cross",
+    reducing: true,
+    cross: true,
+    cone: true,
+    labels: { out: "B×b · outlet", top: "C×c · top", bottom: "D×d · bottom" },
+    lRule: "C + 5″",
+    defaults: { out: { A: 19, a: 10 }, top: { A: 14, a: 8 }, bottom: { A: 12, a: 6 } },
+  },
 };
+/** Flare along the main (each side) of a branch at distance s out from the main's axis: 0 for straight branches. */
+type Flare = (s: number) => number;
+const noFlare: Flare = () => 0;
+/** A branch outline point (kit kb, end radius rb) with its flats stretched by ext each side along the main: [x, y, ny, nx]. */
+function branchPt(kb: Kit, rb: number, u: number, ext: number): [number, number, number, number] {
+  const [ym, zm, ny, nz] = kb.point(u, rb, kb.R0);
+  const x = nz === 0 && kb.F > 0 ? (zm * (kb.F / 2 + ext)) / (kb.F / 2) : zm + Math.sign(zm) * ext;
+  return [x, ym, ny, nz];
+}
 
 /**
  * Oval reducer length R (the sheet: "refer to reducer drawing"): the round concentric reducer's CR table by the major
@@ -653,9 +716,9 @@ export function ovalReducerLength(A: number, B: number) {
 function mainEdge(kit: Kit, rho: number, y: number) {
   return kit.F / 2 + Math.sqrt(Math.max(0, rho * rho - y * y));
 }
-type TeeHole = { dir: 1 | -1; F: number; r: number };
-/** Half length (along X) of a branch's hole at height y, or -1 outside it. */
-const holeHalf = (h: TeeHole, y: number) => (Math.abs(y) < h.r ? h.F / 2 + Math.sqrt(h.r * h.r - y * y) : -1);
+type TeeHole = { dir: 1 | -1; F: number; r: number; ext: Flare };
+/** Half length (along X) of a branch's hole at height y on the main's surface at s out, or -1 outside it. */
+const holeHalf = (h: TeeHole, y: number, s: number) => (Math.abs(y) < h.r ? h.F / 2 + h.ext(s) + Math.sqrt(h.r * h.r - y * y) : -1);
 
 /** The main between its 2" ends (x = -L/2..L/2) with the branches' holes cut out, as two halves (x < 0 and x > 0). */
 function teeMainGeo(km: Kit, rho: number, L: number, holes: TeeHole[], S: number) {
@@ -665,9 +728,9 @@ function teeMainGeo(km: Kit, rho: number, L: number, holes: TeeHole[], S: number
     return holes.findIndex((h) => h.dir * z > km.F / 2 - 1e-9 && Math.abs(y) < h.r);
   };
   const halfAt = (u: number) => {
-    const [y] = at(u);
+    const [y, z] = at(u);
     const k = which(u);
-    return k < 0 ? 0 : holeHalf(holes[k], y);
+    return k < 0 ? 0 : holeHalf(holes[k], y, Math.abs(z));
   };
   // columns around the section; at each hole edge two columns at the same place, one each side of the step
   let cols: { u: number; h: number }[] = [];
@@ -686,7 +749,8 @@ function teeMainGeo(km: Kit, rho: number, L: number, holes: TeeHole[], S: number
           else hi = mid;
         }
         const ue = (lo + hi) / 2;
-        const edge = (k: number) => (k < 0 ? 0 : holes[k].F / 2);
+        const se = Math.abs(at(ue)[1]);
+        const edge = (k: number) => (k < 0 ? 0 : holes[k].F / 2 + holes[k].ext(se));
         cols.push({ u: ue, h: edge(k0) }, { u: ue, h: edge(k1) });
       }
     }
@@ -724,22 +788,54 @@ function teeMainGeo(km: Kit, rho: number, L: number, holes: TeeHole[], S: number
 }
 
 /** A branch (kit kb, end radius rb) out of the main's rounded edge (end radius rhoMain) on the dir side, out to |z| = yTo. */
-function teeBranchGeo(km: Kit, rhoMain: number, kb: Kit, rb: number, dir: 1 | -1, yTo: number, S: number) {
-  const rows = 8;
+function teeBranchGeo(km: Kit, rhoMain: number, kb: Kit, rb: number, dir: 1 | -1, yTo: number, S: number, ext: Flare = noFlare) {
+  const rows = ext === noFlare ? 8 : 12;
   const pos: number[] = [];
   const nor: number[] = [];
   const uv: number[] = [];
   for (let i = 0; i <= rows; i++) {
     for (let j = 0; j <= S; j++) {
-      const [ym, zm, ny, nz] = kb.point(j / S, rb);
+      const ym = kb.point(j / S, rb, kb.R0)[0];
       const s0 = mainEdge(km, rhoMain, ym);
       const s = s0 + ((yTo - s0) * i) / rows;
-      pos.push(zm, ym, dir * s);
+      const [x, y, ny, nz] = branchPt(kb, rb, j / S, ext(s));
+      pos.push(x, y, dir * s);
       nor.push(nz, ny, 0);
       uv.push(j / S, (11 + yTo - s) / TEX_LENGTH);
     }
   }
-  return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  const g = orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  if (ext !== noFlare) {
+    // the cone leans out: smooth normals, the wrap-around seam columns averaged
+    g.computeVertexNormals();
+    const n = g.getAttribute("normal") as THREE.BufferAttribute;
+    for (let i = 0; i <= rows; i++) {
+      const p = i * (S + 1);
+      const q = p + S;
+      const v = new THREE.Vector3(n.getX(p) + n.getX(q), n.getY(p) + n.getY(q), n.getZ(p) + n.getZ(q)).normalize();
+      n.setXYZ(p, v.x, v.y, v.z);
+      n.setXYZ(q, v.x, v.y, v.z);
+    }
+  }
+  return g;
+}
+/** A loop around a branch at distance s(ym) out (dir side), its outline pushed out by k. */
+class BranchLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private kb: Kit,
+    private k: number,
+    private dir: 1 | -1,
+    private sAt: (ym: number) => number,
+    private ext: Flare,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const ym = this.kb.point(u, this.kb.R0 + this.k, this.kb.R0)[0];
+    const s = this.sAt(ym);
+    const [x, y] = branchPt(this.kb, this.kb.R0 + this.k, u, this.ext(s));
+    return target.set(x, y, this.dir * s);
+  }
 }
 
 /** The seam where a branch meets the main, pushed out by k so it sits on both surfaces. */
@@ -798,16 +894,16 @@ function teeEndFrame(p: THREE.Vector3, out: THREE.Vector3, major: THREE.Vector3)
 }
 
 /** Body length L (branch + 3", the larger top branch's major axis) and reducer R of a tee/cross. */
-export function ovalTeeDims(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz) {
+export function ovalTeeDims(type: OvalAnyTee, main: OvalSz, out: OvalSz, top: OvalSz) {
   const t = OVAL_TEES[type];
-  return { L: top.A + OTEE_EXTRA, R: t.reducing ? ovalReducerLength(main.A, out.A) : 0 };
+  return { L: top.A + (t.cone ? OCTEE_EXTRA : OTEE_EXTRA), R: t.reducing ? ovalReducerLength(main.A, out.A) : 0 };
 }
 
 /**
  * 0T90 / 0RT90 / 0C180 / 0RC180: the main with its 2" ends (right end through the reducer to the outlet on the R types),
  * the branches with their seams and 2" collars. ends[0] is the right (outlet) end, where the connection goes.
  */
-function buildOvalTee(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz, bottom: OvalSz | null, mats: Mats, style: EndStyle) {
+function buildOvalTee(type: OvalAnyTee, main: OvalSz, out: OvalSz, top: OvalSz, bottom: OvalSz | null, mats: Mats, style: EndStyle) {
   const { metal, inside, seam } = mats;
   const spec = OVAL_TEES[type];
   const km = ovalKit(main.A, main.a);
@@ -825,15 +921,17 @@ function buildOvalTee(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz,
   ] as const)
     .filter((b): b is readonly [1 | -1, OvalSz] => !!b[1])
     .map(([dir, sz]) => ({ dir, kb: ovalKit(sz.A, sz.a) }));
+  const crown = km.F / 2 + km.R0; // the rounded edge's crown
+  // branch body (straight, or the cone) ends where its 2" collar starts
+  const yTo = spec.cone ? crown + OCONE_H : crown + OTEE_BRANCH - COLLAR;
+  const ext: Flare = spec.cone ? (sv) => (OCONE_FLARE * (yTo - sv)) / OCONE_H : noFlare;
   for (const [rho, inner] of [
     [km.R0, false],
     [km.R0 - km.wall, true],
   ] as const) {
-    const holes = branches.map(({ dir, kb }) => ({ dir, F: kb.F, r: inner ? kb.R0 - kb.wall : kb.R0 }));
+    const holes = branches.map(({ dir, kb }) => ({ dir, F: kb.F, r: inner ? kb.R0 - kb.wall : kb.R0, ext }));
     for (const g of teeMainGeo(km, rho, L, holes, Sm)) group.add(new THREE.Mesh(g, inner ? inside : metal));
   }
-  const crown = km.F / 2 + km.R0; // the rounded edge's crown
-  const yTo = crown + OTEE_BRANCH - COLLAR; // branch body ends where its 2" collar starts
   const ends: THREE.Group[] = [];
   const X = new THREE.Vector3(1, 0, 0);
   const Z = new THREE.Vector3(0, 0, 1);
@@ -855,11 +953,18 @@ function buildOvalTee(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz,
   group.add(fr, fl);
   for (const { dir, kb } of branches) {
     const Sb = Math.min(220, 96 + Math.round(kb.perimeter(kb.R0) * 1.2));
-    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0, kb, kb.R0, dir, yTo, Sb), metal));
-    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0 - km.wall, kb, kb.R0 - kb.wall, dir, yTo, Sb), inside));
+    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0, kb, kb.R0, dir, yTo, Sb, ext), metal));
+    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0 - km.wall, kb, kb.R0 - kb.wall, dir, yTo, Sb, ext), inside));
     const rib = ribOf(kb);
-    group.add(new THREE.Mesh(new THREE.TubeGeometry(new TeeSaddleLoop(km, kb, rib * 0.35, dir), Sb * 2, rib, 8, true), seam));
-    const f = teeEndFrame(new THREE.Vector3(0, 0, dir * (crown + OTEE_BRANCH)), new THREE.Vector3(0, 0, dir), X.clone());
+    if (spec.cone) {
+      // seam where the cone meets the main (it follows the rounded edge), and where it meets the collar
+      const k = rib * 0.35;
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new BranchLoop(kb, k, dir, (ym) => mainEdge(km, km.R0 + k, ym), ext), Sb * 2, rib, 8, true), seam));
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new BranchLoop(kb, rib * 0.2, dir, () => yTo, noFlare), Sb, rib * 0.8, 8, true), seam));
+    } else {
+      group.add(new THREE.Mesh(new THREE.TubeGeometry(new TeeSaddleLoop(km, kb, rib * 0.35, dir), Sb * 2, rib, 8, true), seam));
+    }
+    const f = teeEndFrame(new THREE.Vector3(0, 0, dir * (yTo + COLLAR)), new THREE.Vector3(0, 0, dir), X.clone());
     f.add(buildCollar(kb, style, mats, rib * 0.8, Sb));
     group.add(f);
     ends.push(f);
@@ -974,8 +1079,8 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
   },
 };
 
-type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalTeeType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
-export type OvalElbowKind = "gored" | "miter" | "tee";
+type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
+export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee";
 const szKey = (s: OvalSz) => `${s.A}x${s.a}`;
 const szText = (s: OvalSz) => `${s.A}×${s.a}`;
 /** Chart sizes up to max (both axes; the outlet's A strictly smaller), largest first. */
@@ -999,11 +1104,13 @@ export default function OvalElbow3D({
   kind?: OvalElbowKind;
   type: OvalElbowType;
   bend: OvalBend;
-  teeType?: OvalTeeType;
+  teeType?: OvalAnyTee;
   onClose: () => void;
 }) {
   const miter = kind === "miter";
-  const tee = kind === "tee";
+  const ctee = kind === "ctee";
+  const tee = kind === "tee" || ctee; // the conical ones are the same fitting with cone branches
+  const teeTypes: readonly OvalAnyTee[] = ctee ? OVAL_CTEE_TYPES : OVAL_TEE_TYPES;
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -1017,7 +1124,7 @@ export default function OvalElbow3D({
   const [bend, setBend] = useState<OvalBend>(bend0);
   const [A, setA] = useState(DEFAULT_A);
   const [minor, setMinor] = useState(DEFAULT_MINOR);
-  const [teeType, setTeeType] = useState<OvalTeeType>(teeType0);
+  const [teeType, setTeeType] = useState<OvalAnyTee>(teeType0);
   // wanted branch / outlet sizes (snapped to what fits the main below)
   const [wantOut, setWantOut] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.out ?? { A: 19, a: 10 });
   const [wantTop, setWantTop] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.top);
@@ -1310,9 +1417,12 @@ export default function OvalElbow3D({
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    const [prefix, hash] = tee ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
+    const [prefix, hash] = ctee
+      ? [SWFO_CTEE_3D_HASH, ovalCteeHash(teeType as OvalCteeType)]
+      : tee
+        ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType as OvalTeeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
     if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
-  }, [type, bend, miter, tee, teeType]);
+  }, [type, bend, miter, tee, ctee, teeType]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -1328,7 +1438,7 @@ export default function OvalElbow3D({
   const minors = ovalMinorsFor(A);
   // the R types need an outlet smaller than the main, so not the smallest major
   const majors = tee && teeSpec.reducing ? OVAL_MAJORS.filter((d) => d > OVAL_MAJORS[0]) : OVAL_MAJORS;
-  const pickTeeType = (t: OvalTeeType) => {
+  const pickTeeType = (t: OvalAnyTee) => {
     setTeeType(t);
     const d = OVAL_TEES[t].defaults;
     if (d.out) setWantOut(d.out);
@@ -1354,11 +1464,16 @@ export default function OvalElbow3D({
   const vanes = ovalVanes(hard ? A : minor);
   const title = tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
   const rNote = teeR > 0 ? `reducer R = ${teeR}″ (${teeR > OVAL_CR_TABLE_MAX ? "past the CR table, assumed" : "CR table"})` : "";
-  const teeText: Record<OvalTeeType, string> = {
+  const cone = "conical oval branch";
+  const teeText: Record<OvalAnyTee, string> = {
     "0t90": `Main A × α straight through, oval branch B × b (${szText(top)}) on the rounded side in a saddle, B along the main, b ≤ α. L = B + 3″ = ${teeL}″ between the 2″ collars.`,
     "0rt90": `Main A × α in on the left, ${rNote} down to outlet B × b (${szText(out)}), branch C × c (${szText(top)}) on the rounded side. L = C + 3″ = ${teeL}″, 2″ collars.`,
     "0c180": `Main A × α straight through, branch B × b (${szText(top)}) and C × c (${bottom ? szText(bottom) : ""}) on the two rounded sides, C up to B. L = B + 3″ = ${teeL}″, 2″ collars.`,
     "0rc180": `Main A × α in, ${rNote} to outlet B × b (${szText(out)}), branches C × c (${szText(top)}) and D × d (${bottom ? szText(bottom) : ""}) on the rounded sides, D up to C. L = C + 3″ = ${teeL}″ (sheet: B + 3″).`,
+    oct90: `Main A × α straight through, ${cone} B × b (${szText(top)}) on the rounded side in a saddle, a 5″ cone flaring 1″ each side along the main down from its 2″ collar, b ≤ α. L = B + 5″ = ${teeL}″.`,
+    orct90: `Main A × α in on the left, ${rNote} down to outlet B × b (${szText(out)}), ${cone} C × c (${szText(top)}) on the rounded side. L = C + 5″ = ${teeL}″, 2″ collars.`,
+    occ180: `Main A × α straight through, conical branches B × b (${szText(top)}) and C × c (${bottom ? szText(bottom) : ""}) on the two rounded sides, C up to B. L = B + 5″ = ${teeL}″, 2″ collars.`,
+    orcc180: `Main A × α in, ${rNote} to outlet B × b (${szText(out)}), conical branches C × c (${szText(top)}) and D × d (${bottom ? szText(bottom) : ""}) on the rounded sides, D up to C. L = C + 5″ = ${teeL}″.`,
   };
   const info =
     connection !== "none"
@@ -1378,7 +1493,7 @@ export default function OvalElbow3D({
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1438,8 +1553,8 @@ export default function OvalElbow3D({
         </div>
       </div>
       {tee && (
-        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval tee type">
-          {OVAL_TEE_TYPES.map((t) => (
+        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label={ctee ? "Oval conical tee type" : "Oval tee type"}>
+          {teeTypes.map((t) => (
             <button
               key={t}
               type="button"
