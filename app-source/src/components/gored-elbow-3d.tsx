@@ -17,7 +17,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, osHash, OS_TYPES, SWF_OS_3D_HASH, type OsType, hangerHash, HANGER_TYPES, SWF_HANGER_3D_HASH, type HangerType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
+import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, osHash, OS_TYPES, SWF_OS_3D_HASH, type OsType, hangerHash, HANGER_TYPES, SWF_HANGER_3D_HASH, type HangerType, grilleHash, GRILLE_TYPES, SWF_GRILLE_3D_HASH, type GrilleType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -84,6 +84,17 @@ const DEG = Math.PI / 180;
  * even sizes to 64", plus 15" (the end of the sheet's 3"-15" table row). No odd sizes past 15", so the table's gaps
  * (29", 39") never come up.
  */
+/** Grille taps (sheet 15): W and H 4"-36" in 2" steps (assumed); the pipes they go on (stock list, 6" up: H >= 4", H <= P - 2"). */
+const GRILLE_WH = Array.from({ length: 17 }, (_, i) => 4 + i * 2);
+const GRILLE_H_MARGIN = 2;
+const GRILLE_PIPES = STOCK_DIAMETERS.filter((d) => d >= GRILLE_WH[0] + GRILLE_H_MARGIN);
+/** Grille collar: how far it stands past the pipe at its shallowest point (assumed, the sheet shows none). */
+const GRILLE_DEPTH = 2;
+/**
+ * Grille end (Brent: "1\" FLG IN"): a flat 1" lip bent 90° in round the open end, all four sides, mitred at the corners.
+ * W x H stays the collar's outside size, so the clear opening is (W - 2") x (H - 2").
+ */
+const GRILLE_FLANGE = 1;
 const HANGER_SIZES = [...STOCK_DIAMETERS, 15, ...Array.from({ length: 20 }, (_, i) => 26 + i * 2)].sort((a, b) => a - b);
 /** Gore joints along the 90° turn: end gores 11-1/4°, middle gores 22-1/2°. */
 const SEAMS = [0, 11.25, 33.75, 56.25, 78.75, 90].map((a) => a * DEG);
@@ -151,7 +162,7 @@ export function eccentricLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -303,6 +314,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round whole and half clam shell hangers",
     canvas: "3D clam shell hanger on a see-through pipe and threaded rods. Drag to turn, pinch to zoom.",
     none: { title: "Whole Clam Shell Hanger", text: "" },
+    note: "Galvanized",
+  },
+  grille: {
+    clr: 0,
+    sizes: GRILLE_PIPES,
+    defaultD: 14,
+    name: "Grille Tap (GT)",
+    aria: "3D model: single wall round grille taps",
+    canvas: "3D grille tap on a see-through pipe, or installed on a short length of duct. Drag to turn, pinch to zoom.",
+    none: { title: "Grille Tap (GT)", text: "" },
     note: "Galvanized",
   },
 };
@@ -3115,6 +3136,261 @@ function buildHanger(type: HangerType, d: number, strapMat: THREE.Material, ref:
   return { group, moving, screws: { group: sg, items } };
 }
 
+/**
+ * Grille taps (sheet 15 "Grille Taps"), one model with a type picker and three sizes: the collar's W (along the pipe),
+ * its H (around the pipe, drawn vertical on the sheet's side view) and the pipe P it goes on. Order by W, H and P.
+ *   GT   grille tap, no saddle (field installation): a rectangular W x H collar, its inner end cut to the pipe's curve;
+ *        a plain collar that sits on the cut opening (no tabs, no fasteners).
+ *   GTS  grille tap with a 1" saddle (field installation): the same collar on a 1" flange contoured to the pipe, screwed on.
+ *   GTI  grille tap installed (factory installed on pipe): the collar tack welded and sealed onto a short length of duct.
+ * Assumed (the sheet shows no numbers): the collar stands GRILLE_DEPTH past the pipe at its shallowest point (the
+ * pipe's top line, the middle of H) and runs deeper towards the H edges where the pipe falls away; H up to P - 2 (the
+ * 1" saddle stays on the pipe); W and H 4"-36" in 2" steps;
+ * GTI's pipe W + 12" long. Only GT / GTS is the product, so their pipe is see-through; on GTI the pipe is part of it.
+ * Built with the collar up +Y and the pipe along X, then turned so the collar faces the camera (+Z) as on the sheet.
+ * Play (GT / GTS): the tap comes in from off the pipe and seats on the opening; on GTS the screws then go in.
+ */
+type GrilleSpec = CrossSpec & { short: string; install: string };
+const GRILLE_LABELS = ["W · along", "H · around", "P · pipe"] as const;
+const GRILLES: Record<GrilleType, GrilleSpec> = {
+  gt: {
+    code: "GT",
+    name: "Grille Tap",
+    short: "no saddle",
+    install: "Field installed · cut opening",
+    labels: GRILLE_LABELS,
+    defaults: [12, 6, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Plain W × H collar (outside size), no saddle, with a 1″ flange turned in at the grille end; its inner end cut to the pipe curve. Field installed on a cut opening. Pipe see-through.",
+  },
+  gts: {
+    code: "GTS",
+    name: "Grille Tap w/ Saddle",
+    short: "1″ saddle",
+    install: "Field · 1″ saddle, screwed",
+    labels: GRILLE_LABELS,
+    defaults: [12, 6, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "The same collar (1″ flange in at the grille end) on a 1″ saddle contoured to the pipe, screwed on over a cut opening. Pipe see-through.",
+  },
+  gti: {
+    code: "GTI",
+    name: "Grille Tap Installed",
+    short: "on pipe",
+    install: "Factory · tack welded & sealed",
+    labels: GRILLE_LABELS,
+    defaults: [12, 6, 14],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "The collar (1″ flange in at the grille end) tack welded and sealed onto the duct at the factory; the short length of pipe is part of it.",
+  },
+};
+/** Largest H that fits the pipe P (H up to P - 2, so the 1" saddle stays on the pipe), at least the smallest H. */
+const grilleMaxH = (p: number) => Math.max(GRILLE_WH[0], ...GRILLE_WH.filter((h) => h <= p - GRILLE_H_MARGIN));
+/** The size the view is framed by (zoom limits, near plane): the pipe P. */
+const grilleFrameD = (s: readonly number[]) => s[2];
+/** A point on the W x H rectangle's outline, by u (0..1) along it, from the middle of the +X side round through +Z. */
+function rectPoint(a: number, b: number, u: number): [number, number] {
+  const per = 4 * (a + b);
+  let s = (((u % 1) + 1) % 1) * per;
+  if (s < b) return [a, s];
+  s -= b;
+  if (s < 2 * a) return [a - s, b];
+  s -= 2 * a;
+  if (s < 2 * b) return [-a, b - s];
+  s -= 2 * b;
+  if (s < 2 * a) return [-a + s, -b];
+  s -= 2 * a;
+  return [a, -b + s];
+}
+/** A wall strip between two point rows (the collar's sides), normals from the faces. */
+function strip(bottom: THREE.Vector3[], top: THREE.Vector3[]) {
+  const pos: number[] = [];
+  const uv: number[] = [];
+  for (const row of [bottom, top]) for (const p of row) {
+    pos.push(p.x, p.y, p.z);
+    uv.push((p.x + p.z + 40) / TEX_LENGTH, (p.y + 40) / TEX_LENGTH);
+  }
+  const n = bottom.length;
+  const idx: number[] = [];
+  for (let j = 0; j < n - 1; j++) idx.push(j, j + 1, n + j, j + 1, n + j + 1, n + j);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+/**
+ * Build one grille tap (pulled-apart pose for GT / GTS; Play brings it in). Returns the group, the Play motion and the
+ * screws (GTS).
+ */
+function buildGrille(
+  type: GrilleType,
+  sizes: readonly number[],
+  sheet: THREE.Material,
+  pipeMats: PipeMats,
+  ref: PipeMats,
+  plateMat: THREE.Material,
+  seam: THREE.Material,
+  screwMat: THREE.Material,
+  sealMat: THREE.Material,
+  weldMat: THREE.Material,
+  holeMat: THREE.Material,
+) {
+  const [w, hIn, p] = sizes;
+  const h = Math.min(hIn, grilleMaxH(p));
+  const group = new THREE.Group();
+  const rp = p / 2;
+  const a = w / 2;
+  const b = h / 2;
+  const th = 0.08; // saddle plate, as the taps
+  const yTop = rp + GRILLE_DEPTH;
+  const onR = (R: number, x: number, z: number) => new THREE.Vector3(x, Math.sqrt(Math.max(0, R * R - z * z)), z);
+  const rBase = type === "gts" ? rp + th : rp + 0.005; // GT / GTI: the collar's foot sits on the pipe round the opening
+  const nx = Math.max(4, Math.round(w * 2));
+  const nz = Math.max(8, Math.round(h * 3));
+
+  // The collar: four walls from the pipe (or saddle) up to the open grille end, and a rolled edge round the top.
+  const tap = new THREE.Group();
+  for (const sz of [-1, 1]) {
+    const xs = Array.from({ length: nx + 1 }, (_, i) => -a + (2 * a * i) / nx);
+    tap.add(new THREE.Mesh(strip(xs.map((x) => onR(rBase, x, sz * b)), xs.map((x) => new THREE.Vector3(x, yTop, sz * b))), sheet));
+  }
+  for (const sx of [-1, 1]) {
+    const zs = Array.from({ length: nz + 1 }, (_, i) => -b + (2 * b * i) / nz);
+    tap.add(new THREE.Mesh(strip(zs.map((z) => onR(rBase, sx * a, z)), zs.map((z) => new THREE.Vector3(sx * a, yTop, z))), sheet));
+  }
+  const edge = new THREE.TubeGeometry(
+    new FnCurve((u, t) => {
+      const [x, z] = rectPoint(a, b, u);
+      return t.set(x, yTop, z);
+    }),
+    16,
+    0.05,
+    6,
+    true,
+  );
+  tap.add(new THREE.Mesh(edge, sheet));
+  // The 1" flange in round the grille end: a flat frame across the walls' tops (top face flush with the collar's end),
+  // the clear opening (W - 2) x (H - 2); the mitre joins drawn at the four corners.
+  const fl = GRILLE_FLANGE;
+  const flTh = 0.05;
+  const frame = new THREE.Shape([new THREE.Vector2(-a, -b), new THREE.Vector2(a, -b), new THREE.Vector2(a, b), new THREE.Vector2(-a, b)]);
+  frame.holes.push(new THREE.Path([new THREE.Vector2(-a + fl, -b + fl), new THREE.Vector2(-a + fl, b - fl), new THREE.Vector2(a - fl, b - fl), new THREE.Vector2(a - fl, -b + fl)]));
+  const flGeo = new THREE.ExtrudeGeometry(frame, { depth: flTh, bevelEnabled: false, curveSegments: 1 });
+  flGeo.rotateX(-Math.PI / 2);
+  flGeo.translate(0, yTop - flTh, 0);
+  tap.add(new THREE.Mesh(flGeo, sheet));
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const m = new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(sx * a, yTop + 0.004, sz * b), new THREE.Vector3(sx * (a - fl), yTop + 0.004, sz * (b - fl))), 1, 0.025, 4, false);
+      tap.add(new THREE.Mesh(m, seam));
+    }
+  // The line where the collar meets the pipe or the saddle, round the outline.
+  const foot = (R: number) =>
+    new FnCurve((u, t) => {
+      const [x, z] = rectPoint(a, b, u);
+      return t.copy(onR(R, x, z));
+    });
+  const radial = 4 * (nx + nz);
+
+  const moving: Joint["moving"] = [];
+  const items: Joint["screws"]["items"] = [];
+  const sg = new THREE.Group();
+  const each = 0.4;
+  const stagger = (i: number, n: number) => (i / Math.max(1, n - 1)) * (1 - each);
+
+  if (type === "gts") {
+    // The 1" saddle round the collar's foot, contoured to the pipe (the taps' saddle plate, on a rectangle).
+    const plate = saddlePlate(
+      rp,
+      th,
+      (phi) => rectPoint(a, b, phi / (Math.PI * 2)),
+      radial,
+      (phi) => rectPoint(a + TAP_SADDLE, b + TAP_SADDLE, phi / (Math.PI * 2)),
+    );
+    for (const g of plate.geos) tap.add(new THREE.Mesh(g, plateMat));
+    tap.add(new THREE.Mesh(new THREE.TubeGeometry(plate.rim, radial, th * 0.75, 6, true), seam));
+    tap.add(new THREE.Mesh(new THREE.TubeGeometry(foot(rp + th + 0.02), radial, 0.05, 6, true), seam));
+    // Screws through the flange into the pipe, in the middle of the 1" flange.
+    const k = screwScale(p) * 0.8;
+    const m = TAP_SADDLE / 2;
+    const pts: [number, number][] = [];
+    const nW = Math.max(2, Math.ceil(w / 8) + 1);
+    const nH = Math.max(1, Math.ceil(h / 8));
+    for (const sz of [-1, 1]) for (let i = 0; i < nW; i++) pts.push([-a + (2 * a * i) / (nW - 1), sz * (b + m)]);
+    for (const sx of [-1, 1]) for (let i = 0; i < nH; i++) pts.push([sx * (a + m), -b + (2 * b * (i + 0.5)) / nH]);
+    pts.forEach(([x, z], i) => {
+      const obj = new THREE.Group();
+      const at = onR(rp + th, x, z);
+      obj.position.copy(at);
+      obj.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, at.y, z).normalize());
+      const s = screwMesh(k, screwMat);
+      obj.add(s.obj);
+      sg.add(obj);
+      const start = stagger(i, pts.length);
+      items.push({ obj, drive: s.obj, start, end: start + each, lift: s.length + 0.5 * k });
+    });
+  } else if (type === "gti") {
+    // GTI: sealant bead round the joint, and tack welds at the corners and along the sides.
+    tap.add(new THREE.Mesh(new THREE.TubeGeometry(foot(rp + 0.05), radial, 0.13, 8, true), sealMat));
+    const welds: [number, number][] = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) welds.push([sx * a, sz * b]);
+    for (const sz of [-1, 1]) for (let i = 1; i < Math.round(w / 6); i++) welds.push([-a + (2 * a * i) / Math.round(w / 6), sz * b]);
+    for (const [x, z] of welds) {
+      const at = onR(rp + 0.05, x, z);
+      const g = new THREE.SphereGeometry(0.26, 10, 8);
+      g.scale(1, 0.6, 1);
+      const m = new THREE.Mesh(g, weldMat);
+      m.position.copy(at);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, at.y, z).normalize());
+      tap.add(m);
+    }
+  }
+
+  if (type === "gti") {
+    // The opening in the duct under the collar (dark: looking into the pipe; drawn just over the lock seam so it never
+    // shows through), and the duct itself (solid, part of it).
+    const hole = new THREE.Group();
+    const zs = Array.from({ length: nz + 1 }, (_, i) => -b + (2 * b * i) / nz);
+    hole.add(new THREE.Mesh(strip(zs.map((z) => onR(rp + 0.6, -a, z)), zs.map((z) => onR(rp + 0.6, a, z))), holeMat));
+    group.add(hole);
+    group.add(tap);
+    group.add(buildPipe(p, pipeMats, Math.max(w + 12, 16)));
+  } else {
+    // The cut opening on the see-through pipe, and the tap coming in from off it (a frame whose X is world +Y).
+    const lowest = Math.sqrt(Math.max(0, rp * rp - (type === "gt" ? b : b + TAP_SADDLE) ** 2));
+    const lift = Math.max(3, rp + 1.5 - lowest);
+    const f = new THREE.Group();
+    f.rotation.z = Math.PI / 2;
+    const slider = new THREE.Group();
+    slider.position.x = lift;
+    tap.rotation.z = -Math.PI / 2;
+    tap.add(sg);
+    slider.add(tap);
+    f.add(slider);
+    group.add(f);
+    moving.push({ obj: slider, from: 0, to: -lift });
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(foot(rp + 0.01), radial, 0.035, 6, true), ref.rim));
+    const ghost = buildPipe(p, ref, Math.max(p + 4, w + 2 * TAP_SADDLE + 8));
+    ghost.traverse((o) => {
+      o.renderOrder = 1;
+    });
+    group.add(ghost);
+  }
+  group.rotation.x = Math.PI / 2; // collar towards the camera (+Z), H vertical, as the sheet's side view
+  return { group, moving, screws: { group: sg, items } };
+}
+
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
@@ -3231,7 +3507,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType | OsType | HangerType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType | OsType | HangerType | GrilleType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -3251,8 +3527,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const oss = kind === "os";
   // Clam shell hangers (sheet 13): same picker (whole / half), one pipe size; no connection buttons (Play puts it on).
   const hangers = kind === "hanger";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : oss ? OSS : hangers ? HANGERS : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : oss ? "os" : hangers ? "whole" : "t90");
+  // Grille taps (sheet 15): same picker (GT / GTS / GTI), sizes W, H and the pipe P; no connection buttons (grille end).
+  const grilles = kind === "grille";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : oss ? OSS : hangers ? HANGERS : grilles ? GRILLES : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : oss ? "os" : hangers ? "whole" : grilles ? "gt" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -3279,11 +3557,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes || oss || hangers;
+  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes || oss || hangers || grilles;
   const hangerD = hangers ? hangerDims(teeType as HangerType, teeSizes[0]) : null;
   const osD = oss ? osDims(teeType as OsType, teeSizes) : null;
   // SQ2RD: gauge by the larger of H and W (the sheet's biggest dimension); everything else by A.
-  const gauge = stockGauge(osD ? osD.gaugeD : cross ? teeSizes[0] : diameter);
+  // Grille taps: by the pipe P (the duct gauge table; assumed, the sheet gives none).
+  const gauge = stockGauge(osD ? osD.gaugeD : grilles ? teeSizes[2] : cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
     const el = host.current!;
@@ -3342,6 +3621,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
     // Clam shell hangers: the threaded rods and nuts are not included, so see-through (a bit stronger than the pipe).
     const rodMat = ghost(screwMat, 0.42);
+    // Grille tap installed: the sealant bead and tack welds at the joint, and the dark opening seen inside the collar.
+    const sealMat = new THREE.MeshStandardMaterial({ color: 0x80878e, metalness: 0.05, roughness: 0.85, envMapIntensity: 0.5 });
+    const weldMat = new THREE.MeshStandardMaterial({ color: 0x6d6258, metalness: 0.5, roughness: 0.6, envMapIntensity: 0.6 });
+    const holeMat = new THREE.MeshBasicMaterial({ color: 0x2b333c, side: THREE.DoubleSide });
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -3464,6 +3747,25 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       view = v > 0 ? (kind === "bt90" ? new THREE.Vector3(0.22, 0.2, 1) : new THREE.Vector3(-0.85, 0.42, 1)) : new THREE.Vector3(0.3, 0.32, 1);
       if (kind === "tap") view = new THREE.Vector3(0.35, 0.55, 1); // taps: more from above, so the saddle plate reads
       if (kind === "ltap") view = new THREE.Vector3(0.22, 0.42, 1); // lateral taps: a bit lower, so the 45° lean reads too
+      if (kind === "grille") {
+        // Sheet 15 grille taps: on their see-through pipe (GT / GTS) or the short duct (GTI); own Play motion, no connection.
+        view = new THREE.Vector3(0.8, 0.4, 1);
+        const part = buildGrille(currentTee as GrilleType, currentTeeSizes, sheet, pipeMats, refMats, plateMat, seam, screwMat, sealMat, weldMat, holeMat);
+        moving = part.moving.map((m) => ({ ...m, base: m.obj.position.x }));
+        screws = part.screws.items;
+        stopPlay();
+        part.group.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(part.group);
+        const holder = new THREE.Group();
+        holder.add(part.group);
+        part.group.position.sub(box.getCenter(new THREE.Vector3()));
+        model = new THREE.Group();
+        model.add(holder);
+        scene.add(model);
+        spangle.repeat.set(Math.max(2, Math.round((Math.PI * currentTeeSizes[2]) / 10)), TEX_LENGTH / 10);
+        frame(d);
+        return;
+      }
       if (kind === "cap" || kind === "hanger") {
         // Sheet 10 parts: built with their see-through duct / wall, own Play motion; no connection.
         // Sheet 13 hangers: the same, on their see-through pipe, rods and nuts.
@@ -3552,7 +3854,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" || kind === "hanger" ? currentTeeSizes[0] : kind === "os" ? osDims(currentTee as OsType, currentTeeSizes).gaugeD : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" || kind === "hanger" ? currentTeeSizes[0] : kind === "grille" ? grilleFrameD(currentTeeSizes) : kind === "os" ? osDims(currentTee as OsType, currentTeeSizes).gaugeD : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -3591,7 +3893,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
         if (type === currentTee && sizes.length === currentTeeSizes.length && sizes.every((x, i) => x === currentTeeSizes[i])) return;
         currentTee = type;
         currentTeeSizes = sizes;
-        currentD = kind === "os" ? osDims(type as OsType, sizes).gaugeD : sizes[0];
+        currentD = kind === "os" ? osDims(type as OsType, sizes).gaugeD : kind === "grille" ? grilleFrameD(sizes) : sizes[0];
         build(currentD, currentC, currentV);
       },
       setTopInset: (px) => {
@@ -3621,7 +3923,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), ...new Set(Object.values(refMats)), plateMat, vaneMat, vaneEdge, rodMat].forEach((m) => m.dispose());
+      [metal, seam, inside, sheet, screwMat, gasketMat, ...Object.values(ghostMats), ...new Set(Object.values(refMats)), plateMat, vaneMat, vaneEdge, rodMat, sealMat, weldMat, holeMat].forEach((m) => m.dispose());
       [spangle, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -3670,7 +3972,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const wyeD = wyes ? wyeDims(teeType as WyeType, teeSizes) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
     ? { L: 0, R: redD.R, reducing: true }
-    : caps || wyes || oss || hangers
+    : caps || wyes || oss || hangers || grilles
     ? { L: 0, R: 0, reducing: false }
     : conical
     ? cteeDims(teeType as CteeType, teeSizes)
@@ -3709,8 +4011,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const pickType = (t: string) => {
     if (t === teeType) return;
     setTeeType(t);
-    setTeeSizes(fam[t].defaults);
-    if (hangers) {
+    // Grille taps keep their W, H and P across the three types (same sizes, different install).
+    if (!grilles) setTeeSizes(fam[t].defaults);
+    if (grilles) {
+      if (location.hash.startsWith(SWF_GRILLE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + grilleHash(t as GrilleType));
+    } else if (hangers) {
       if (location.hash.startsWith(SWF_HANGER_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + hangerHash(t as HangerType));
     } else if (oss) {
       if (location.hash.startsWith(SWF_OS_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + osHash(t as OsType));
@@ -3734,6 +4039,11 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const setTeeSize = (i: number, d: number) =>
     setTeeSizes((s) => {
       const n = s.map((x, k) => (k === i ? d : x));
+      if (grilles) {
+        // H up to P - 2 (the largest H that fits, at least 4")
+        n[1] = Math.min(n[1], grilleMaxH(n[2]));
+        return n;
+      }
       if (tapSpec) {
         // A up to P - gap, at least the smallest size (P's list only offers pipes that leave room for one)
         n[0] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x <= Math.min(n[0], n[1] - tapSpec.gap)));
@@ -3813,7 +4123,16 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </p>
         )}
       </div>
-      {caps || hangers ? (
+      {grilles && teeType === "gti" ? (
+        // GTI comes on the pipe from the factory: nothing to put on, so no Play.
+        <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5">
+          <div className="flex h-9 items-end short:h-8">
+            <span className="pb-2 text-[11px] font-medium tracking-wide text-muted uppercase" data-testid="gti-note">
+              Factory installed on the pipe · no assembly
+            </span>
+          </div>
+        </div>
+      ) : caps || hangers || grilles ? (
         // Sheet 10 parts and sheet 13 hangers are the connection themselves: no Coupling / Flange buttons, just Play to put the part on.
         <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2.5 short:pt-1.5">
           <div className="grid h-9 grid-cols-3 items-end gap-2 short:h-8">
@@ -3902,8 +4221,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps || reds || wyes || oss || hangers ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={hangers ? "Hanger type" : oss ? "Offset or transition type" : wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(hangers ? HANGER_TYPES : oss ? OS_TYPES : wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds || wyes || oss || hangers ? "grid-cols-2" : grilles ? "grid-cols-3" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={grilles ? "Grille tap type" : hangers ? "Hanger type" : oss ? "Offset or transition type" : wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(grilles ? GRILLE_TYPES : hangers ? HANGER_TYPES : oss ? OS_TYPES : wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -3911,13 +4230,13 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={hangers ? fam[t].name : `${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes || oss || hangers ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes || oss || hangers || grilles ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {(taps || reds || caps || wyes || oss || hangers) && (
+                {(taps || reds || caps || wyes || oss || hangers || grilles) && (
                   <span className={`font-sans text-[10px] leading-none font-medium uppercase opacity-75 ${caps ? "tracking-normal" : "tracking-wider"}`}>
-                    {hangers ? HANGERS[t as HangerType].short : oss ? OSS[t as OsType].short : wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
+                    {grilles ? GRILLES[t as GrilleType].short : hangers ? HANGERS[t as HangerType].short : oss ? OSS[t as OsType].short : wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
                   </span>
                 )}
               </button>
@@ -3933,7 +4252,13 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                   aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
                   className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
                 >
-                  {(osD
+                  {(grilles
+                    ? i === 0
+                      ? GRILLE_WH
+                      : i === 1
+                      ? GRILLE_WH.filter((x) => x <= grilleMaxH(teeSizes[2]))
+                      : GRILLE_PIPES
+                    : osD
                     ? osD.type === "os"
                       ? i === 0
                         ? spec.sizes
@@ -3957,7 +4282,18 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {hangerD ? (
+              {grilles ? (
+                <>
+                  <p className="truncate">
+                    <b className="font-semibold">{gauge.fitting} ga</b> fitting · <b className="font-semibold">{teeSizes[0]}&Prime; × {teeSizes[1]}&Prime;</b> on{" "}
+                    <b className="font-semibold">{teeSizes[2]}&Prime;</b> · {GRILLE_FLANGE}&Prime; flange in
+                  </p>
+                  <p className="truncate text-muted" data-testid="grille-note">
+                    {/* kept short (no "Galvanized") so it fits on one line at 360px */}
+                    {GRILLES[teeType as GrilleType].install} · H ≤ P − {GRILLE_H_MARGIN}&Prime;
+                  </p>
+                </>
+              ) : hangerD ? (
                 <>
                   <p className="truncate">
                     <b className="font-semibold">{hangerD.w === 1 ? "1" : "1½"}&Prime; × {hangerD.ga} ga</b> strap · ears <b className="font-semibold">{EAR}&Prime;</b> ·{" "}

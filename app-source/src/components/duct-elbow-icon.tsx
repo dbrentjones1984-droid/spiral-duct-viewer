@@ -28,6 +28,8 @@
  * piece to the first mitre, the angled middle, the second mitre and the right end OFFSET higher with its 2" collar.
  * hanger draws a whole clam shell hanger, end view as on its sheet: the pipe's circle in the two strap halves, the flat
  * ears stacked on each side at the centreline, and the threaded rods through them (dashed: not included).
+ * grille draws a grille tap, front view as on its sheet: the pipe (dashed, not part of GT / GTS) and the W x H
+ * rectangular collar on its side, with the curved line where the collar meets the pipe.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -46,6 +48,7 @@ export function DuctElbowIcon({
   wye = false,
   os = false,
   hanger = false,
+  grille = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -62,7 +65,20 @@ export function DuctElbowIcon({
   wye?: boolean;
   os?: boolean;
   hanger?: boolean;
+  grille?: boolean;
 }) {
+  if (grille) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* the pipe (reference only, dashed) */}
+        <path d="M3 9 L57 9 M3 31 L57 31" strokeWidth={1.1} strokeDasharray="2.4 2" />
+        {/* the rectangular collar W x H, and its open grille end */}
+        <rect x={17} y={11} width={26} height={18} strokeWidth={2} />
+        <rect x={20.5} y={14.5} width={19} height={11} strokeWidth={1.1} />
+        <path d="M17 11 L20.5 14.5 M43 11 L39.5 14.5 M17 29 L20.5 25.5 M43 29 L39.5 25.5" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (hanger) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

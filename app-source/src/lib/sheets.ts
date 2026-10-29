@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers", sheet 14 = "Access Doors / Duct Connectors"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers", sheet 14 = "Access Doors / Duct Connectors", sheet 15 = "Grille Taps"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "3.2 MB",
+  sizeLabel: "3.4 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -202,6 +202,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1368,
     alt: "Single Wall Round, Access Doors and Duct Connectors: access door, a solid, leak proof, insulated access door for round ducts (photo), pressure rating +20 inch W.G. to -10 inch W.G., service temperature -20 to 200 degrees F, options non-insulated, observation and high temperature. Door size by duct size: 8 x 4 inch door for 5 to 9 inch duct; 12 x 8 for 10 to 20 inch; 16 x 12 for 21 to 36 inch; 24 x 18 for 37 to 64 inch. Duct connection flanges: Spiralmate by Ductmate Industries, available sizes 10 thru 72 inch, factory installed or loose for field installation, galvanized, stainless steel, PVC coated or aluminized, with a section showing the inner ring flanges, closure ring, gasket, sealant and fastener; Accuflange by Accuduct Manufacturing, available sizes 10 thru 96 inch, factory installed or loose for field installation, galvanized, paint grade, stainless steel, PVC coated or aluminum, with a section showing the 1.38 inch flange, 3/8 inch gap, #10 TEK screw at center, 5/16 x 3/4 inch neoprene gasket, 2 inch leg and seal on the spiral pipe lockseam.",
+  },
+  {
+    n: 15,
+    title: "Grille Taps",
+    src: `${base}sheets/single-wall-round-fittings-15.webp`,
+    w: 1132,
+    h: 1387,
+    alt: "Single Wall Round, Grille Taps: a rectangular collar W wide along the pipe and H high on the side of the round pipe, the pipe drawn in red for reference. GT, field installation, grille tap with no saddle. GTS, field installation, grille tap with a 1 inch saddle included around the collar's base. GTI, factory installed on pipe, grille tap installed, tack welded and sealed on to the duct. To order each, list W, H and pipe size.",
   },
 ] as const;
 

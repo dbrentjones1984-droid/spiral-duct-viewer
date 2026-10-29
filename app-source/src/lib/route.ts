@@ -33,13 +33,15 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/round/3d/os?type=sq2rd"   ... opened on that type (os or sq2rd)
  *   "#/single-wall-fittings/round/3d/hanger"  same, with the clam shell hangers 3D model open on top (Whole shown);
  *   "#/single-wall-fittings/round/3d/hanger?type=half"   ... opened on that type (whole or half)
+ *   "#/single-wall-fittings/round/3d/grille"  same, with the grille taps 3D model open on top (GT shown);
+ *   "#/single-wall-fittings/round/3d/grille?type=gts"   ... opened on that type (gt, gts or gti)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
-  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType };
+  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
 export const TEE_TYPES = ["t90", "rt90", "c180", "rc180"] as const;
@@ -74,6 +76,9 @@ export type OsType = (typeof OS_TYPES)[number];
 /** Sheet 13 types: whole and half clam shell hanger (one model, picked in the viewer). */
 export const HANGER_TYPES = ["whole", "half"] as const;
 export type HangerType = (typeof HANGER_TYPES)[number];
+/** Sheet 15 types: grille tap, grille tap with saddle, grille tap installed (one model, picked in the viewer). */
+export const GRILLE_TYPES = ["gt", "gts", "gti"] as const;
+export type GrilleType = (typeof GRILLE_TYPES)[number];
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
@@ -115,6 +120,9 @@ export const osHash = (t: OsType) => (t === "os" ? SWF_OS_3D_HASH : `${SWF_OS_3D
 export const SWF_HANGER_3D_HASH = "#/single-wall-fittings/round/3d/hanger";
 /** Deep link to one sheet 13 type (Whole is the default, so it gets the plain link; ?type=whole opens it too). */
 export const hangerHash = (t: HangerType) => (t === "whole" ? SWF_HANGER_3D_HASH : `${SWF_HANGER_3D_HASH}?type=${t}`);
+export const SWF_GRILLE_3D_HASH = "#/single-wall-fittings/round/3d/grille";
+/** Deep link to one sheet 15 type (GT is the default, so it gets the plain link; ?type=gt opens it too). */
+export const grilleHash = (t: GrilleType) => (t === "gt" ? SWF_GRILLE_3D_HASH : `${SWF_GRILLE_3D_HASH}?type=${t}`);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -165,6 +173,10 @@ function parse(hash: string): Route {
   if (h === SWF_HANGER_3D_HASH || h.startsWith(`${SWF_HANGER_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWF_HANGER_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swf-models", model3d: "hanger", hangerType: HANGER_TYPES.find((x) => x === t) ?? "whole" };
+  }
+  if (h === SWF_GRILLE_3D_HASH || h.startsWith(`${SWF_GRILLE_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWF_GRILLE_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swf-models", model3d: "grille", grilleType: GRILLE_TYPES.find((x) => x === t) ?? "gt" };
   }
   if (h === SWF_MODELS_HASH) return { page: "swf-models", model3d: null };
   if (h === SWF_ROUND_HASH) return { page: "swf-round" };
