@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
-import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType } from "@/lib/route";
+import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -103,6 +103,14 @@ const FITTINGS = [
     gores: false,
     wye: true,
   },
+  {
+    id: "os",
+    name: "Offset & Square to Round",
+    text: "OS offset (L = A × 2) / SQ2RD square-to-round transition",
+    source: "Offsets · SQ2RD L by the H/W − A table",
+    gores: false,
+    os: true,
+  },
 ] as const;
 
 export type FittingId = (typeof FITTINGS)[number]["id"];
@@ -121,6 +129,7 @@ export function FittingsPage({
   redType,
   capType,
   wyeType,
+  osType,
   onBack,
   onOpen3d,
   onClose3d,
@@ -134,6 +143,7 @@ export function FittingsPage({
   redType?: RedType;
   capType?: CapType;
   wyeType?: WyeType;
+  osType?: OsType;
   onBack: () => void;
   onOpen3d: (id: FittingId) => void;
   onClose3d: () => void;
@@ -167,7 +177,7 @@ export function FittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} miter={"miter" in f && f.miter} tee={"tee" in f && f.tee} cross={"cross" in f && f.cross} conical={"conical" in f && f.conical} lateral={"lateral" in f && f.lateral} tap={"tap" in f && f.tap} ltap={"ltap" in f && f.ltap} red={"red" in f && f.red} cap={"cap" in f && f.cap} wye={"wye" in f && f.wye} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.gores} miter={"miter" in f && f.miter} tee={"tee" in f && f.tee} cross={"cross" in f && f.cross} conical={"conical" in f && f.conical} lateral={"lateral" in f && f.lateral} tap={"tap" in f && f.tap} ltap={"ltap" in f && f.ltap} red={"red" in f && f.red} cap={"cap" in f && f.cap} wye={"wye" in f && f.wye} os={"os" in f && f.os} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -203,7 +213,9 @@ export function FittingsPage({
         <Suspense
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
-          {model3d === "wye" ? (
+          {model3d === "os" ? (
+            <GoredElbow3D key={`os-${osType}`} kind="os" teeType={osType} onClose={onClose3d} />
+          ) : model3d === "wye" ? (
             <GoredElbow3D key={`wye-${wyeType}`} kind="wye" teeType={wyeType} onClose={onClose3d} />
           ) : model3d === "cap" ? (
             <GoredElbow3D key={`cap-${capType}`} kind="cap" teeType={capType} onClose={onClose3d} />

@@ -29,13 +29,15 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/round/3d/cap?type=bm"     ... opened on that type (pc, fc, ec, sc or bm)
  *   "#/single-wall-fittings/round/3d/wye"     same, with the wye & reducing wye 3D model open on top (Y45 shown);
  *   "#/single-wall-fittings/round/3d/wye?type=ry45"   ... opened on that type (y45 or ry45)
+ *   "#/single-wall-fittings/round/3d/os"      same, with the offset & square to round 3D model open on top (OS shown);
+ *   "#/single-wall-fittings/round/3d/os?type=sq2rd"   ... opened on that type (os or sq2rd)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
-  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType };
+  | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
 export const TEE_TYPES = ["t90", "rt90", "c180", "rc180"] as const;
@@ -64,6 +66,9 @@ export type CapType = (typeof CAP_TYPES)[number];
 /** Sheet 11 types: wye 45° and reducing wye 45° (one model, picked in the viewer). */
 export const WYE_TYPES = ["y45", "ry45"] as const;
 export type WyeType = (typeof WYE_TYPES)[number];
+/** Sheet 12 types: offset and square to round transition (one model, picked in the viewer). */
+export const OS_TYPES = ["os", "sq2rd"] as const;
+export type OsType = (typeof OS_TYPES)[number];
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
@@ -99,6 +104,9 @@ export const capHash = (t: CapType) => (t === "pc" ? SWF_CAP_3D_HASH : `${SWF_CA
 export const SWF_WYE_3D_HASH = "#/single-wall-fittings/round/3d/wye";
 /** Deep link to one wye type (Y45 is the default, so it gets the plain link; ?type=y45 opens it too). */
 export const wyeHash = (t: WyeType) => (t === "y45" ? SWF_WYE_3D_HASH : `${SWF_WYE_3D_HASH}?type=${t}`);
+export const SWF_OS_3D_HASH = "#/single-wall-fittings/round/3d/os";
+/** Deep link to one sheet 12 type (OS is the default, so it gets the plain link; ?type=os opens it too). */
+export const osHash = (t: OsType) => (t === "os" ? SWF_OS_3D_HASH : `${SWF_OS_3D_HASH}?type=${t}`);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -141,6 +149,10 @@ function parse(hash: string): Route {
   if (h === SWF_WYE_3D_HASH || h.startsWith(`${SWF_WYE_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWF_WYE_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swf-models", model3d: "wye", wyeType: WYE_TYPES.find((x) => x === t) ?? "y45" };
+  }
+  if (h === SWF_OS_3D_HASH || h.startsWith(`${SWF_OS_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWF_OS_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swf-models", model3d: "os", osType: OS_TYPES.find((x) => x === t) ?? "os" };
   }
   if (h === SWF_MODELS_HASH) return { page: "swf-models", model3d: null };
   if (h === SWF_ROUND_HASH) return { page: "swf-round" };

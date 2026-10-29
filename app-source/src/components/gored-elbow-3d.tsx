@@ -17,7 +17,7 @@ import {
   type Connection,
 } from "@/components/duct-connections";
 import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
-import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
+import { capHash, CAP_TYPES, SWF_CAP_3D_HASH, SWF_WYE_3D_HASH, type CapType, wyeHash, WYE_TYPES, type WyeType, osHash, OS_TYPES, SWF_OS_3D_HASH, type OsType, cteeHash, CTEE_TYPES, latHash, LAT_TYPES, ltapHash, LTAP_TYPES, redHash, RED_TYPES, SWF_CTEE_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_RED_3D_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, tapHash, TAP_TYPES, teeHash, TEE_TYPES, type CteeType, type LatType, type LtapType, type RedType, type TapType, type TeeType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
@@ -143,7 +143,7 @@ export function eccentricLength(a: number, b: number) {
 }
 
 /** The elbows this viewer shows. */
-export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye";
+export type ElbowKind = "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os";
 const ELBOWS: Record<
   ElbowKind,
   { clr: number; sizes: readonly number[]; defaultD: number; name: string; aria: string; canvas: string; none: { title: string; text: string }; note: string }
@@ -275,6 +275,16 @@ const ELBOWS: Record<
     aria: "3D model: single wall round wye and reducing wye",
     canvas: "3D wye or reducing wye. Drag to turn, pinch to zoom.",
     none: { title: "Wye 45° (Y45)", text: "" },
+    note: "Galvanized",
+  },
+  os: {
+    clr: 0,
+    sizes: STOCK_DIAMETERS,
+    defaultD: 12,
+    name: "Offset (OS)",
+    aria: "3D model: single wall round offset and square to round transition",
+    canvas: "3D offset or square to round transition. Drag to turn, pinch to zoom.",
+    none: { title: "Offset (OS)", text: "" },
     note: "Galvanized",
   },
 };
@@ -1650,6 +1660,327 @@ function buildWye(type: WyeType, sizes: readonly number[], mats: Mats, style: En
 }
 
 /**
+ * Offset and Square-to-Round Transition (sheet 12). OS is ordered A and the OFFSET (the centreline shift, 1" up to A
+ * here, assumed); SQ2RD is ordered H x W (the rectangular end) and the round A, A no bigger than the smaller of H and W.
+ * Labels are the size selects.
+ */
+type OsSpec = CrossSpec & { short: string };
+const OSS: Record<OsType, OsSpec> = {
+  os: {
+    code: "OS",
+    name: "Offset",
+    short: "offset",
+    labels: ["A · size", "Offset"],
+    defaults: [12, 6],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "A × 2",
+    text: "Round A both ends with 2″ beaded ends. A straight angled middle, mitred at both ends, shifts the centreline by the OFFSET. L = A × 2, between the 2″ ends (overall L + 4″).",
+  },
+  sq2rd: {
+    code: "SQ2RD",
+    name: "Square to Round",
+    short: "sq → round",
+    labels: ["H · height", "W · width", "A · round"],
+    defaults: [12, 20, 10],
+    out: 0,
+    top: 0,
+    bottom: null,
+    lRule: "",
+    text: "Rectangular H × W end (plain 2″ collar) to round A (2″ beaded end), corners fanned out in flat triangles as drawn. L by the table, whose “A” is the larger of H or W minus the round A, not the round size.",
+  },
+};
+/** Rectangular end sizes for SQ2RD (assumed: 4" to 48" in 2" steps). */
+const RECT_SIZES = Array.from({ length: 23 }, (_, i) => 4 + i * 2);
+/**
+ * SQ2RD length by the sheet's table, on its "A" = the larger of H or W minus the round A: 3-8" -> 12, 9-14 -> 18,
+ * 15-26 -> 24, 27+ -> 36. Below 3" (not on the table) assumed 12.
+ */
+function sq2rdL(diff: number) {
+  return { L: diff <= 8 ? 12 : diff <= 14 ? 18 : diff <= 26 ? 24 : 36, assumed: diff < 3 };
+}
+/** An OS / SQ2RD's sizes, L, and the size its gauge goes by (OS: A; SQ2RD: the larger of H and W). */
+function osDims(type: OsType, sizes: readonly number[]) {
+  if (type === "os") {
+    const a = sizes[0];
+    return { type, a, offset: sizes[1] ?? 0, h: 0, w: 0, L: 2 * a, diff: 0, assumed: false, gaugeD: a };
+  }
+  const [h, w, a] = sizes;
+  const diff = Math.max(h, w) - a;
+  return { type, a, offset: 0, h, w, diff, ...sq2rdL(diff), gaugeD: Math.max(h, w) };
+}
+
+/**
+ * Offset (sheet 12), along x: the left 2" end (A) ends at x = 0, the right one starts at x = L, OFFSET higher. In
+ * between, a straight piece from each end to a mitre and a straight angled middle. Assumed: the mitres' centres sit A / 2
+ * in from each end (the drawing's proportions), so the middle runs L - A along x; both mitres bisect their bend, so on
+ * the side view both cut lines lean the same way, as drawn. ends: [left, right].
+ */
+function buildOffset(a: number, offset: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const r = a / 2;
+  const wall = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const rib = Math.min(0.34, 0.04 + a * 0.012);
+  const L = 2 * a;
+  const s = r;
+  const p1 = new THREE.Vector3(s, 0, 0);
+  const p2 = new THREE.Vector3(L - s, offset, 0);
+  const lm = p1.distanceTo(p2);
+  const m = p2.clone().sub(p1).normalize();
+  const u = new THREE.Vector3(-m.y, m.x, 0); // the middle's "up" around its axis
+  const n = m.clone().add(X_AXIS).normalize(); // both mitre planes' normal (the bend's bisector)
+  const cutX = (rr: number, cp: number) => (-n.y * rr * cp) / n.x; // straight piece: x of the cut, from the mitre centre
+  const cutT = (rr: number, cp: number) => (-rr * cp * n.dot(u)) / n.dot(m); // middle: same, along its axis
+  const rows = 6;
+  const straight = (rr: number, side: 0 | 1) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= radial; j++) {
+        const phi = (j / radial) * Math.PI * 2;
+        const cp = Math.cos(phi);
+        const sp = Math.sin(phi);
+        const xa = side === 0 ? 0 : L - s + cutX(rr, cp);
+        const xb = side === 0 ? s + cutX(rr, cp) : L;
+        const x = xa + ((xb - xa) * i) / rows;
+        pos.push(x, (side ? offset : 0) + rr * cp, rr * sp);
+        nor.push(0, cp, sp);
+        uv.push(j / radial, x / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+  };
+  const middle = (rr: number) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= radial; j++) {
+        const phi = (j / radial) * Math.PI * 2;
+        const cp = Math.cos(phi);
+        const sp = Math.sin(phi);
+        const t0 = cutT(rr, cp);
+        const t = t0 + (lm * i) / rows;
+        const nx = u.x * cp;
+        const ny = u.y * cp;
+        const p = p1.clone().addScaledVector(m, t);
+        pos.push(p.x + rr * nx, p.y + rr * ny, rr * sp);
+        nor.push(nx, ny, sp);
+        uv.push(j / radial, p.x / TEX_LENGTH);
+      }
+    }
+    return gridGeo(pos, nor, uv, rows + 1, radial + 1);
+  };
+  for (const [rr, mat] of [
+    [r, metal],
+    [r - wall, inside],
+  ] as const) {
+    group.add(new THREE.Mesh(straight(rr, 0), mat));
+    group.add(new THREE.Mesh(middle(rr), mat));
+    group.add(new THREE.Mesh(straight(rr, 1), mat));
+  }
+  // the two mitre seams (ellipses on the cut planes), a little proud of the surface
+  const kr = r + rib * 0.35;
+  for (const c of [p1, p2]) {
+    group.add(
+      new THREE.Mesh(
+        new THREE.TubeGeometry(
+          new FnCurve((t, v) => {
+            const phi = t * Math.PI * 2;
+            const cp = Math.cos(phi);
+            return v.set(c.x + cutX(kr, cp), c.y + kr * cp, kr * Math.sin(phi));
+          }),
+          radial,
+          rib,
+          8,
+          true,
+        ),
+        seam,
+      ),
+    );
+  }
+  const ends: THREE.Group[] = [];
+  ([
+    [-1, new THREE.Vector3(-COLLAR, 0, 0)],
+    [1, new THREE.Vector3(L + COLLAR, offset, 0)],
+  ] as const).forEach(([sd, at]) => {
+    const f = new THREE.Group();
+    f.position.copy(at);
+    f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(sd, 0, 0));
+    f.add(buildCollar(a, style, mats, rib * 0.8, radial));
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends, sizes: [a, a] };
+}
+
+/** SQ2RD fan: how many flat triangles each rectangle corner fans out to over its quarter of the round end. */
+const SQ_FAN = 8;
+/**
+ * Square-to-round surface (rectangle h x w at x = 0, y up h, z across w; circle radius rr at x = L), as the flat
+ * triangles it is laid out from: each corner fans to its quarter of the round end, and a flat triangle on each side
+ * runs from the side's two corners to the round end's point square to that side's middle. Flat shaded (facets read as
+ * the drawing's fan lines).
+ */
+function sq2rdGeo(h: number, w: number, rr: number, L: number) {
+  const N = SQ_FAN * 4;
+  const ring = (k: number) => {
+    const al = (k / N) * Math.PI * 2; // 0 at the top (+y), then towards +z
+    return new THREE.Vector3(L, rr * Math.cos(al), rr * Math.sin(al));
+  };
+  const corners = [
+    new THREE.Vector3(0, h / 2, w / 2),
+    new THREE.Vector3(0, -h / 2, w / 2),
+    new THREE.Vector3(0, -h / 2, -w / 2),
+    new THREE.Vector3(0, h / 2, -w / 2),
+  ];
+  const tris: THREE.Vector3[][] = [];
+  for (let q = 0; q < 4; q++) {
+    for (let k = 0; k < SQ_FAN; k++) tris.push([corners[q], ring(q * SQ_FAN + k), ring(q * SQ_FAN + k + 1)]);
+    tris.push([corners[q], corners[(q + 1) % 4], ring(((q + 1) * SQ_FAN) % N)]);
+  }
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (const t of tris) {
+    let [p0, p1, p2] = t;
+    const c = p0.clone().add(p1).add(p2).divideScalar(3);
+    let nn = new THREE.Vector3().crossVectors(p1.clone().sub(p0), p2.clone().sub(p0)).normalize();
+    if (nn.dot(new THREE.Vector3(0, c.y, c.z)) < 0) {
+      [p1, p2] = [p2, p1];
+      nn = nn.negate();
+    }
+    for (const p of [p0, p1, p2]) {
+      pos.push(p.x, p.y, p.z);
+      nor.push(nn.x, nn.y, nn.z);
+      uv.push((Math.atan2(p.z, p.y) / (Math.PI * 2) + 1) % 1, p.x / TEX_LENGTH);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  return g;
+}
+/** A rectangular tube (h x w) from x = x0 to x1, four flat sides, normals out. */
+function rectTube(h: number, w: number, x0: number, x1: number) {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const quad = (a: THREE.Vector3, b: THREE.Vector3, nn: THREE.Vector3) => {
+    const pts = [a.clone().setX(x0), b.clone().setX(x0), b.clone().setX(x1), a.clone().setX(x0), b.clone().setX(x1), a.clone().setX(x1)];
+    // wind so the face points along nn
+    const cr = new THREE.Vector3().crossVectors(pts[1].clone().sub(pts[0]), pts[2].clone().sub(pts[0]));
+    if (cr.dot(nn) < 0) {
+      [pts[1], pts[2]] = [pts[2], pts[1]];
+      [pts[4], pts[5]] = [pts[5], pts[4]];
+    }
+    for (const p of pts) {
+      pos.push(p.x, p.y, p.z);
+      nor.push(nn.x, nn.y, nn.z);
+      uv.push((p.y + p.z) / TEX_LENGTH + 0.5, p.x / TEX_LENGTH);
+    }
+  };
+  const c = (y: number, z: number) => new THREE.Vector3(0, y, z);
+  quad(c(h / 2, -w / 2), c(h / 2, w / 2), new THREE.Vector3(0, 1, 0));
+  quad(c(-h / 2, -w / 2), c(-h / 2, w / 2), new THREE.Vector3(0, -1, 0));
+  quad(c(-h / 2, w / 2), c(h / 2, w / 2), new THREE.Vector3(0, 0, 1));
+  quad(c(-h / 2, -w / 2), c(h / 2, -w / 2), new THREE.Vector3(0, 0, -1));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  return g;
+}
+
+/**
+ * Square to round transition (sheet 12), along x: the rectangular H x W end's plain 2" collar from x = -2 to 0 (the
+ * drawing's bar on that end, the same width as the round 2" end; assumed a plain straight collar, no connection shown on
+ * it), the faceted transition over L, then the round A's 2" end from L to L + 2. ends: [round A end] (connections go
+ * there only).
+ */
+function buildSq2rd(h: number, w: number, a: number, L: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const r = a / 2;
+  const big = Math.max(h, w);
+  const wall = Math.max(0.05, big * 0.006);
+  const wallA = Math.max(0.05, a * 0.006);
+  const radial = Math.min(144, 64 + Math.round(a * 4));
+  const ribA = Math.min(0.34, 0.04 + a * 0.012);
+  const rib = Math.min(0.34, 0.04 + big * 0.012);
+  group.add(new THREE.Mesh(sq2rdGeo(h, w, r, L), metal));
+  group.add(new THREE.Mesh(sq2rdGeo(h - 2 * wall, w - 2 * wall, r - wallA, L), inside));
+  group.add(new THREE.Mesh(rectTube(h, w, -COLLAR, 0), metal));
+  group.add(new THREE.Mesh(rectTube(h - 2 * wall, w - 2 * wall, -COLLAR, 0), inside));
+  // the rectangular end's cut rim
+  const rimShape = new THREE.Shape([
+    new THREE.Vector2(-w / 2, -h / 2),
+    new THREE.Vector2(w / 2, -h / 2),
+    new THREE.Vector2(w / 2, h / 2),
+    new THREE.Vector2(-w / 2, h / 2),
+  ]);
+  rimShape.holes.push(
+    new THREE.Path([
+      new THREE.Vector2(-w / 2 + wall, -h / 2 + wall),
+      new THREE.Vector2(-w / 2 + wall, h / 2 - wall),
+      new THREE.Vector2(w / 2 - wall, h / 2 - wall),
+      new THREE.Vector2(w / 2 - wall, -h / 2 + wall),
+    ]),
+  );
+  const rim = new THREE.ShapeGeometry(rimShape);
+  rim.rotateY(-Math.PI / 2); // shape x -> z... facing -x (out of the rectangular end)
+  rim.translate(-COLLAR, 0, 0);
+  group.add(new THREE.Mesh(rim, metal));
+  // seam where the transition meets the rectangular collar: round its four sides, a little proud
+  const k = rib * 0.35;
+  const hh = h / 2 + k;
+  const ww = w / 2 + k;
+  const per = 2 * (hh + ww);
+  group.add(
+    new THREE.Mesh(
+      new THREE.TubeGeometry(
+        new FnCurve((t, v) => {
+          let d = (t % 1) * per * 2;
+          if (d < 2 * ww) return v.set(0, hh, -ww + d);
+          d -= 2 * ww;
+          if (d < 2 * hh) return v.set(0, hh - d, ww);
+          d -= 2 * hh;
+          if (d < 2 * ww) return v.set(0, -hh, ww - d);
+          d -= 2 * ww;
+          return v.set(0, -hh + d, -ww);
+        }),
+        256,
+        rib * 0.8,
+        6,
+        true,
+      ),
+      seam,
+    ),
+  );
+  // and where it meets the round end
+  const t = new THREE.TorusGeometry(r + ribA * 0.2, ribA * 0.8, 8, radial);
+  t.rotateY(Math.PI / 2);
+  t.translate(L, 0, 0);
+  group.add(new THREE.Mesh(t, seam));
+  const f = new THREE.Group();
+  f.position.set(L + COLLAR, 0, 0);
+  f.add(buildCollar(a, style, mats, ribA * 0.8, radial));
+  group.add(f);
+  return { group, ends: [f], sizes: [a] };
+}
+
+/** OS or SQ2RD by type (sheet 12). */
+function buildOs(type: OsType, sizes: readonly number[], mats: Mats, style: EndStyle) {
+  const o = osDims(type, sizes);
+  return type === "os" ? buildOffset(o.a, o.offset, mats, style) : buildSq2rd(o.h, o.w, o.a, o.L, mats, style);
+}
+
+/**
  * Straight and Conical Taps types (sheet "Straight and Conical Taps"), ordered by the tap A and the pipe P it goes on.
  * Same fields as TEES (labels/defaults drive the size selects: A first, then P); top/out/bottom are unused. short is the
  * picker's second line (the sheet calls both conical ones "CT90"). gap: A is limited to P - gap. Assumed: a saddle plate
@@ -2589,6 +2920,30 @@ const WYE_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; 
   },
 };
 
+/** Offset connections: on both round A ends at once. */
+const OS_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "On both A ends: each is crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "On both A ends: straight ends, no beads. A flange goes in each end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
+/** Square to round connections: on the round A end only (the rectangular end stays a plain 2" collar). */
+const SQ2RD_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "On the round A end (the rectangular end is a plain collar): crimped past the bead, the duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "On the round A end (the rectangular end is a plain collar): straight end, no bead. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 /** Tee/cross connections: same, shown on the A inlet end (left). */
 const CROSS_CONNECTION_INFO: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
@@ -2633,7 +2988,7 @@ const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 
-export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType }) {
+export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn }: { onClose: () => void; kind?: ElbowKind; teeType?: TeeType | CteeType | LatType | TapType | LtapType | RedType | CapType | WyeType | OsType }) {
   const spec = ELBOWS[kind];
   // Tees & Crosses or Conical Tees & Crosses: their types (same picker and size selects).
   const conical = kind === "ctee";
@@ -2649,8 +3004,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const caps = kind === "cap";
   // Wyes (sheet 11): same picker and size selects (A, then B and C up to A on RY45); connections on all three ends.
   const wyes = kind === "wye";
-  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : TEES;
-  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : "t90");
+  // Offset / square to round (sheet 12): same picker; OS sizes A and the offset, SQ2RD H, W and the round A.
+  const oss = kind === "os";
+  const fam: Record<string, CrossSpec> = conical ? CTEES : lateral ? LATS : taps ? tapFam : reds ? REDS : caps ? CAPS : wyes ? WYES : oss ? OSS : TEES;
+  const teeType0: string = teeTypeIn ?? (conical ? "ct90" : lateral ? "l45" : ltaps ? "lst45" : taps ? "sst90" : reds ? "cr" : caps ? "pc" : wyes ? "y45" : oss ? "os" : "t90");
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -2677,8 +3034,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
-  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes;
-  const gauge = stockGauge(cross ? teeSizes[0] : diameter);
+  const cross = kind === "tee" || conical || lateral || taps || reds || caps || wyes || oss;
+  const osD = oss ? osDims(teeType as OsType, teeSizes) : null;
+  // SQ2RD: gauge by the larger of H and W (the sheet's biggest dimension); everything else by A.
+  const gauge = stockGauge(osD ? osD.gaugeD : cross ? teeSizes[0] : diameter);
 
   useEffect(() => {
     const el = host.current!;
@@ -2880,9 +3239,10 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
         return;
       }
       const solid: Mats = { metal, inside, seam };
-      if (kind === "wye") {
+      if (kind === "wye" || kind === "os") {
         // Wyes: the connection goes on every end, each its own size (reducing legs: the small end), all played at once.
-        const w = buildWye(currentTee as WyeType, currentTeeSizes, solid, style);
+        // Offset: both ends; square to round: the round end only.
+        const w = kind === "os" ? buildOs(currentTee as OsType, currentTeeSizes, solid, style) : buildWye(currentTee as WyeType, currentTeeSizes, solid, style);
         const joints = c === "none" ? [] : w.ends.map((f, i) => (c === "coupling" ? slipJoint(w.sizes[i], f, pipeMats, screwMat) : flangeJoint(w.sizes[i], f, pipeMats, metal, sheet, gasketMat, screwMat)));
         moving = joints.flatMap((j) => j.moving.map((m) => ({ ...m, base: m.obj.position.x })));
         screws = joints.flatMap((j) => j.screws.items);
@@ -2943,7 +3303,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     };
     let currentTee: string = teeType0;
     let currentTeeSizes: readonly number[] = fam[teeType0].defaults;
-    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" ? currentTeeSizes[0] : spec.defaultD;
+    let currentD = kind === "tee" || kind === "ctee" || kind === "lat" || kind === "tap" || kind === "ltap" || kind === "red" || kind === "cap" || kind === "wye" ? currentTeeSizes[0] : kind === "os" ? osDims(currentTee as OsType, currentTeeSizes).gaugeD : spec.defaultD;
     let currentC: Connection = "none";
     let currentV = 0;
     let currentB = TEE_RUN_DEFAULT;
@@ -2982,7 +3342,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
         if (type === currentTee && sizes.length === currentTeeSizes.length && sizes.every((x, i) => x === currentTeeSizes[i])) return;
         currentTee = type;
         currentTeeSizes = sizes;
-        currentD = sizes[0];
+        currentD = kind === "os" ? osDims(type as OsType, sizes).gaugeD : sizes[0];
         build(currentD, currentC, currentV);
       },
       setTopInset: (px) => {
@@ -3061,7 +3421,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const wyeD = wyes ? wyeDims(teeType as WyeType, teeSizes) : null;
   const dims: { L: number; R: number; reducing: boolean; Lx?: number } = redD
     ? { L: 0, R: redD.R, reducing: true }
-    : caps || wyes
+    : caps || wyes || oss
     ? { L: 0, R: 0, reducing: false }
     : conical
     ? cteeDims(teeType as CteeType, teeSizes)
@@ -3079,7 +3439,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
   const info =
     cross
       ? connection !== "none"
-        ? (wyes ? WYE_CONNECTION_INFO : reds ? RED_CONNECTION_INFO : ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
+        ? (oss ? (teeType === "sq2rd" ? SQ2RD_CONNECTION_INFO : OS_CONNECTION_INFO) : wyes ? WYE_CONNECTION_INFO : reds ? RED_CONNECTION_INFO : ltaps ? LTAP_CONNECTION_INFO : taps ? TAP_CONNECTION_INFO : CROSS_CONNECTION_INFO)[connection]
         : { title: name, text: teeSpec.text }
       : connection !== "none"
       ? tee
@@ -3101,7 +3461,9 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
     if (t === teeType) return;
     setTeeType(t);
     setTeeSizes(fam[t].defaults);
-    if (wyes) {
+    if (oss) {
+      if (location.hash.startsWith(SWF_OS_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + osHash(t as OsType));
+    } else if (wyes) {
       if (location.hash.startsWith(SWF_WYE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + wyeHash(t as WyeType));
     } else if (caps) {
       if (location.hash.startsWith(SWF_CAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + capHash(t as CapType));
@@ -3124,6 +3486,12 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       if (tapSpec) {
         // A up to P - gap, at least the smallest size (P's list only offers pipes that leave room for one)
         n[0] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x <= Math.min(n[0], n[1] - tapSpec.gap)));
+        return n;
+      }
+      if (oss) {
+        // OS: the offset up to A. SQ2RD: the round A up to the smaller of H and W (largest stock size that fits).
+        if (teeType === "os") n[1] = Math.min(n[1], n[0]);
+        else n[2] = Math.max(spec.sizes[0], ...spec.sizes.filter((x) => x <= Math.min(n[0], n[1], n[2])));
         return n;
       }
       if (reds) {
@@ -3283,8 +3651,8 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       {cross ? (
         <>
           {/* Tees & crosses: the type picker (sheet's four), then that type's sizes (A first; taps and outlet up to A). */}
-          <div className={`grid ${ltaps || reds || wyes ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
-            {(wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
+          <div className={`grid ${ltaps || reds || wyes || oss ? "grid-cols-2" : caps ? "grid-cols-5" : "grid-cols-4"} gap-2 bg-surface/90 px-3 pt-2`} role="radiogroup" aria-label={oss ? "Offset or transition type" : wyes ? "Wye type" : caps ? "Part type" : reds ? "Reducer type" : ltaps ? "Lateral tap type" : taps ? "Tap type" : lateral ? "Lateral type" : conical ? "Conical tee or cross type" : "Tee or cross type"}>
+            {(oss ? OS_TYPES : wyes ? WYE_TYPES : caps ? CAP_TYPES : reds ? RED_TYPES : ltaps ? LTAP_TYPES : taps ? TAP_TYPES : lateral ? LAT_TYPES : conical ? CTEE_TYPES : TEE_TYPES).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -3292,13 +3660,13 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                 aria-checked={teeType === t}
                 aria-label={`${fam[t].name} (${fam[t].code})`}
                 onClick={() => pickType(t)}
-                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
+                className={`btn-raised btn-raised-sm min-w-0 rounded-[0.65rem] px-1 font-display text-lg leading-none ${taps || reds || caps || wyes || oss ? "flex h-11 flex-col items-center justify-center gap-0.5 short:h-9" : "h-9 short:h-8"}`}
               >
                 {fam[t].code}
                 {/* taps: the sheet calls both conical ones CT90, so each button also says saddle or tap */}
-                {(taps || reds || caps || wyes) && (
+                {(taps || reds || caps || wyes || oss) && (
                   <span className={`font-sans text-[10px] leading-none font-medium uppercase opacity-75 ${caps ? "tracking-normal" : "tracking-wider"}`}>
-                    {wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
+                    {oss ? OSS[t as OsType].short : wyes ? WYES[t as WyeType].short : caps ? CAPS[t as CapType].short : reds ? REDS[t as RedType].short : tapFam[t].short}
                   </span>
                 )}
               </button>
@@ -3314,7 +3682,15 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
                   aria-label={`Size ${label.replace(" · ", " (") + ")"}`}
                   className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
                 >
-                  {(tapSpec && i === 1
+                  {(osD
+                    ? osD.type === "os"
+                      ? i === 0
+                        ? spec.sizes
+                        : Array.from({ length: osD.a }, (_, k) => k + 1)
+                      : i < 2
+                      ? RECT_SIZES
+                      : spec.sizes.filter((d) => d <= Math.min(osD.h, osD.w))
+                    : tapSpec && i === 1
                     ? spec.sizes.filter((d) => d >= spec.sizes[0] + tapSpec.gap)
                     : reds && i === 0
                     ? spec.sizes.filter((d) => d > spec.sizes[0])
@@ -3330,7 +3706,29 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
           </div>
           <div className="flex items-center gap-2 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="cross-info">
-              {wyeD ? (
+              {osD ? (
+                osD.type === "os" ? (
+                  <>
+                    <p className="truncate">
+                      <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{osD.L}&Prime;</b> · offset{" "}
+                      <b className="font-semibold">{osD.offset}&Prime;</b>
+                    </p>
+                    <p className="truncate text-muted">
+                      {spec.note} · L = A × 2 · overall {osD.L + 2 * COLLAR}&Prime;
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="truncate">
+                      <b className="font-semibold">{gauge.fitting} ga</b> fitting · L = <b className="font-semibold">{osD.L}&Prime;</b>
+                      {osD.assumed ? " · assumed" : ""} · table A <b className="font-semibold">{osD.diff}&Prime;</b>
+                    </p>
+                    <p className="text-muted" data-testid="sq2rd-note">
+                      Table &ldquo;A&rdquo; = larger of H/W − round A, not the round size
+                    </p>
+                  </>
+                )
+              ) : wyeD ? (
                 <>
                   <p className="truncate">
                     <b className="font-semibold">{gauge.fitting} ga</b> fitting · legs 45°

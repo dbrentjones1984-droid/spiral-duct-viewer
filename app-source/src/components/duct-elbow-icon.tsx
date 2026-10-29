@@ -24,6 +24,8 @@
  * pipe ends it joins dashed (reference only).
  * wye draws a 45° wye (Wye & Reducing Wye card), front view as on its sheet: inlet A at the bottom with its 2" collar,
  * the pentagonal lower body, the centre seam up to the crotch and the two 45° legs, each with its 2" collar.
+ * os draws an offset (Offset & Square to Round card), side view as on its sheet: the left A end's 2" collar, a straight
+ * piece to the first mitre, the angled middle, the second mitre and the right end OFFSET higher with its 2" collar.
  * Path data generated from a 3D model (orthographic projection); uses currentColor.
  */
 export function DuctElbowIcon({
@@ -40,6 +42,7 @@ export function DuctElbowIcon({
   red = false,
   cap = false,
   wye = false,
+  os = false,
 }: {
   className?: string;
   innerWall?: boolean;
@@ -54,7 +57,18 @@ export function DuctElbowIcon({
   red?: boolean;
   cap?: boolean;
   wye?: boolean;
+  os?: boolean;
 }) {
+  if (os) {
+    return (
+      <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+        {/* outline: left end, angled middle, right end shifted up by the offset */}
+        <path d="M3 22 L13 22 L42 14 L57 14 L57 28 L47 28 L18 36 L3 36 Z" strokeWidth={2} />
+        {/* the 2" collar lines and the two mitre cuts (both leaning the same way, as drawn) */}
+        <path d="M8 22 L8 36 M52 14 L52 28 M13 22 L18 36 M42 14 L47 28" strokeWidth={1.1} />
+      </svg>
+    );
+  }
   if (wye) {
     return (
       <svg viewBox="0 0 60 40" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

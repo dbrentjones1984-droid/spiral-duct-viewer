@@ -81,13 +81,13 @@ export const SW_OVAL_SHEETS = [
   },
 ] as const;
 
-// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye"). To add sheets: put the
+// Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
 export const SWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Round-Fittings.pdf",
-  sizeLabel: "2.4 MB",
+  sizeLabel: "2.6 MB",
 };
 
 export const SWF_ROUND_SHEETS = [
@@ -178,6 +178,14 @@ export const SWF_ROUND_SHEETS = [
     w: 1132,
     h: 1339,
     alt: "Single Wall Round, Wye and Reducing Wye: Y45 wye 45 degree, inlet A at the bottom with a 2 inch end, splitting into two branches at 45 degrees, each branch end A with a 2 inch end. RY45 reducing wye 45 degree, to order list A, B and C: inlet A, left branch B and right branch C, each branch with a reducer R and a 2 inch end; R = refer to reducer drawing.",
+  },
+  {
+    n: 12,
+    title: "Offset and Square-to-Round Transition",
+    src: `${base}sheets/single-wall-round-fittings-12.webp`,
+    w: 1132,
+    h: 1375,
+    alt: "Single Wall Round, Offset and Square-to-Round Transition: OS offset, diameter A both ends with 2 inch ends, the centerline shifted by the OFFSET, L = A x 2. SQ2RD square to round transition, rectangular end H x W to round A with a 2 inch end, length L. Table: A (largest length H or W minus round diameter) 3 to 8 inch, L 12 inch; 9 to 14 inch, L 18; 15 to 26 inch, L 24; 27 inch and larger, L 36.",
   },
 ] as const;
 
