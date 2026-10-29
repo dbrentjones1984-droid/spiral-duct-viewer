@@ -63,12 +63,13 @@ export const SW_ROUND_SHEETS = [
 ] as const;
 
 // Single Wall Duct · Oval: Brent's two "Single Wall Oval Nominal Sizes - Gauge Chart" images, kept as sent (sheet 1 plain,
-// sheet 2 shaded rows; a few cells differ and Brent said to keep both as is). Shown the same way as Round (WebP at full
-// resolution); the PDF download is both pages in the same order.
+// sheet 2 shaded rows; a few cells differ and Brent said to keep both as is), plus sheet 3 "Spiral Pipe / Long-Seam Pipe"
+// (sheet only, no 3D model), also added as page 3 of the PDF. Shown the same way as Round (WebP at full resolution); the
+// PDF download is all three pages in the same order.
 export const SW_OVAL_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Oval-Duct.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Oval-Duct.pdf",
-  sizeLabel: "1.0 MB",
+  sizeLabel: "2.0 MB",
 };
 
 export const SW_OVAL_SHEETS = [
@@ -87,6 +88,14 @@ export const SW_OVAL_SHEETS = [
     w: 1105,
     h: 1423,
     alt: "Sheet 2, Single Wall Oval, Nominal Sizes Gauge Chart with shaded rows (positive pressure, 1995 SMACNA): initial spiral diameter by oval major axis (8 to 60 inch, 24/22/20/18 gauge) and minor axis (4 to 30 inch).",
+  },
+  {
+    n: 3,
+    title: "Spiral Pipe / Long-Seam Pipe",
+    src: `${base}sheets/single-wall-oval-3.webp`,
+    w: 1167,
+    h: 1348,
+    alt: "Sheet 3, Single Wall Oval, Spiral Pipe / Long-Seam Pipe: spiral oval pipe, standard length 10'-0\", and long-seam oval pipe, standard length 5'-0\", each drawn with major axis A, minor axis a and length L.",
   },
 ] as const;
 
@@ -244,7 +253,7 @@ export const SW_ROUND_DOC: SheetDoc = {
 
 export const SW_OVAL_DOC: SheetDoc = {
   title: "SINGLE WALL OVAL",
-  subtitle: "Spiral duct · sheets 1-2",
+  subtitle: "Spiral duct · sheets 1-3",
   sheets: SW_OVAL_SHEETS,
   pdf: SW_OVAL_PDF,
   model: "oval",
