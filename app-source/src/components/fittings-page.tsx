@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
-import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType } from "@/lib/route";
+import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -263,7 +263,7 @@ export function FittingsPage({
   );
 }
 
-/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows); more cards get added as the oval sheets come in. */
+/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows, sheet 3: Tees and Crosses); more cards get added as the oval sheets come in. */
 const OVAL_FITTINGS = [
   {
     id: "elbow",
@@ -277,6 +277,12 @@ const OVAL_FITTINGS = [
     text: "02PV90 H / E · 90° 2-piece mitered elbow with turning vanes · hard or easy · 2″ collars",
     source: "Mitered Elbows · 4″ legs past the throat",
   },
+  {
+    id: "tee",
+    name: "Oval Tees & Crosses",
+    text: "0T90 / 0RT90 / 0C180 / 0RC180 · oval branches on the rounded side, reducers on the R types · 2″ collars",
+    source: "Tees and Crosses · L = branch + 3″",
+  },
 ] as const;
 
 /**
@@ -287,15 +293,17 @@ export function OvalFittingsPage({
   model3d,
   elbowType,
   bend,
+  teeType,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
-  model3d: "elbow" | "miter" | null;
+  model3d: "elbow" | "miter" | "tee" | null;
   elbowType?: OvalElbowType;
   bend?: OvalBend;
+  teeType?: OvalTeeType;
   onBack: () => void;
-  onOpen3d: (id: "elbow" | "miter") => void;
+  onOpen3d: (id: "elbow" | "miter" | "tee") => void;
   onClose3d: () => void;
 }) {
   return (
@@ -323,7 +331,7 @@ export function OvalFittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} cross={f.id === "tee"} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -358,10 +366,11 @@ export function OvalFittingsPage({
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
           <OvalElbow3D
-            key={`o${model3d}-${elbowType}-${bend}`}
-            kind={model3d === "miter" ? "miter" : "gored"}
+            key={`o${model3d}-${elbowType}-${bend}-${teeType}`}
+            kind={model3d === "miter" ? "miter" : model3d === "tee" ? "tee" : "gored"}
             type={elbowType ?? "90hb5"}
             bend={bend ?? "hard"}
+            teeType={teeType ?? "0t90"}
             onClose={onClose3d}
           />
         </Suspense>

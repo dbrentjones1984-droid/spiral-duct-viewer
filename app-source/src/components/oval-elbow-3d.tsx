@@ -5,8 +5,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_ELBOW_TYPES, ovalElbowHash, ovalMiterHash, SWFO_ELBOW_3D_HASH, SWFO_MITER_3D_HASH, type OvalBend, type OvalElbowType } from "@/lib/route";
-import { OVAL_MAJORS, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
+import { OVAL_BENDS, OVAL_ELBOW_TYPES, OVAL_TEE_TYPES, ovalElbowHash, ovalMiterHash, ovalTeeHash, SWFO_ELBOW_3D_HASH, SWFO_MITER_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalElbowType, type OvalTeeType } from "@/lib/route";
+import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
  * Single Wall Oval > Elbows (oval fittings sheet 1): 90HB5, 60HB3, 45HB3 and 30HB2 gored elbows in flat oval A x α
@@ -29,6 +29,10 @@ import { OVAL_MAJORS, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
  * 2-piece mitered elbow with turning vanes. Hard (H) = A in the bend plane, easy (E) = α in it, as above. Each leg runs
  * 4" past the other leg's wall (the throat corner), its 2" collar included, as drawn; vanes as the round MEV90's (count
  * by the size in the bend plane), with the walls shown see-through so they read.
+ * And the Tees and Crosses sheet (oval fittings sheet 3), kind "tee": 0T90 / 0RT90 / 0C180 / 0RC180 with a type picker,
+ * oval branches on the main's rounded (minor) side in a saddle (major axis along the main), L = branch + 3" between the 2" ends, the R types
+ * through a concentric oval reducer to the outlet (round CR table by the major axis reduction). Connection on the
+ * right (outlet) end; see buildOvalTee().
  * Units are inches.
  */
 
@@ -587,6 +591,282 @@ function buildOvalMiter(kit: Kit, hard: boolean, mats: Mats, style: EndStyle, va
   return { group, ends };
 }
 
+// ---- Tees & crosses (0T90 / 0RT90 / 0C180 / 0RC180, oval fittings sheet 3). ----
+/**
+ * Branches on the main's minor side, the narrow rounded edge, as the sheet draws them. Built with the main along X, its
+ * minor axis α in Y and A in Z, the branches out along ±Z off the semicircular edges (centred at z = ±F/2, radius α/2);
+ * the whole fitting is then turned so the branches point up and down (A vertical). Each branch is a flat oval with its
+ * major axis along the main (X) and its minor across it (Y), so its outline lands on the round edge in a saddle like the
+ * round T90/C180's: the branch's minor b must fit the edge (b ≤ α). It runs OTEE_BRANCH past the edge's crown, its 2"
+ * collar included (as the round tees'; assumed).
+ */
+const OTEE_BRANCH = 4;
+const OTEE_EXTRA = 3;
+export type OvalSz = { A: number; a: number };
+export const OVAL_TEES: Record<
+  OvalTeeType,
+  { code: string; name: string; short: string; reducing: boolean; cross: boolean; labels: { out?: string; top: string; bottom?: string }; lRule: string; defaults: { out?: OvalSz; top: OvalSz; bottom?: OvalSz } }
+> = {
+  "0t90": { code: "0T90", name: "Tee 90°", short: "Tee", reducing: false, cross: false, labels: { top: "B×b · branch" }, lRule: "B + 3″", defaults: { top: { A: 18, a: 10 } } },
+  "0rt90": {
+    code: "0RT90",
+    name: "Reducing Tee 90°",
+    short: "Red. tee",
+    reducing: true,
+    cross: false,
+    labels: { out: "B×b · outlet", top: "C×c · branch" },
+    lRule: "C + 3″",
+    defaults: { out: { A: 19, a: 10 }, top: { A: 14, a: 8 } },
+  },
+  "0c180": {
+    code: "0C180",
+    name: "Cross 180°",
+    short: "Cross",
+    reducing: false,
+    cross: true,
+    labels: { top: "B×b · top", bottom: "C×c · bottom" },
+    lRule: "B + 3″",
+    defaults: { top: { A: 18, a: 10 }, bottom: { A: 14, a: 8 } },
+  },
+  "0rc180": {
+    code: "0RC180",
+    name: "Reducing Cross 180°",
+    short: "Red. cross",
+    reducing: true,
+    cross: true,
+    labels: { out: "B×b · outlet", top: "C×c · top", bottom: "D×d · bottom" },
+    lRule: "C + 3″",
+    defaults: { out: { A: 19, a: 10 }, top: { A: 14, a: 8 }, bottom: { A: 12, a: 6 } },
+  },
+};
+
+/**
+ * Oval reducer length R (the sheet: "refer to reducer drawing"): the round concentric reducer's CR table by the major
+ * axis reduction A - B: 1"-4" -> 4", 5"-8" -> 8", 9"-12" -> 12", 13"-16" -> 16", past 16" on in 4" steps (assumed).
+ */
+export const OVAL_CR_TABLE_MAX = 16;
+export function ovalReducerLength(A: number, B: number) {
+  return B >= A ? 0 : Math.ceil((A - B) / 4) * 4;
+}
+
+/** Reach (along Z) of the main's rounded edge (end radius rho) at height y: the saddle the branches sit on. */
+function mainEdge(kit: Kit, rho: number, y: number) {
+  return kit.F / 2 + Math.sqrt(Math.max(0, rho * rho - y * y));
+}
+type TeeHole = { dir: 1 | -1; F: number; r: number };
+/** Half length (along X) of a branch's hole at height y, or -1 outside it. */
+const holeHalf = (h: TeeHole, y: number) => (Math.abs(y) < h.r ? h.F / 2 + Math.sqrt(h.r * h.r - y * y) : -1);
+
+/** The main between its 2" ends (x = -L/2..L/2) with the branches' holes cut out, as two halves (x < 0 and x > 0). */
+function teeMainGeo(km: Kit, rho: number, L: number, holes: TeeHole[], S: number) {
+  const at = (u: number) => km.point(u, rho);
+  const which = (u: number) => {
+    const [y, z] = at(u);
+    return holes.findIndex((h) => h.dir * z > km.F / 2 - 1e-9 && Math.abs(y) < h.r);
+  };
+  const halfAt = (u: number) => {
+    const [y] = at(u);
+    const k = which(u);
+    return k < 0 ? 0 : holeHalf(holes[k], y);
+  };
+  // columns around the section; at each hole edge two columns at the same place, one each side of the step
+  let cols: { u: number; h: number }[] = [];
+  for (let j = 0; j <= S; j++) {
+    const u = j / S;
+    if (j > 0) {
+      const u0 = (j - 1) / S;
+      const k0 = which(u0);
+      const k1 = which(u);
+      if (k0 !== k1) {
+        let lo = u0;
+        let hi = u;
+        for (let it = 0; it < 40; it++) {
+          const mid = (lo + hi) / 2;
+          if (which(mid) === k0) lo = mid;
+          else hi = mid;
+        }
+        const ue = (lo + hi) / 2;
+        const edge = (k: number) => (k < 0 ? 0 : holes[k].F / 2);
+        cols.push({ u: ue, h: edge(k0) }, { u: ue, h: edge(k1) });
+      }
+    }
+    cols.push({ u, h: halfAt(u) });
+  }
+  for (let pass = 0; pass < 6; pass++) {
+    const next = [cols[0]];
+    for (let j = 1; j < cols.length; j++) {
+      const p = cols[j - 1];
+      const c = cols[j];
+      if (c.u - p.u > 1e-5 && Math.abs(c.h - p.h) > rho * 0.03 && which(p.u + 1e-9) === which(c.u - 1e-9)) {
+        const m = (p.u + c.u) / 2;
+        next.push({ u: m, h: halfAt(m) });
+      }
+      next.push(c);
+    }
+    cols = next;
+  }
+  const rows = 8;
+  return ([-1, 1] as const).map((side) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (const c of cols) {
+        const [y, z, ny, nz] = at(c.u);
+        const x = side * (c.h + ((L / 2 - c.h) * i) / rows);
+        pos.push(x, y, z);
+        nor.push(0, ny, nz);
+        uv.push(c.u, (x + 40) / TEX_LENGTH);
+      }
+    }
+    return orientedGrid(pos, nor, uv, rows + 1, cols.length);
+  });
+}
+
+/** A branch (kit kb, end radius rb) out of the main's rounded edge (end radius rhoMain) on the dir side, out to |z| = yTo. */
+function teeBranchGeo(km: Kit, rhoMain: number, kb: Kit, rb: number, dir: 1 | -1, yTo: number, S: number) {
+  const rows = 8;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= S; j++) {
+      const [ym, zm, ny, nz] = kb.point(j / S, rb);
+      const s0 = mainEdge(km, rhoMain, ym);
+      const s = s0 + ((yTo - s0) * i) / rows;
+      pos.push(zm, ym, dir * s);
+      nor.push(nz, ny, 0);
+      uv.push(j / S, (11 + yTo - s) / TEX_LENGTH);
+    }
+  }
+  return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+}
+
+/** The seam where a branch meets the main, pushed out by k so it sits on both surfaces. */
+class TeeSaddleLoop extends THREE.Curve<THREE.Vector3> {
+  constructor(
+    private km: Kit,
+    private kb: Kit,
+    private k: number,
+    private dir: 1 | -1,
+  ) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    const [ym, zm] = this.kb.point(u, this.kb.R0 + this.k, this.kb.R0);
+    return target.set(zm, ym, this.dir * mainEdge(this.km, this.km.R0 + this.k, ym));
+  }
+}
+
+/** Concentric oval reducer from the main (km) at x0 to the outlet (ko) at x1, end radii rm / ro. */
+function teeReducerGeo(km: Kit, rm: number, ko: Kit, ro: number, x0: number, x1: number, S: number) {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const rows = 6;
+  for (let i = 0; i <= rows; i++) {
+    const k = i / rows;
+    for (let j = 0; j <= S; j++) {
+      const [y0, z0, ny0, nz0] = km.point(j / S, rm, km.R0);
+      const [y1, z1, ny1, nz1] = ko.point(j / S, ro, ko.R0);
+      const x = x0 + (x1 - x0) * k;
+      pos.push(x, y0 + (y1 - y0) * k, z0 + (z1 - z0) * k);
+      nor.push(0, ny0 + (ny1 - ny0) * k, nz0 + (nz1 - nz0) * k);
+      uv.push(j / S, x / TEX_LENGTH);
+    }
+  }
+  const g = orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  g.computeVertexNormals();
+  const n = g.getAttribute("normal") as THREE.BufferAttribute;
+  for (let i = 0; i <= rows; i++) {
+    const p = i * (S + 1);
+    const q = p + S;
+    const v = new THREE.Vector3(n.getX(p) + n.getX(q), n.getY(p) + n.getY(q), n.getZ(p) + n.getZ(q)).normalize();
+    n.setXYZ(p, v.x, v.y, v.z);
+    n.setXYZ(q, v.x, v.y, v.z);
+  }
+  return g;
+}
+
+/** End frame at the open end p, +X out along `out`, local Z along the end's major axis (as endFrame). */
+function teeEndFrame(p: THREE.Vector3, out: THREE.Vector3, major: THREE.Vector3) {
+  const y = new THREE.Vector3().crossVectors(major, out);
+  const g = new THREE.Group();
+  g.position.copy(p);
+  g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(out, y, major));
+  return g;
+}
+
+/** Body length L (branch + 3", the larger top branch's major axis) and reducer R of a tee/cross. */
+export function ovalTeeDims(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz) {
+  const t = OVAL_TEES[type];
+  return { L: top.A + OTEE_EXTRA, R: t.reducing ? ovalReducerLength(main.A, out.A) : 0 };
+}
+
+/**
+ * 0T90 / 0RT90 / 0C180 / 0RC180: the main with its 2" ends (right end through the reducer to the outlet on the R types),
+ * the branches with their seams and 2" collars. ends[0] is the right (outlet) end, where the connection goes.
+ */
+function buildOvalTee(type: OvalTeeType, main: OvalSz, out: OvalSz, top: OvalSz, bottom: OvalSz | null, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const spec = OVAL_TEES[type];
+  const km = ovalKit(main.A, main.a);
+  const ko = spec.reducing ? ovalKit(out.A, out.a) : km;
+  const { L, R } = ovalTeeDims(type, main, out, top);
+  const outer = new THREE.Group();
+  const group = new THREE.Group();
+  group.rotation.x = -Math.PI / 2; // branches (built along ±Z) up and down, A vertical
+  outer.add(group);
+  const Sm = Math.min(220, 96 + Math.round(km.perimeter(km.R0) * 1.2));
+  const ribOf = (k: Kit) => Math.min(0.34, 0.04 + k.eqD * 0.012);
+  const branches = ([
+    [1, top],
+    [-1, spec.cross ? bottom : null],
+  ] as const)
+    .filter((b): b is readonly [1 | -1, OvalSz] => !!b[1])
+    .map(([dir, sz]) => ({ dir, kb: ovalKit(sz.A, sz.a) }));
+  for (const [rho, inner] of [
+    [km.R0, false],
+    [km.R0 - km.wall, true],
+  ] as const) {
+    const holes = branches.map(({ dir, kb }) => ({ dir, F: kb.F, r: inner ? kb.R0 - kb.wall : kb.R0 }));
+    for (const g of teeMainGeo(km, rho, L, holes, Sm)) group.add(new THREE.Mesh(g, inner ? inside : metal));
+  }
+  const crown = km.F / 2 + km.R0; // the rounded edge's crown
+  const yTo = crown + OTEE_BRANCH - COLLAR; // branch body ends where its 2" collar starts
+  const ends: THREE.Group[] = [];
+  const X = new THREE.Vector3(1, 0, 0);
+  const Z = new THREE.Vector3(0, 0, 1);
+  // right end first (the connection goes there), then the left A end
+  const xr = L / 2 + R;
+  if (R > 0) {
+    const So = Math.min(220, 96 + Math.round(ko.perimeter(ko.R0) * 1.2));
+    const S = Math.max(Sm, So);
+    group.add(new THREE.Mesh(teeReducerGeo(km, km.R0, ko, ko.R0, L / 2, xr, S), metal));
+    group.add(new THREE.Mesh(teeReducerGeo(km, km.R0 - km.wall, ko, ko.R0 - ko.wall, L / 2, xr, S), inside));
+    const rib = ribOf(km);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new km.Loop(km.R0 + rib * 0.2, L / 2), Sm, rib * 0.8, 8, true), seam));
+  }
+  const fr = teeEndFrame(new THREE.Vector3(xr + COLLAR, 0, 0), X.clone(), Z.clone());
+  fr.add(buildCollar(ko, style, mats, ribOf(ko) * 0.8, Math.min(220, 96 + Math.round(ko.perimeter(ko.R0) * 1.2))));
+  const fl = teeEndFrame(new THREE.Vector3(-(L / 2 + COLLAR), 0, 0), X.clone().negate(), Z.clone());
+  fl.add(buildCollar(km, style, mats, ribOf(km) * 0.8, Sm));
+  ends.push(fr, fl);
+  group.add(fr, fl);
+  for (const { dir, kb } of branches) {
+    const Sb = Math.min(220, 96 + Math.round(kb.perimeter(kb.R0) * 1.2));
+    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0, kb, kb.R0, dir, yTo, Sb), metal));
+    group.add(new THREE.Mesh(teeBranchGeo(km, km.R0 - km.wall, kb, kb.R0 - kb.wall, dir, yTo, Sb), inside));
+    const rib = ribOf(kb);
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new TeeSaddleLoop(km, kb, rib * 0.35, dir), Sb * 2, rib, 8, true), seam));
+    const f = teeEndFrame(new THREE.Vector3(0, 0, dir * (crown + OTEE_BRANCH)), new THREE.Vector3(0, 0, dir), X.clone());
+    f.add(buildCollar(kb, style, mats, rib * 0.8, Sb));
+    group.add(f);
+    ends.push(f);
+  }
+  return { group: outer, ends, connKit: ko, L, R };
+}
+
 type Screws = NonNullable<BuiltConnection["screws"]>;
 type Joint = { moving: { obj: THREE.Object3D; from: number; to: number }[]; screws: Screws };
 
@@ -694,8 +974,18 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
   },
 };
 
-type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number };
-export type OvalElbowKind = "gored" | "miter";
+type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalTeeType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
+export type OvalElbowKind = "gored" | "miter" | "tee";
+const szKey = (s: OvalSz) => `${s.A}x${s.a}`;
+const szText = (s: OvalSz) => `${s.A}×${s.a}`;
+/** Chart sizes up to max (both axes; the outlet's A strictly smaller), largest first. */
+const sizesWithin = (max: OvalSz, smallerA = false) =>
+  OVAL_SIZES.filter((s) => (smallerA ? s.A < max.A : s.A <= max.A) && s.a <= max.a)
+    .map((s) => ({ A: s.A, a: s.a }))
+    .sort((p, q) => q.A - p.A || q.a - p.a);
+/** The wanted size if it is in the list, else the nearest one. */
+const snapSz = (want: OvalSz, list: OvalSz[]) =>
+  list.find((s) => s.A === want.A && s.a === want.a) ?? list.reduce((b, s) => (Math.abs(s.A - want.A) + Math.abs(s.a - want.a) < Math.abs(b.A - want.A) + Math.abs(b.a - want.a) ? s : b), list[0]);
 const MITER_NAME = "90° 2-Piece Mitered Elbow";
 const miterCode = (hard: boolean) => `02PV90 ${hard ? "H" : "E"}`;
 
@@ -703,14 +993,17 @@ export default function OvalElbow3D({
   kind = "gored",
   type: type0,
   bend: bend0,
+  teeType: teeType0 = "0t90",
   onClose,
 }: {
   kind?: OvalElbowKind;
   type: OvalElbowType;
   bend: OvalBend;
+  teeType?: OvalTeeType;
   onClose: () => void;
 }) {
   const miter = kind === "miter";
+  const tee = kind === "tee";
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
@@ -724,6 +1017,11 @@ export default function OvalElbow3D({
   const [bend, setBend] = useState<OvalBend>(bend0);
   const [A, setA] = useState(DEFAULT_A);
   const [minor, setMinor] = useState(DEFAULT_MINOR);
+  const [teeType, setTeeType] = useState<OvalTeeType>(teeType0);
+  // wanted branch / outlet sizes (snapped to what fits the main below)
+  const [wantOut, setWantOut] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.out ?? { A: 19, a: 10 });
+  const [wantTop, setWantTop] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.top);
+  const [wantBottom, setWantBottom] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.bottom ?? { A: 14, a: 8 });
   const [connection, setConnection] = useState<Connection>("none");
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
@@ -808,7 +1106,8 @@ export default function OvalElbow3D({
 
     let model: THREE.Group | null = null;
     // Mitered: more from the side (looking into the outlet a little), so the vane faces show, as the round MEV90.
-    const view = miter ? new THREE.Vector3(0.85, 0.42, -1) : new THREE.Vector3(0.3, 0.32, 1);
+    // Tees: from the front a little above and to the right, so the oval main, its flat and the branches read.
+    const view = miter ? new THREE.Vector3(0.85, 0.42, -1) : tee ? new THREE.Vector3(1, 0.6, 0.7) : new THREE.Vector3(0.3, 0.32, 1);
     let scale = DEFAULT_A;
     const frame = () => {
       if (!model) return;
@@ -885,27 +1184,34 @@ export default function OvalElbow3D({
       }
     };
 
-    let current: Model = { type: type0, bend: bend0, A: DEFAULT_A, minor: DEFAULT_MINOR };
+    let current: Model | null = null;
     let currentC: Connection = "none";
     const build = () => {
       if (model) {
         scene.remove(model);
         disposeGroup(model);
       }
+      if (!current) return;
       const { type, bend, A, minor } = current;
-      const kit = ovalKit(A, minor);
       const hard = bend === "hard";
       const style: EndStyle = currentC === "coupling" ? "crimp" : currentC === "flange" ? "plain" : "bead";
-      const { group: elbow, ends } = miter
-        ? buildOvalMiter(kit, hard, ghostMats, style, ovalVanes(hard ? A : minor).n, vaneMat, vaneEdge)
-        : buildOvalElbow(kit, type, hard, mats, style);
-      // Connection on the bottom end (the duct hangs straight down under the elbow), same as the round elbows.
+      let kit = ovalKit(A, minor);
+      let built: { group: THREE.Group; ends: THREE.Group[] };
+      if (tee) {
+        const t = buildOvalTee(current.teeType, { A, a: minor }, current.out, current.top, current.bottom, mats, style);
+        built = t;
+        kit = t.connKit; // the connection goes on the outlet
+      } else {
+        built = miter ? buildOvalMiter(kit, hard, ghostMats, style, ovalVanes(hard ? A : minor).n, vaneMat, vaneEdge) : buildOvalElbow(kit, type, hard, mats, style);
+      }
+      const { group: elbow, ends } = built;
+      // Connection on the bottom end (the duct hangs straight down under the elbow), same as the round elbows; tees: the outlet.
       const joint = currentC === "coupling" ? slipJoint(kit, ends[0], mats, screwMat) : currentC === "flange" ? flangeJoint(kit, ends[0], mats, metal, sheet, gasketMat, screwMat) : null;
       moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Bottom end on the left, the other end out to the right, as drawn on the sheet (the miter is built that way round).
-      if (!miter) elbow.rotation.y = Math.PI;
+      if (!miter && !tee) elbow.rotation.y = Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -915,7 +1221,9 @@ export default function OvalElbow3D({
       scale = A;
       renderer.domElement.setAttribute(
         "aria-label",
-        `3D ${miter ? `${miterCode(hard)} oval mitered elbow with vanes` : `${OVAL_ELBOWS[type].code} oval elbow`}, ${A} by ${minor} inches, ${hard ? "hard" : "easy"} bend. Drag to turn, pinch to zoom.`,
+        tee
+          ? `3D ${OVAL_TEES[current.teeType].code} oval ${OVAL_TEES[current.teeType].name.toLowerCase()}, main ${A} by ${minor} inches. Drag to turn, pinch to zoom.`
+          : `3D ${miter ? `${miterCode(hard)} oval mitered elbow with vanes` : `${OVAL_ELBOWS[type].code} oval elbow`}, ${A} by ${minor} inches, ${hard ? "hard" : "easy"} bend. Drag to turn, pinch to zoom.`,
       );
       frame();
     };
@@ -929,7 +1237,6 @@ export default function OvalElbow3D({
       project();
     };
     resize();
-    build();
     const ro = new ResizeObserver(() => {
       resize();
       frame();
@@ -938,7 +1245,7 @@ export default function OvalElbow3D({
 
     api.current = {
       setModel: (m) => {
-        if (m.type === current.type && m.bend === current.bend && m.A === current.A && m.minor === current.minor) return;
+        if (current && JSON.stringify(m) === JSON.stringify(current)) return;
         current = m;
         build();
       },
@@ -983,17 +1290,29 @@ export default function OvalElbow3D({
     };
   }, []);
 
+  // Tees: the outlet, top and bottom branch sizes that fit (outlet smaller than the main; a branch's minor b up to the
+  // main's α so it fits the rounded edge in a clean saddle, its major B up to the main's A; the bottom branch up to the top one: the sheet's B > C / C > D, equal allowed as on the round conical crosses).
+  const teeSpec = OVAL_TEES[teeType];
+  const main: OvalSz = { A, a: minor };
+  const outList = sizesWithin(main, true);
+  const out = teeSpec.reducing && outList.length ? snapSz(wantOut, outList) : main;
+  const topList = sizesWithin(main);
+  const top = snapSz(wantTop, topList);
+  const bottomList = sizesWithin(top);
+  const bottom = teeSpec.cross ? snapSz(wantBottom, bottomList) : null;
+  const modelKey = tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
   useEffect(() => {
-    api.current?.setModel({ type, bend, A, minor });
-  }, [type, bend, A, minor]);
+    api.current?.setModel({ type, bend, A, minor, teeType, out, top, bottom });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, bend, A, minor, modelKey]);
   useEffect(() => {
     api.current?.setConnection(connection);
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    const [prefix, hash] = miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
+    const [prefix, hash] = tee ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
     if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
-  }, [type, bend, miter]);
+  }, [type, bend, miter, tee, teeType]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -1007,6 +1326,17 @@ export default function OvalElbow3D({
   }, [connection, failed]);
 
   const minors = ovalMinorsFor(A);
+  // the R types need an outlet smaller than the main, so not the smallest major
+  const majors = tee && teeSpec.reducing ? OVAL_MAJORS.filter((d) => d > OVAL_MAJORS[0]) : OVAL_MAJORS;
+  const pickTeeType = (t: OvalTeeType) => {
+    setTeeType(t);
+    const d = OVAL_TEES[t].defaults;
+    if (d.out) setWantOut(d.out);
+    setWantTop(d.top);
+    if (d.bottom) setWantBottom(d.bottom);
+    if (OVAL_TEES[t].reducing && A <= OVAL_MAJORS[0]) pickA(OVAL_MAJORS[1]);
+  };
+  const { L: teeL, R: teeR } = ovalTeeDims(teeType, main, out, top);
   const size = ovalSize(A, minor);
   const pickA = (next: number) => {
     setA(next);
@@ -1022,11 +1352,22 @@ export default function OvalElbow3D({
       ? `two ${degs(endGore)} end gores, ${spec.pieces - 2} × ${degs(midGore)} middle`
       : `two ${degs(endGore)} gores`;
   const vanes = ovalVanes(hard ? A : minor);
-  const title = miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
+  const title = tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
+  const rNote = teeR > 0 ? `reducer R = ${teeR}″ (${teeR > OVAL_CR_TABLE_MAX ? "past the CR table, assumed" : "CR table"})` : "";
+  const teeText: Record<OvalTeeType, string> = {
+    "0t90": `Main A × α straight through, oval branch B × b (${szText(top)}) on the rounded side in a saddle, B along the main, b ≤ α. L = B + 3″ = ${teeL}″ between the 2″ collars.`,
+    "0rt90": `Main A × α in on the left, ${rNote} down to outlet B × b (${szText(out)}), branch C × c (${szText(top)}) on the rounded side. L = C + 3″ = ${teeL}″, 2″ collars.`,
+    "0c180": `Main A × α straight through, branch B × b (${szText(top)}) and C × c (${bottom ? szText(bottom) : ""}) on the two rounded sides, C up to B. L = B + 3″ = ${teeL}″, 2″ collars.`,
+    "0rc180": `Main A × α in, ${rNote} to outlet B × b (${szText(out)}), branches C × c (${szText(top)}) and D × d (${bottom ? szText(bottom) : ""}) on the rounded sides, D up to C. L = C + 3″ = ${teeL}″ (sheet: B + 3″).`,
+  };
   const info =
     connection !== "none"
-      ? CONNECTION_TEXT[connection]
-      : miter
+      ? tee
+        ? { title: CONNECTION_TEXT[connection].title, text: `${CONNECTION_TEXT[connection].text.replace(/elbow/g, "outlet")} On the right (outlet) end.` }
+        : CONNECTION_TEXT[connection]
+      : tee
+        ? { title: `${teeSpec.name} (${teeSpec.code})`, text: teeText[teeType] }
+        : miter
         ? {
             title: `${MITER_NAME} w/ Vanes (${miterCode(hard)})`,
             text: `${hard ? "Hard: turns the wide way, A in the bend" : "Easy: turns the flat way, α in the bend"}. Sharp 90° miter, ${vanes.n} turning vane${vanes.n === 1 ? "" : "s"} along the cut (${vanes.range}, assumed). Each leg runs 4″ past the throat, 2″ collar included. Walls shown see-through.`,
@@ -1037,7 +1378,7 @@ export default function OvalElbow3D({
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1096,7 +1437,25 @@ export default function OvalElbow3D({
           ))}
         </div>
       </div>
-      {!miter && (
+      {tee && (
+        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval tee type">
+          {OVAL_TEE_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="radio"
+              aria-checked={teeType === t}
+              aria-label={`${OVAL_TEES[t].name} (${OVAL_TEES[t].code})`}
+              onClick={() => pickTeeType(t)}
+              className="btn-raised btn-raised-sm flex h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-9"
+            >
+              {OVAL_TEES[t].code}
+              <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_TEES[t].short}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {!miter && !tee && (
         <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
           {OVAL_ELBOW_TYPES.map((t) => (
             <button
@@ -1114,6 +1473,7 @@ export default function OvalElbow3D({
           ))}
         </div>
       )}
+      {!tee && (
       <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Bend">
         <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
           Bend
@@ -1133,6 +1493,39 @@ export default function OvalElbow3D({
           </button>
         ))}
       </div>
+      )}
+      {tee && (
+        <div className="grid grid-cols-3 gap-2 bg-surface/90 px-3 pt-2" data-testid="oval-tee-sizes">
+          {(
+            [
+              ["out", teeSpec.labels.out, out, outList, setWantOut],
+              ["top", teeSpec.labels.top, top, topList, setWantTop],
+              ["bottom", teeSpec.labels.bottom, bottom, bottomList, setWantBottom],
+            ] as const
+          ).map(([id, label, cur, list, set]) =>
+            label && cur ? (
+              <label key={id} className="flex min-w-0 flex-col">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted">{label}</span>
+                <select
+                  value={szKey(cur)}
+                  onChange={(e) => {
+                    const [a1, a2] = e.target.value.split("x").map(Number);
+                    set({ A: a1, a: a2 });
+                  }}
+                  aria-label={`Size ${label}`}
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {list.map((d) => (
+                    <option key={szKey(d)} value={szKey(d)}>
+                      {szText(d)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null,
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-2 bg-surface/90 px-3 py-2.5" style={{ paddingBottom: "max(0.625rem, env(safe-area-inset-bottom))" }}>
         <label className="flex w-[4.75rem] min-w-0 shrink-0 flex-col">
           <span className="truncate text-[11px] font-medium tracking-wide text-muted uppercase">A · major</span>
@@ -1142,7 +1535,7 @@ export default function OvalElbow3D({
             aria-label="Size A (major axis)"
             className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
           >
-            {OVAL_MAJORS.map((d) => (
+            {majors.map((d) => (
               <option key={d} value={d}>
                 {d}&Prime;
               </option>
@@ -1168,7 +1561,18 @@ export default function OvalElbow3D({
         </label>
         <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="oval-elbow-info">
           <p className="truncate">
-            {miter ? (
+            {tee ? (
+              <>
+                L <b className="font-semibold">{teeL}&Prime;</b>
+                {teeR > 0 && (
+                  <>
+                    {" "}
+                    · R <b className="font-semibold">{teeR}&Prime;</b>
+                  </>
+                )}{" "}
+                · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+              </>
+            ) : miter ? (
               <>
                 Vanes <b className="font-semibold">{vanes.n}</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
               </>
@@ -1178,7 +1582,7 @@ export default function OvalElbow3D({
               </>
             )}
           </p>
-          <p className="truncate text-muted">Gauge assumed (oval chart)</p>
+          <p className="truncate text-muted">Gauge assumed (oval chart{tee ? ", main" : ""})</p>
         </div>
         <button
           type="button"

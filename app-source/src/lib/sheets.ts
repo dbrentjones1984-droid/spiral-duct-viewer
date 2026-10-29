@@ -102,11 +102,11 @@ export const SW_OVAL_SHEETS = [
 // Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers", sheet 14 = "Access Doors / Duct Connectors", sheet 15 = "Grille Taps"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
-/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows). The PDF is built from the sheets, one per page. */
+/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows, 3: Tees and Crosses). The PDF is built from the sheets, one per page. */
 export const SWF_OVAL_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Oval-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Oval-Fittings.pdf",
-  sizeLabel: "543 KB",
+  sizeLabel: "870 KB",
 };
 
 export const SWF_OVAL_SHEETS = [
@@ -125,6 +125,14 @@ export const SWF_OVAL_SHEETS = [
     w: 1123,
     h: 1401,
     alt: "Single Wall Oval, Mitered Elbows: 02PV90 H and 02PV90 E, 90° 2-piece mitered elbow with vanes. H (hard): A x α, turning the wide way, end view a wide by A tall, 5 turning vanes on the miter. E (easy): α x A, turning the flat way, end view A wide by a tall, 2 vanes. 2 inch collar on the inlet, 4 inch leg past the throat.",
+  },
+  {
+    n: 3,
+    title: "Tees and Crosses",
+    src: `${base}sheets/single-wall-oval-fittings-3.webp`,
+    w: 1163,
+    h: 1352,
+    alt: "Single Wall Oval, Tees and Crosses: 0T90 tee 90° (main A x a, branch B x b, L = B + 3 inch), 0RT90 reducing tee 90° (A x a in, reducer R to B x b, branch C x c, L = C + 3 inch), 0C180 cross 180° (branches B x b top and C x c bottom, L = B + 3 inch, B > C) and 0RC180 reducing cross 180° (A x a in, reducer R to B x b, branches C x c top and D x d bottom, L = B + 3 inch, C > D); 2 inch ends, R refer to reducer drawing.",
   },
 ] as const;
 
