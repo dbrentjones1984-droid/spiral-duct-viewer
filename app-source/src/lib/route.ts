@@ -35,12 +35,19 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/round/3d/hanger?type=half"   ... opened on that type (whole or half)
  *   "#/single-wall-fittings/round/3d/grille"  same, with the grille taps 3D model open on top (GT shown);
  *   "#/single-wall-fittings/round/3d/grille?type=gts"   ... opened on that type (gt, gts or gti)
+ *   "#/single-wall-fittings/oval"             Single Wall Fittings · Oval sheets (View 3D Model -> the oval model list)
+ *   "#/single-wall-fittings/oval/3d"          list of oval fitting 3D models
+ *   "#/single-wall-fittings/oval/3d/elbow"    same, with the oval elbows 3D model open on top (90HB5, hard bend shown);
+ *   "#/single-wall-fittings/oval/3d/elbow?type=60hb3&bend=easy"   ... opened on that type (90hb5, 60hb3, 45hb3 or 30hb2)
+ *                                             and bend (hard or easy)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
+  | { page: "swf-oval" }
+  | { page: "swfo-models"; model3d: "elbow" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -79,6 +86,13 @@ export type HangerType = (typeof HANGER_TYPES)[number];
 /** Sheet 15 types: grille tap, grille tap with saddle, grille tap installed (one model, picked in the viewer). */
 export const GRILLE_TYPES = ["gt", "gts", "gti"] as const;
 export type GrilleType = (typeof GRILLE_TYPES)[number];
+
+/** Single Wall Oval Elbows sheet types (one model, picked in the viewer). */
+export const OVAL_ELBOW_TYPES = ["90hb5", "60hb3", "45hb3", "30hb2"] as const;
+export type OvalElbowType = (typeof OVAL_ELBOW_TYPES)[number];
+/** Hard bend: R = 1.5 x A (turns across the major axis); easy bend: R = 1.5 x α (turns across the minor axis). */
+export const OVAL_BENDS = ["hard", "easy"] as const;
+export type OvalBend = (typeof OVAL_BENDS)[number];
 
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
@@ -123,6 +137,15 @@ export const hangerHash = (t: HangerType) => (t === "whole" ? SWF_HANGER_3D_HASH
 export const SWF_GRILLE_3D_HASH = "#/single-wall-fittings/round/3d/grille";
 /** Deep link to one sheet 15 type (GT is the default, so it gets the plain link; ?type=gt opens it too). */
 export const grilleHash = (t: GrilleType) => (t === "gt" ? SWF_GRILLE_3D_HASH : `${SWF_GRILLE_3D_HASH}?type=${t}`);
+
+export const SWF_OVAL_HASH = "#/single-wall-fittings/oval";
+export const SWFO_MODELS_HASH = "#/single-wall-fittings/oval/3d";
+export const SWFO_ELBOW_3D_HASH = "#/single-wall-fittings/oval/3d/elbow";
+/** Deep link to one oval elbow type and bend (90HB5 hard is the default, so it gets the plain link). */
+export const ovalElbowHash = (t: OvalElbowType, bend: OvalBend = "hard") => {
+  const q = [t !== "90hb5" ? `type=${t}` : "", bend !== "hard" ? `bend=${bend}` : ""].filter(Boolean).join("&");
+  return q ? `${SWFO_ELBOW_3D_HASH}?${q}` : SWFO_ELBOW_3D_HASH;
+};
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -178,6 +201,19 @@ function parse(hash: string): Route {
     const t = new URLSearchParams(h.slice(SWF_GRILLE_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swf-models", model3d: "grille", grilleType: GRILLE_TYPES.find((x) => x === t) ?? "gt" };
   }
+  if (h === SWFO_ELBOW_3D_HASH || h.startsWith(`${SWFO_ELBOW_3D_HASH}?`)) {
+    const q = new URLSearchParams(h.slice(SWFO_ELBOW_3D_HASH.length + 1));
+    const t = q.get("type")?.toLowerCase();
+    const b = q.get("bend")?.toLowerCase();
+    return {
+      page: "swfo-models",
+      model3d: "elbow",
+      ovalElbowType: OVAL_ELBOW_TYPES.find((x) => x === t) ?? "90hb5",
+      bend: OVAL_BENDS.find((x) => x === b) ?? "hard",
+    };
+  }
+  if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
+  if (h === SWF_OVAL_HASH) return { page: "swf-oval" };
   if (h === SWF_MODELS_HASH) return { page: "swf-models", model3d: null };
   if (h === SWF_ROUND_HASH) return { page: "swf-round" };
   return { page: "home" };

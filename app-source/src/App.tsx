@@ -6,10 +6,10 @@ import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
-import { FittingsPage } from "@/components/fittings-page";
+import { FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, useHashRoute } from "@/lib/route";
-import { SW_OVAL_DOC, SW_ROUND_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, ovalElbowHash, useHashRoute } from "@/lib/route";
+import { SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -27,6 +27,7 @@ function pageFor(group: HomeButtonId, shape: Shape) {
   if (group === "single-duct" && shape === "Round") return SW_ROUND_HASH;
   if (group === "single-duct" && shape === "Oval") return SW_OVAL_HASH;
   if (group === "single-fitting" && shape === "Round") return SWF_ROUND_HASH;
+  if (group === "single-fitting" && shape === "Oval") return SWF_OVAL_HASH;
   return null;
 }
 
@@ -73,6 +74,31 @@ export default function App() {
         onBack={() => goBack("")}
         onOpen3d={() => navigate(SWF_MODELS_HASH)}
         onClose3d={() => {}}
+      />
+    );
+  }
+  if (route.page === "swf-oval") {
+    // Oval fittings sheets: same page as the round fittings; View 3D Model opens the list of oval fitting models.
+    return (
+      <SheetPage
+        key="swf-oval"
+        doc={SWF_OVAL_DOC}
+        model3d={false}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(SWFO_MODELS_HASH)}
+        onClose3d={() => {}}
+      />
+    );
+  }
+  if (route.page === "swfo-models") {
+    return (
+      <OvalFittingsPage
+        model3d={route.model3d}
+        elbowType={route.ovalElbowType}
+        bend={route.bend}
+        onBack={() => goBack(SWF_OVAL_HASH)}
+        onOpen3d={() => navigate(ovalElbowHash("90hb5"))}
+        onClose3d={() => goBack(SWFO_MODELS_HASH)}
       />
     );
   }
