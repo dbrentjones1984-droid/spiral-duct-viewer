@@ -7,7 +7,7 @@
      older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
      on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = 'd0bf0b79f5';
+const VERSION = '759a458c3f';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -30,13 +30,14 @@ const PRECACHE = [
   "assets/oval-pipe-3d-U6k2_ibg.js",
   "assets/spiral-pipe-3d-CMRa2XX7.js",
   "blueprint.png",
-  "favicon.svg",
-  "icons/apple-touch-icon.png",
-  "icons/favicon-32.png",
-  "icons/icon-192.png",
-  "icons/icon-512.png",
-  "icons/icon-maskable-192.png",
-  "icons/icon-maskable-512.png",
+  "icons/apple-touch-icon-v2.png",
+  "icons/favicon-16-v2.png",
+  "icons/favicon-32-v2.png",
+  "icons/favicon-48-v2.png",
+  "icons/icon-192-v2.png",
+  "icons/icon-512-v2.png",
+  "icons/icon-maskable-192-v2.png",
+  "icons/icon-maskable-512-v2.png",
   "index.html",
   "logo.png",
   "logo.webp",
