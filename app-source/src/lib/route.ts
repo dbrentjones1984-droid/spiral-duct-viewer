@@ -48,6 +48,8 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/low-loss-tee?type=ort90-l"   ... opened on that type (ot90-l, ort90-l, oc180-l or orc180-l)
  *   "#/single-wall-fittings/oval/3d/lateral"   same, with the oval laterals open on top (OL45 shown);
  *   "#/single-wall-fittings/oval/3d/lateral?type=orl45"   ... opened on that type (ol45, orl45, olc45 or orlc45)
+ *   "#/single-wall-fittings/oval/3d/reducer"   same, with the oval reducers open on top (CR shown);
+ *   "#/single-wall-fittings/oval/3d/reducer?type=er"   ... opened on that type (cr or er)
  *                                             and bend (hard or easy)
  */
 export type Route =
@@ -56,7 +58,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
   | { page: "swf-oval" }
-  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType }
+  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -112,6 +114,9 @@ export type OvalLlteeType = (typeof OVAL_LLTEE_TYPES)[number];
 /** Single Wall Oval Laterals sheet types (one model, picked in the viewer). */
 export const OVAL_LAT_TYPES = ["ol45", "orl45", "olc45", "orlc45"] as const;
 export type OvalLatType = (typeof OVAL_LAT_TYPES)[number];
+/** Single Wall Oval Concentric and Eccentric Reducer sheet types (one model, picked in the viewer). */
+export const OVAL_RED_TYPES = ["cr", "er"] as const;
+export type OvalRedType = (typeof OVAL_RED_TYPES)[number];
 export const OVAL_BENDS = ["hard", "easy"] as const;
 export type OvalBend = (typeof OVAL_BENDS)[number];
 
@@ -182,6 +187,9 @@ export const ovalLlteeHash = (t: OvalLlteeType = "ot90-l") => (t !== "ot90-l" ? 
 export const SWFO_LAT_3D_HASH = "#/single-wall-fittings/oval/3d/lateral";
 /** Deep link to one oval lateral type (OL45 is the default, so it gets the plain link). */
 export const ovalLatHash = (t: OvalLatType = "ol45") => (t !== "ol45" ? `${SWFO_LAT_3D_HASH}?type=${t}` : SWFO_LAT_3D_HASH);
+export const SWFO_RED_3D_HASH = "#/single-wall-fittings/oval/3d/reducer";
+/** Deep link to one oval reducer type (CR is the default, so it gets the plain link). */
+export const ovalRedHash = (t: OvalRedType = "cr") => (t !== "cr" ? `${SWFO_RED_3D_HASH}?type=${t}` : SWFO_RED_3D_HASH);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -267,6 +275,10 @@ function parse(hash: string): Route {
   if (h === SWFO_LAT_3D_HASH || h.startsWith(`${SWFO_LAT_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWFO_LAT_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swfo-models", model3d: "lat", ovalLatType: OVAL_LAT_TYPES.find((x) => x === t) ?? "ol45" };
+  }
+  if (h === SWFO_RED_3D_HASH || h.startsWith(`${SWFO_RED_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWFO_RED_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swfo-models", model3d: "red", ovalRedType: OVAL_RED_TYPES.find((x) => x === t) ?? "cr" };
   }
   if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
   if (h === SWF_OVAL_HASH) return { page: "swf-oval" };

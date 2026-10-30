@@ -5,7 +5,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_TEE_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalTeeHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalTeeType } from "@/lib/route";
+import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_RED_TYPES, OVAL_TEE_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalRedHash, ovalTeeHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_RED_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalRedType, type OvalTeeType } from "@/lib/route";
 import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
@@ -41,6 +41,8 @@ import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-siz
  * And the Laterals sheet (oval fittings sheet 6), kind "lat": OL45 / ORL45 / OLC45 / ORLC45, the same fitting with the
  * branches at 45° leaning to the outlet (the round L45's convention: 2" straight past the main on the short side, then
  * the 2" collar), L = top branch x 1.414 + 3" (to the nearest 1/2").
+ * And the Concentric and Eccentric Reducer sheet (oval fittings sheet 7), kind "red": CR / ER, A x α in to B x b out,
+ * 2" collars and the transition R between; see buildOvalReducer().
  * Units are inches.
  */
 
@@ -1171,6 +1173,96 @@ function buildOvalTee(type: OvalAnyTee, main: OvalSz, out: OvalSz, top: OvalSz, 
   return { group: outer, ends, connKit: ko, L, R };
 }
 
+/**
+ * Concentric and Eccentric Reducer (sheet 7): inlet A x α on the left, outlet B x b on the right, a 2" collar each end
+ * and the transition R between (overall R + 4"). Built along X with the minor axis vertical (Y) and the major across
+ * (Z), so the flat sides are top and bottom. CR: both ends on the same axis. ER: the bottom flat kept in line (the sheet's
+ * side view has its bottom edge straight), so the outlet's centre sits (α - b) / 2 lower and the top slopes down; the
+ * major axis stays centred (assumed: only the side view shows it; the end view and table do not say).
+ * R by the reduction A - B, or α - b when that is larger (only the minor reduces; assumed): CR from its table
+ * (1"-4" -> 4", 5"-8" -> 8", 9"-12" -> 12", 13"-16" -> 16", past 16" on in 4" steps, assumed); ER 6" for 1"-3", else
+ * (A - B) x 1.5, to the nearest 1/2" (the table's second row gives no range; read as "4" and up").
+ */
+export const OVAL_REDS: Record<OvalRedType, { code: string; name: string; short: string }> = {
+  cr: { code: "CR", name: "Concentric Reducer", short: "Concentric" },
+  er: { code: "ER", name: "Eccentric Reducer", short: "Eccentric" },
+};
+export function ovalRedDims(type: OvalRedType, inl: OvalSz, out: OvalSz) {
+  const byMajor = inl.A - out.A;
+  const red = Math.max(byMajor, inl.a - out.a);
+  const R = type === "cr" ? Math.max(4, Math.ceil(red / 4) * 4) : red <= 3 ? 6 : Math.round(red * 1.5 * 2) / 2;
+  return { red, byMinor: red > byMajor, R, L: R + 2 * COLLAR, dy: type === "er" ? -(inl.a - out.a) / 2 : 0, past: type === "cr" && R > OVAL_CR_TABLE_MAX };
+}
+/** A point on the oval at t, a quarter of t for each flat (split at the middle of the top one) and each round end, so the flats of two sizes line up: [y, z, ny, nz]. */
+function redPoint(kit: Kit, rho: number, t: number): [number, number, number, number] {
+  const F = kit.F;
+  const s = ((t % 1) + 1) % 1;
+  const end = (a: number, cz: number): [number, number, number, number] => [Math.cos(a) * rho, cz + Math.sin(a) * rho, Math.cos(a), Math.sin(a)];
+  if (s < 0.125) return [rho, (s / 0.125) * (F / 2), 1, 0];
+  if (s < 0.375) return end(((s - 0.125) / 0.25) * Math.PI, F / 2);
+  if (s < 0.625) return [-rho, F / 2 - ((s - 0.375) / 0.25) * F, -1, 0];
+  if (s < 0.875) return end(Math.PI + ((s - 0.625) / 0.25) * Math.PI, -F / 2);
+  return [rho, -F / 2 + ((s - 0.875) / 0.125) * (F / 2), 1, 0];
+}
+/** The reducer's transition: straight lines from the inlet oval (ki, end radius ri) at x0 to the outlet's (ko, ro) at x1, raised dy. */
+function redTransGeo(ki: Kit, ri: number, ko: Kit, ro: number, x0: number, x1: number, dy: number, S: number) {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const rows = 8;
+  for (let i = 0; i <= rows; i++) {
+    const k = i / rows;
+    for (let j = 0; j <= S; j++) {
+      const [y0, z0, ny0, nz0] = redPoint(ki, ri, j / S);
+      const [y1, z1, ny1, nz1] = redPoint(ko, ro, j / S);
+      const x = x0 + (x1 - x0) * k;
+      pos.push(x, y0 + (y1 + dy - y0) * k, z0 + (z1 - z0) * k);
+      nor.push(0, ny0 + (ny1 - ny0) * k, nz0 + (nz1 - nz0) * k);
+      uv.push(j / S, x / TEX_LENGTH);
+    }
+  }
+  const g = orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  g.computeVertexNormals();
+  const n = g.getAttribute("normal") as THREE.BufferAttribute;
+  for (let i = 0; i <= rows; i++) {
+    const p = i * (S + 1);
+    const q = p + S;
+    const v = new THREE.Vector3(n.getX(p) + n.getX(q), n.getY(p) + n.getY(q), n.getZ(p) + n.getZ(q)).normalize();
+    n.setXYZ(p, v.x, v.y, v.z);
+    n.setXYZ(q, v.x, v.y, v.z);
+  }
+  return g;
+}
+/** CR / ER: the transition with a seam at each end and the 2" collars. ends[0] is the outlet (B) end, where the connection goes. */
+function buildOvalReducer(type: OvalRedType, inl: OvalSz, out: OvalSz, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const ki = ovalKit(inl.A, inl.a);
+  const ko = ovalKit(out.A, out.a);
+  const { R, dy } = ovalRedDims(type, inl, out);
+  const group = new THREE.Group();
+  const segs = (k: Kit) => Math.min(220, 96 + Math.round(k.perimeter(k.R0) * 1.2));
+  const ribOf = (k: Kit) => Math.min(0.34, 0.04 + k.eqD * 0.012);
+  const x0 = -R / 2;
+  const x1 = R / 2;
+  group.add(new THREE.Mesh(redTransGeo(ki, ki.R0, ko, ko.R0, x0, x1, dy, 256), metal));
+  group.add(new THREE.Mesh(redTransGeo(ki, ki.R0 - ki.wall, ko, ko.R0 - ko.wall, x0, x1, dy, 256), inside));
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new ki.Loop(ki.R0 + ribOf(ki) * 0.2, x0), segs(ki), ribOf(ki) * 0.8, 8, true), seam));
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new ko.Loop(ko.R0 + ribOf(ko) * 0.2, x1), segs(ko), ribOf(ko) * 0.8, 8, true).translate(0, dy, 0), seam));
+  const X = new THREE.Vector3(1, 0, 0);
+  const Z = new THREE.Vector3(0, 0, 1);
+  const fr = teeEndFrame(new THREE.Vector3(x1 + COLLAR, dy, 0), X.clone(), Z.clone());
+  fr.add(buildCollar(ko, style, mats, ribOf(ko) * 0.8, segs(ko)));
+  const fl = teeEndFrame(new THREE.Vector3(x0 - COLLAR, 0, 0), X.clone().negate(), Z.clone());
+  fl.add(buildCollar(ki, style, mats, ribOf(ki) * 0.8, segs(ki)));
+  group.add(fr, fl);
+  return { group, ends: [fr, fl], connKit: ko };
+}
+/** Outlet sizes for a reducer from main: B ≤ A and b ≤ α, not both equal; largest first. */
+const redOutsFor = (main: OvalSz) =>
+  OVAL_SIZES.filter((s) => s.A <= main.A && s.a <= main.a && !(s.A === main.A && s.a === main.a))
+    .map((s) => ({ A: s.A, a: s.a }))
+    .sort((p, q) => q.A - p.A || q.a - p.a);
+
 type Screws = NonNullable<BuiltConnection["screws"]>;
 type Joint = { moving: { obj: THREE.Object3D; from: number; to: number }[]; screws: Screws };
 
@@ -1278,8 +1370,8 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
   },
 };
 
-type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
-export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat";
+type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; redType: OvalRedType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
+export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red";
 const szKey = (s: OvalSz) => `${s.A}x${s.a}`;
 const szText = (s: OvalSz) => `${s.A}×${s.a}`;
 /** Chart sizes up to max (both axes; the outlet's A strictly smaller), largest first. */
@@ -1298,18 +1390,21 @@ export default function OvalElbow3D({
   type: type0,
   bend: bend0,
   teeType: teeType0 = "0t90",
+  redType: redType0 = "cr",
   onClose,
 }: {
   kind?: OvalElbowKind;
   type: OvalElbowType;
   bend: OvalBend;
   teeType?: OvalAnyTee;
+  redType?: OvalRedType;
   onClose: () => void;
 }) {
   const miter = kind === "miter";
   const ctee = kind === "ctee";
   const lltee = kind === "lltee";
   const olat = kind === "lat";
+  const ored = kind === "red"; // reducers: their own build, the tees' outlet picker and connection on the outlet
   const tee = kind === "tee" || ctee || lltee || olat; // the conical, low-loss and lateral ones are the same fitting with other branches
   const teeTypes: readonly OvalAnyTee[] = olat ? OVAL_LAT_TYPES : lltee ? OVAL_LLTEE_TYPES : ctee ? OVAL_CTEE_TYPES : OVAL_TEE_TYPES;
   const host = useRef<HTMLDivElement>(null);
@@ -1330,6 +1425,8 @@ export default function OvalElbow3D({
   const [wantOut, setWantOut] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.out ?? { A: 19, a: 10 });
   const [wantTop, setWantTop] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.top);
   const [wantBottom, setWantBottom] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.bottom ?? { A: 14, a: 8 });
+  const [redType, setRedType] = useState<OvalRedType>(redType0);
+  const [wantRedOut, setWantRedOut] = useState<OvalSz>({ A: 21, a: 12 });
   const [connection, setConnection] = useState<Connection>("none");
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
@@ -1417,7 +1514,8 @@ export default function OvalElbow3D({
     // Tees: from the front a little above and to the right, so the oval main, its flat and the branches read.
     // Low-loss: from the front (the flat side), a little to the left and above, so the inlet-side sweep reads as on the sheet.
     // Laterals: from the front, a little to the right and above, so the 45° branches read as on the sheet.
-    const view = miter ? new THREE.Vector3(0.85, 0.42, -1) : olat ? new THREE.Vector3(0.3, 0.45, 1) : lltee ? new THREE.Vector3(-0.3, 0.5, 1) : tee ? new THREE.Vector3(1, 0.6, 0.7) : new THREE.Vector3(0.3, 0.32, 1);
+    // Reducers: from the side (the round end), a little to the right and above, so the ER's straight top reads as drawn.
+    const view = ored ? new THREE.Vector3(0.22, 0.3, 1) : miter ? new THREE.Vector3(0.85, 0.42, -1) : olat ? new THREE.Vector3(0.3, 0.45, 1) : lltee ? new THREE.Vector3(-0.3, 0.5, 1) : tee ? new THREE.Vector3(1, 0.6, 0.7) : new THREE.Vector3(0.3, 0.32, 1);
     let scale = DEFAULT_A;
     const frame = () => {
       if (!model) return;
@@ -1507,7 +1605,11 @@ export default function OvalElbow3D({
       const style: EndStyle = currentC === "coupling" ? "crimp" : currentC === "flange" ? "plain" : "bead";
       let kit = ovalKit(A, minor);
       let built: { group: THREE.Group; ends: THREE.Group[] };
-      if (tee) {
+      if (ored) {
+        const r = buildOvalReducer(current.redType, { A, a: minor }, current.out, mats, style);
+        built = r;
+        kit = r.connKit; // the connection goes on the outlet (B) end
+      } else if (tee) {
         const t = buildOvalTee(current.teeType, { A, a: minor }, current.out, current.top, current.bottom, mats, style);
         built = t;
         kit = t.connKit; // the connection goes on the outlet
@@ -1521,7 +1623,7 @@ export default function OvalElbow3D({
       screws = joint ? joint.screws.items : [];
       stopPlay();
       // Bottom end on the left, the other end out to the right, as drawn on the sheet (the miter is built that way round).
-      if (!miter && !tee) elbow.rotation.y = Math.PI;
+      if (!miter && !tee && !ored) elbow.rotation.y = Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -1531,7 +1633,9 @@ export default function OvalElbow3D({
       scale = A;
       renderer.domElement.setAttribute(
         "aria-label",
-        tee
+        ored
+          ? `3D ${OVAL_REDS[current.redType].code} oval ${OVAL_REDS[current.redType].name.toLowerCase()}, ${A} by ${minor} to ${current.out.A} by ${current.out.a} inches. Drag to turn, pinch to zoom.`
+          : tee
           ? `3D ${OVAL_TEES[current.teeType].code} oval ${OVAL_TEES[current.teeType].name.toLowerCase()}, main ${A} by ${minor} inches. Drag to turn, pinch to zoom.`
           : `3D ${miter ? `${miterCode(hard)} oval mitered elbow with vanes` : `${OVAL_ELBOWS[type].code} oval elbow`}, ${A} by ${minor} inches, ${hard ? "hard" : "easy"} bend. Drag to turn, pinch to zoom.`,
       );
@@ -1610,9 +1714,11 @@ export default function OvalElbow3D({
   const top = snapSz(wantTop, topList);
   const bottomList = sizesWithin(top);
   const bottom = teeSpec.cross ? snapSz(wantBottom, bottomList) : null;
-  const modelKey = tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
+  const redOutList = redOutsFor(main);
+  const redOut = redOutList.length ? snapSz(wantRedOut, redOutList) : main;
+  const modelKey = ored ? `${redType}|${szKey(redOut)}` : tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
   useEffect(() => {
-    api.current?.setModel({ type, bend, A, minor, teeType, out, top, bottom });
+    api.current?.setModel({ type, bend, A, minor, teeType, redType, out: ored ? redOut : out, top, bottom });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, bend, A, minor, modelKey]);
   useEffect(() => {
@@ -1620,7 +1726,9 @@ export default function OvalElbow3D({
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    const [prefix, hash] = olat
+    const [prefix, hash] = ored
+      ? [SWFO_RED_3D_HASH, ovalRedHash(redType)]
+      : olat
       ? [SWFO_LAT_3D_HASH, ovalLatHash(teeType as OvalLatType)]
       : lltee
       ? [SWFO_LLTEE_3D_HASH, ovalLlteeHash(teeType as OvalLlteeType)]
@@ -1629,7 +1737,7 @@ export default function OvalElbow3D({
       : tee
         ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType as OvalTeeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
     if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
-  }, [type, bend, miter, tee, ctee, lltee, olat, teeType]);
+  }, [type, bend, miter, tee, ctee, lltee, olat, ored, teeType, redType]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -1642,9 +1750,12 @@ export default function OvalElbow3D({
     return () => ro.disconnect();
   }, [connection, failed]);
 
-  const minors = ovalMinorsFor(A);
+  // reducers: only inlets with a smaller outlet in the chart
+  const minors = ored ? ovalMinorsFor(A).filter((m) => redOutsFor({ A, a: m }).length) : ovalMinorsFor(A);
   // the R types need an outlet smaller than the main, so not the smallest major
-  const majors = tee && teeSpec.reducing ? OVAL_MAJORS.filter((d) => d > OVAL_MAJORS[0]) : OVAL_MAJORS;
+  const majors = ored
+    ? OVAL_MAJORS.filter((d) => ovalMinorsFor(d).some((m) => redOutsFor({ A: d, a: m }).length))
+    : tee && teeSpec.reducing ? OVAL_MAJORS.filter((d) => d > OVAL_MAJORS[0]) : OVAL_MAJORS;
   const pickTeeType = (t: OvalAnyTee) => {
     setTeeType(t);
     const d = OVAL_TEES[t].defaults;
@@ -1657,7 +1768,7 @@ export default function OvalElbow3D({
   const size = ovalSize(A, minor);
   const pickA = (next: number) => {
     setA(next);
-    const ms = ovalMinorsFor(next);
+    const ms = ored ? ovalMinorsFor(next).filter((m) => redOutsFor({ A: next, a: m }).length) : ovalMinorsFor(next);
     if (!ms.includes(minor)) setMinor(ms.reduce((best, m) => (Math.abs(m - minor) < Math.abs(best - minor) ? m : best), ms[0]));
   };
   const R = 1.5 * (hard ? A : minor);
@@ -1669,7 +1780,22 @@ export default function OvalElbow3D({
       ? `two ${degs(endGore)} end gores, ${spec.pieces - 2} × ${degs(midGore)} middle`
       : `two ${degs(endGore)} gores`;
   const vanes = ovalVanes(hard ? A : minor);
-  const title = tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
+  const redSpec = OVAL_REDS[redType];
+  const rd = ovalRedDims(redType, main, redOut);
+  const redBasis = rd.byMinor ? `α − b = ${rd.red}″, more than A − B (assumed)` : `A − B = ${rd.red}″`;
+  const redRule =
+    redType === "cr"
+      ? rd.past
+        ? "past the table, +4″ steps, assumed"
+        : "table"
+      : rd.red <= 3
+        ? "table, 1″–3″"
+        : `(A − B) × 1.5${rd.byMinor ? " on α − b" : ""}`;
+  const redText =
+    redType === "cr"
+      ? `Oval A × α (${szText(main)}) in on the left to B × b (${szText(redOut)}) out on the right, both on one axis. ${redBasis}, so R = ${inches(rd.R)}″ (${redRule}). 2″ collars, ${inches(rd.L)}″ overall.`
+      : `Oval A × α (${szText(main)}) in to B × b (${szText(redOut)}) out, ${rd.dy < 0 ? `bottom flat kept in line (as drawn), outlet ${inches(-rd.dy)}″ lower, top sloped` : "α = b, so both flats stay in line"}. ${redBasis}, so R = ${inches(rd.R)}″ (${redRule}). 2″ collars, ${inches(rd.L)}″ overall.`;
+  const title = ored ? `${redSpec.name} (${redSpec.code})` : tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
   const rNote = teeR > 0 ? `reducer R = ${teeR}″ (${teeR > OVAL_CR_TABLE_MAX ? "past the CR table, assumed" : "CR table"})` : "";
   const cone = "conical oval branch";
   const teeText: Record<OvalAnyTee, string> = {
@@ -1692,10 +1818,14 @@ export default function OvalElbow3D({
   };
   const info =
     connection !== "none"
-      ? tee
+      ? ored
+        ? { title: CONNECTION_TEXT[connection].title, text: `${CONNECTION_TEXT[connection].text.replace(/elbow/g, "outlet")} On the right (outlet, B × b) end.` }
+        : tee
         ? { title: CONNECTION_TEXT[connection].title, text: `${CONNECTION_TEXT[connection].text.replace(/elbow/g, "outlet")} On the right (outlet) end.` }
         : CONNECTION_TEXT[connection]
-      : tee
+      : ored
+        ? { title, text: redText }
+        : tee
         ? { title: `${teeSpec.name} (${teeSpec.code})`, text: teeText[teeType] }
         : miter
         ? {
@@ -1708,7 +1838,7 @@ export default function OvalElbow3D({
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={ored ? "Oval reducers 3D model" : olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1785,7 +1915,45 @@ export default function OvalElbow3D({
           ))}
         </div>
       )}
-      {!miter && !tee && (
+      {ored && (
+        <div className="grid grid-cols-3 gap-2 bg-surface/90 px-3 pt-2">
+          <div className="col-span-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Oval reducer type">
+            {OVAL_RED_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={redType === t}
+                aria-label={`${OVAL_REDS[t].name} (${OVAL_REDS[t].code})`}
+                onClick={() => setRedType(t)}
+                className="btn-raised btn-raised-sm flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-10"
+              >
+                {OVAL_REDS[t].code}
+                <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_REDS[t].short}</span>
+              </button>
+            ))}
+          </div>
+          <label className="flex min-w-0 flex-col" data-testid="oval-red-sizes">
+            <span className="truncate text-[11px] font-medium tracking-wide text-muted">B×b · outlet</span>
+            <select
+              value={szKey(redOut)}
+              onChange={(e) => {
+                const [a1, a2] = e.target.value.split("x").map(Number);
+                setWantRedOut({ A: a1, a: a2 });
+              }}
+              aria-label="Size B×b · outlet"
+              className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+            >
+              {redOutList.map((d) => (
+                <option key={szKey(d)} value={szKey(d)}>
+                  {szText(d)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      {!miter && !tee && !ored && (
         <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
           {OVAL_ELBOW_TYPES.map((t) => (
             <button
@@ -1803,7 +1971,7 @@ export default function OvalElbow3D({
           ))}
         </div>
       )}
-      {!tee && (
+      {!tee && !ored && (
       <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Bend">
         <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
           Bend
@@ -1891,7 +2059,11 @@ export default function OvalElbow3D({
         </label>
         <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="oval-elbow-info">
           <p className="truncate">
-            {tee ? (
+            {ored ? (
+              <>
+                R <b className="font-semibold">{inches(rd.R)}&Prime;</b> · <b className="font-semibold">{inches(rd.L)}&Prime;</b> overall · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+              </>
+            ) : tee ? (
               <>
                 L <b className="font-semibold">{inches(teeL)}&Prime;</b>
                 {teeR > 0 && (
@@ -1912,7 +2084,7 @@ export default function OvalElbow3D({
               </>
             )}
           </p>
-          <p className="truncate text-muted">Gauge assumed (oval chart{tee ? ", main" : ""})</p>
+          <p className="truncate text-muted">Gauge assumed (oval chart{ored ? ", inlet" : tee ? ", main" : ""})</p>
         </div>
         <button
           type="button"

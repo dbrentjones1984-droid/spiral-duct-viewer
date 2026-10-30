@@ -102,11 +102,11 @@ export const SW_OVAL_SHEETS = [
 // Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers", sheet 14 = "Access Doors / Duct Connectors", sheet 15 = "Grille Taps"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
-/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows, 3: Tees and Crosses, 4: Conical Tees and Conical Crosses, 5: Low-Loss Tees and Crosses, 6: Laterals). The PDF is built from the sheets, one per page. */
+/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows, 3: Tees and Crosses, 4: Conical Tees and Conical Crosses, 5: Low-Loss Tees and Crosses, 6: Laterals, 7: Concentric and Eccentric Reducer). The PDF is built from the sheets, one per page. */
 export const SWF_OVAL_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Oval-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Oval-Fittings.pdf",
-  sizeLabel: "1.6 MB",
+  sizeLabel: "1.8 MB",
 };
 
 export const SWF_OVAL_SHEETS = [
@@ -157,6 +157,14 @@ export const SWF_OVAL_SHEETS = [
     w: 1120,
     h: 1404,
     alt: "Single Wall Oval, Laterals: OL45 lateral 45° (main A x a, branch B x b at 45°, L = B x 1.414 + 3 inch), ORL45 reducing lateral 45° (A x a in, reducer R to B x b, branch C x c at 45°, L = C x 1.414 + 3 inch), OLC45 lateral cross 45° (branches B x b top and C x c bottom at 45°, L = B x 1.414 + 3 inch, B > C) and ORLC45 reducing lateral cross 45° (A x a in, reducer R to B x b, branches C x c top and D x d bottom at 45°, L = C x 1.414 + 3 inch, C < D on the sheet); 2 inch ends and collars, R refer to reducer drawing.",
+  },
+  {
+    n: 7,
+    title: "Concentric and Eccentric Reducer",
+    src: `${base}sheets/single-wall-oval-fittings-7.webp`,
+    w: 1131,
+    h: 1391,
+    alt: "Single Wall Oval, Concentric and Eccentric Reducer: CR concentric reducer (A x a to B x b, 2 inch ends, transition R; reduction A - B 1 to 4 inch R 4, 5 to 8 inch R 8, 9 to 12 inch R 12, 13 to 16 inch R 16) and ER eccentric reducer (A x a to B x b, one side kept in line, 2 inch ends, transition R; reduction A - B 1 to 3 inch R 6, otherwise R = (A - B) x 1.5); end view of the oval with major axes A and B and minor axes a and b.",
   },
 ] as const;
 
