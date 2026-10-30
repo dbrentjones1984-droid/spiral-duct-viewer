@@ -52,6 +52,8 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/reducer?type=er"   ... opened on that type (cr or er)
  *   "#/single-wall-fittings/oval/3d/wye"   same, with the oval wyes open on top (Y45 shown);
  *   "#/single-wall-fittings/oval/3d/wye?type=ry45"   ... opened on that type (y45 or ry45)
+ *   "#/single-wall-fittings/oval/3d/coupling"   same, with the oval couplings & ends open on top (PC shown);
+ *   "#/single-wall-fittings/oval/3d/coupling?type=bm"   ... opened on that type (pc, fc, oec, of or bm)
  *                                             and bend (hard or easy)
  */
 export type Route =
@@ -60,7 +62,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
   | { page: "swf-oval" }
-  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType }
+  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -122,6 +124,9 @@ export type OvalRedType = (typeof OVAL_RED_TYPES)[number];
 /** Single Wall Oval Wye and Reducing Wye sheet types (one model, picked in the viewer). */
 export const OVAL_WYE_TYPES = ["y45", "ry45"] as const;
 export type OvalWyeType = (typeof OVAL_WYE_TYPES)[number];
+/** Single Wall Oval couplings & ends sheet types (pipe / fitting coupling, end cap, flange, bell mouth; one model). */
+export const OVAL_CAP_TYPES = ["pc", "fc", "oec", "of", "bm"] as const;
+export type OvalCapType = (typeof OVAL_CAP_TYPES)[number];
 export const OVAL_BENDS = ["hard", "easy"] as const;
 export type OvalBend = (typeof OVAL_BENDS)[number];
 
@@ -198,6 +203,9 @@ export const ovalRedHash = (t: OvalRedType = "cr") => (t !== "cr" ? `${SWFO_RED_
 export const SWFO_WYE_3D_HASH = "#/single-wall-fittings/oval/3d/wye";
 /** Deep link to one oval wye type (Y45 is the default, so it gets the plain link). */
 export const ovalWyeHash = (t: OvalWyeType = "y45") => (t !== "y45" ? `${SWFO_WYE_3D_HASH}?type=${t}` : SWFO_WYE_3D_HASH);
+export const SWFO_CAP_3D_HASH = "#/single-wall-fittings/oval/3d/coupling";
+/** Deep link to one oval coupling / end type (PC is the default, so it gets the plain link). */
+export const ovalCapHash = (t: OvalCapType = "pc") => (t !== "pc" ? `${SWFO_CAP_3D_HASH}?type=${t}` : SWFO_CAP_3D_HASH);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -291,6 +299,10 @@ function parse(hash: string): Route {
   if (h === SWFO_WYE_3D_HASH || h.startsWith(`${SWFO_WYE_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWFO_WYE_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swfo-models", model3d: "wye", ovalWyeType: OVAL_WYE_TYPES.find((x) => x === t) ?? "y45" };
+  }
+  if (h === SWFO_CAP_3D_HASH || h.startsWith(`${SWFO_CAP_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWFO_CAP_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swfo-models", model3d: "cap", ovalCapType: OVAL_CAP_TYPES.find((x) => x === t) ?? "pc" };
   }
   if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
   if (h === SWF_OVAL_HASH) return { page: "swf-oval" };

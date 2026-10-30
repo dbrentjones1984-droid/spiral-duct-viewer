@@ -102,11 +102,11 @@ export const SW_OVAL_SHEETS = [
 // Single Wall Fittings · Round: Brent's fitting sheets (sheet 1 = catalog page 7 "Gored Elbows", sheet 2 = "Mitered Elbows", sheet 3 = "Bullhead Tees", sheet 4 = "Tees and Crosses", sheet 5 = "Conical Tees and Conical Crosses", sheet 6 = "Laterals", sheet 7 = "Straight and Conical Taps", sheet 8 = "Lateral Taps", sheet 9 = "Concentric and Eccentric Reducer", sheet 10 = "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth", sheet 11 = "Wye and Reducing Wye", sheet 12 = "Offset and Square-to-Round Transition", sheet 13 = "Clam Shell Hangers", sheet 14 = "Access Doors / Duct Connectors", sheet 15 = "Grille Taps"). To add sheets: put the
 // images in public/sheets/single-wall-round-fittings-<n>.webp and list them below (the page subtitle counts them), and
 // replace public/docs/Spiral-Systems-Single-Wall-Round-Fittings.pdf (and its sizeLabel) with the full PDF.
-/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows, 3: Tees and Crosses, 4: Conical Tees and Conical Crosses, 5: Low-Loss Tees and Crosses, 6: Laterals, 7: Concentric and Eccentric Reducer, 8: Wye and Reducing Wye). The PDF is built from the sheets, one per page. */
+/** Single Wall Fittings · Oval: Brent's oval fitting sheets (1: Elbows, 2: Mitered Elbows, 3: Tees and Crosses, 4: Conical Tees and Conical Crosses, 5: Low-Loss Tees and Crosses, 6: Laterals, 7: Concentric and Eccentric Reducer, 8: Wye and Reducing Wye, 9: Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth). The PDF is built from the sheets, one per page. */
 export const SWF_OVAL_PDF = {
   href: `${base}docs/Spiral-Systems-Single-Wall-Oval-Fittings.pdf`,
   fileName: "Spiral-Systems-Single-Wall-Oval-Fittings.pdf",
-  sizeLabel: "2.0 MB",
+  sizeLabel: "2.2 MB",
 };
 
 export const SWF_OVAL_SHEETS = [
@@ -173,6 +173,14 @@ export const SWF_OVAL_SHEETS = [
     w: 1150,
     h: 1368,
     alt: "Single Wall Oval, Wye and Reducing Wye: Y45 wye 45 degrees (inlet A x a with a 2 inch end, two A x a legs at 45 degrees each side with 2 inch ends) and RY45 reducing wye 45 degrees (inlet A x a, legs B x b and C x c, each with a reducer R and a 2 inch end; to order list A, B and C; R = refer to reducer drawing)",
+  },
+  {
+    n: 9,
+    title: "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth",
+    src: `${base}sheets/single-wall-oval-fittings-9.webp`,
+    w: 1132,
+    h: 1390,
+    alt: "Single Wall Oval, Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth: PC pipe coupling (A x a, 2 inch wide, pipe to pipe connections), FC fitting coupling (A x a, 2 inch wide, fitting to fitting connections), OEC oval end cap (size A), OF oval flange (size A, 2 inch deep with a 1 inch collar) and BM bell mouth (A x a neck, 3 inch high, flaring to B x b; to order list A, B equals A + 4 inch)",
   },
 ] as const;
 
