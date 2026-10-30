@@ -5,7 +5,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_RED_TYPES, OVAL_TEE_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalRedHash, ovalTeeHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_RED_3D_HASH, SWFO_TEE_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalRedType, type OvalTeeType } from "@/lib/route";
+import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_RED_TYPES, OVAL_TEE_TYPES, OVAL_WYE_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalRedHash, ovalTeeHash, ovalWyeHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_RED_3D_HASH, SWFO_TEE_3D_HASH, SWFO_WYE_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalRedType, type OvalTeeType, type OvalWyeType } from "@/lib/route";
 import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
@@ -43,6 +43,8 @@ import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-siz
  * the 2" collar), L = top branch x 1.414 + 3" (to the nearest 1/2").
  * And the Concentric and Eccentric Reducer sheet (oval fittings sheet 7), kind "red": CR / ER, A x α in to B x b out,
  * 2" collars and the transition R between; see buildOvalReducer().
+ * And the Wye and Reducing Wye sheet (oval fittings sheet 8), kind "wye": Y45 / RY45, inlet A x α and two 45° legs
+ * (the round Y45 / RY45's convention), RY45's legs reduced to B x b / C x c by the CR table; see buildOvalWye().
  * Units are inches.
  */
 
@@ -1263,6 +1265,137 @@ const redOutsFor = (main: OvalSz) =>
     .map((s) => ({ A: s.A, a: s.a }))
     .sort((p, q) => q.A - p.A || q.a - p.a);
 
+/**
+ * Wye and Reducing Wye (sheet 8), the round Y45 / RY45's (sheet 11) build adapted to oval: inlet A x α at the bottom
+ * (along -Y), two legs at 45° each side of its centreline (90° apart) in the XY plane. The legs split across the major
+ * (assumed, as the hard bends): every section has its major A in the XY plane (the drawing's width) and its minor α
+ * along Z, so the front (a flat side) reads as the sheet's pentagon. The inlet is mitred at 22.5° each side, the legs
+ * mitred onto it and onto each other on x = 0 (the centre seam up to the crotch). The sheet gives no leg length, so as
+ * the round one (assumed): OWYE_STRAIGHT of leg past the crotch (each leg reaches A / 2 + 2" from the junction) and of
+ * inlet below its lowest mitre point, then on RY45 a concentric reducer R (the oval CR table on the larger of the
+ * major / minor reduction, as the reducer card) to B x b (left) / C x c (right), and every end's 2" collar.
+ */
+export const OVAL_WYES: Record<OvalWyeType, { code: string; name: string; short: string }> = {
+  y45: { code: "Y45", name: "Wye 45°", short: "wye" },
+  ry45: { code: "RY45", name: "Reducing Wye 45°", short: "reducing" },
+};
+const OWYE_STRAIGHT = 2;
+const T22 = Math.tan(Math.PI / 8);
+class FnCurve extends THREE.Curve<THREE.Vector3> {
+  constructor(private f: (u: number, v: THREE.Vector3) => THREE.Vector3) {
+    super();
+  }
+  getPoint(u: number, target = new THREE.Vector3()) {
+    return this.f(u, target);
+  }
+}
+/** The wye's sizes and each leg's reducer (Y45: none). */
+export function ovalWyeDims(type: OvalWyeType, main: OvalSz, b: OvalSz, c: OvalSz) {
+  const B = type === "ry45" ? b : main;
+  const C = type === "ry45" ? c : main;
+  const rB = type === "ry45" ? ovalRedDims("cr", main, B) : null;
+  const rC = type === "ry45" ? ovalRedDims("cr", main, C) : null;
+  const reach = main.A / 2 + OWYE_STRAIGHT;
+  return { B, C, rB, rC, RB: rB?.R ?? 0, RC: rC?.R ?? 0, reach, past: !!(rB?.past || rC?.past) };
+}
+/** Leg on the side sd (+1 right, -1 left): axis b = (sd C45, C45, 0), section major X along p = (-sd C45, C45, 0) (towards the crotch), minor along Z; from the mitre (inlet side) or x = 0 (crotch side) to t = tEnd. */
+function owyeLegGeo(kit: Kit, rho: number, tEnd: number, sd: 1 | -1, S: number) {
+  const rows = 10;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const bx = sd * C45;
+  const px = -sd * C45;
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= S; j++) {
+      const [m, X, nm, nX] = kit.point(j / S, rho);
+      const t0 = Math.max(-X * T22, X);
+      const t = t0 + ((tEnd - t0) * i) / rows;
+      pos.push(bx * t + px * X, C45 * t + C45 * X, m);
+      nor.push(px * nX, C45 * nX, nm);
+      uv.push(j / S, (11 + tEnd - t) / TEX_LENGTH);
+    }
+  }
+  return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+}
+/** Inlet along Y, from yBot up to the two mitres y = -|x| tan 22.5° (the pentagon's top edges); major along X, minor along Z. */
+function owyeInletGeo(kit: Kit, rho: number, yBot: number, S: number) {
+  const rows = 8;
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= S; j++) {
+      const [m, X, nm, nX] = kit.point(j / S, rho);
+      const yTop = -Math.abs(X) * T22;
+      const y = yBot + ((yTop - yBot) * i) / rows;
+      pos.push(X, y, m);
+      nor.push(nX, 0, nm);
+      uv.push(j / S, (y + 40) / TEX_LENGTH);
+    }
+  }
+  return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+}
+/** Y45 / RY45. ends: [inlet A, left leg B, right leg C], each with its kit (the connection goes on all three, as the round wyes). */
+function buildOvalWye(type: OvalWyeType, main: OvalSz, b: OvalSz, c: OvalSz, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const km = ovalKit(main.A, main.a);
+  const d = ovalWyeDims(type, main, b, c);
+  const group = new THREE.Group();
+  const segs = (k: Kit) => 2 * Math.round(Math.min(220, 96 + Math.round(k.perimeter(k.R0) * 1.2)) / 2);
+  const ribOf = (k: Kit) => Math.min(0.34, 0.04 + k.eqD * 0.012);
+  const S = segs(km);
+  const rib = ribOf(km);
+  const half = main.A / 2;
+  const yBot = -(half * T22 + OWYE_STRAIGHT);
+  group.add(new THREE.Mesh(owyeInletGeo(km, km.R0, yBot, S), metal));
+  group.add(new THREE.Mesh(owyeInletGeo(km, km.R0 - km.wall, yBot, S), inside));
+  const tEnd = d.reach;
+  const kr = km.R0 + rib * 0.35; // seams a little proud of the surface
+  const seamTube = (f: (u: number, v: THREE.Vector3) => THREE.Vector3) => new THREE.Mesh(new THREE.TubeGeometry(new FnCurve(f), S, rib * 0.8, 8, false), seam);
+  // centre seam on x = 0: the crotch half (X >= 0) of the section, at y = √2 X
+  group.add(seamTube((u, v) => {
+    const [m, X] = km.point(u * 0.5, kr);
+    return v.set(0, Math.SQRT2 * X, m);
+  }));
+  const X_ = new THREE.Vector3(1, 0, 0);
+  const inlet = teeEndFrame(new THREE.Vector3(0, yBot - COLLAR, 0), new THREE.Vector3(0, -1, 0), X_.clone());
+  inlet.add(buildCollar(km, style, mats, rib * 0.8, S));
+  group.add(inlet);
+  const ends: THREE.Group[] = [inlet];
+  const kits: Kit[] = [km];
+  ([
+    [-1, d.B, d.RB],
+    [1, d.C, d.RC],
+  ] as const).forEach(([sd, sz, Rr]) => {
+    group.add(new THREE.Mesh(owyeLegGeo(km, km.R0, tEnd, sd, S), metal));
+    group.add(new THREE.Mesh(owyeLegGeo(km, km.R0 - km.wall, tEnd, sd, S), inside));
+    // mitre seam with the inlet, round the leg's outer half (X <= 0)
+    group.add(seamTube((u, v) => {
+      const [m, X] = km.point(0.5 + u * 0.5, kr);
+      const t = -X * T22;
+      return v.set(sd * C45 * (t - X), C45 * (t + X), m);
+    }));
+    const axis = new THREE.Vector3(sd * C45, C45, 0);
+    const p = new THREE.Vector3(-sd * C45, C45, 0);
+    const f = teeEndFrame(axis.clone().multiplyScalar(tEnd + Rr + COLLAR), axis.clone(), p);
+    const ko = Rr > 0 ? ovalKit(sz.A, sz.a) : km;
+    if (Rr > 0) {
+      const x0 = -COLLAR - Rr;
+      const x1 = -COLLAR;
+      f.add(new THREE.Mesh(redTransGeo(km, km.R0, ko, ko.R0, x0, x1, 0, 256), metal));
+      f.add(new THREE.Mesh(redTransGeo(km, km.R0 - km.wall, ko, ko.R0 - ko.wall, x0, x1, 0, 256), inside));
+      f.add(new THREE.Mesh(new THREE.TubeGeometry(new km.Loop(km.R0 + rib * 0.2, x0), S, rib * 0.8, 8, true), seam));
+      f.add(new THREE.Mesh(new THREE.TubeGeometry(new ko.Loop(ko.R0 + ribOf(ko) * 0.2, x1), segs(ko), ribOf(ko) * 0.8, 8, true), seam));
+    }
+    f.add(buildCollar(ko, style, mats, ribOf(ko) * 0.8, segs(ko)));
+    group.add(f);
+    ends.push(f);
+    kits.push(ko);
+  });
+  return { group, ends, kits };
+}
+
 type Screws = NonNullable<BuiltConnection["screws"]>;
 type Joint = { moving: { obj: THREE.Object3D; from: number; to: number }[]; screws: Screws };
 
@@ -1359,6 +1492,18 @@ function disposeGroup(group: THREE.Object3D) {
   });
 }
 
+/** Wye connections: on all three ends at once, as the round Y45 / RY45 (RY45's legs: the small B / C ends, past their reducers). */
+const OWYE_CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
+  coupling: {
+    title: "Coupling (slip joint)",
+    text: "On all three ends (RY45 legs: the small B / C end), as the round wyes: each is crimped past the bead, the oval duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+  },
+  flange: {
+    title: "Flange",
+    text: "On all three ends (RY45 legs: the small B / C end), as the round wyes: straight ends, no beads. A flange goes in each end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+  },
+};
+
 const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text: string }> = {
   coupling: {
     title: "Coupling (slip joint)",
@@ -1370,8 +1515,8 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
   },
 };
 
-type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; redType: OvalRedType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
-export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red";
+type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; redType: OvalRedType; wyeType: OvalWyeType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
+export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye";
 const szKey = (s: OvalSz) => `${s.A}x${s.a}`;
 const szText = (s: OvalSz) => `${s.A}×${s.a}`;
 /** Chart sizes up to max (both axes; the outlet's A strictly smaller), largest first. */
@@ -1391,6 +1536,7 @@ export default function OvalElbow3D({
   bend: bend0,
   teeType: teeType0 = "0t90",
   redType: redType0 = "cr",
+  wyeType: wyeType0 = "y45",
   onClose,
 }: {
   kind?: OvalElbowKind;
@@ -1398,12 +1544,14 @@ export default function OvalElbow3D({
   bend: OvalBend;
   teeType?: OvalAnyTee;
   redType?: OvalRedType;
+  wyeType?: OvalWyeType;
   onClose: () => void;
 }) {
   const miter = kind === "miter";
   const ctee = kind === "ctee";
   const lltee = kind === "lltee";
   const olat = kind === "lat";
+  const owye = kind === "wye"; // wyes: their own build, inlet A x α and RY45's B / C pickers, connections on all three ends
   const ored = kind === "red"; // reducers: their own build, the tees' outlet picker and connection on the outlet
   const tee = kind === "tee" || ctee || lltee || olat; // the conical, low-loss and lateral ones are the same fitting with other branches
   const teeTypes: readonly OvalAnyTee[] = olat ? OVAL_LAT_TYPES : lltee ? OVAL_LLTEE_TYPES : ctee ? OVAL_CTEE_TYPES : OVAL_TEE_TYPES;
@@ -1427,6 +1575,9 @@ export default function OvalElbow3D({
   const [wantBottom, setWantBottom] = useState<OvalSz>(OVAL_TEES[teeType0].defaults.bottom ?? { A: 14, a: 8 });
   const [redType, setRedType] = useState<OvalRedType>(redType0);
   const [wantRedOut, setWantRedOut] = useState<OvalSz>({ A: 21, a: 12 });
+  const [wyeType, setWyeType] = useState<OvalWyeType>(wyeType0);
+  const [wantWyeB, setWantWyeB] = useState<OvalSz>({ A: 21, a: 12 });
+  const [wantWyeC, setWantWyeC] = useState<OvalSz>({ A: 18, a: 10 });
   const [connection, setConnection] = useState<Connection>("none");
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
@@ -1515,7 +1666,8 @@ export default function OvalElbow3D({
     // Low-loss: from the front (the flat side), a little to the left and above, so the inlet-side sweep reads as on the sheet.
     // Laterals: from the front, a little to the right and above, so the 45° branches read as on the sheet.
     // Reducers: from the side (the round end), a little to the right and above, so the ER's straight top reads as drawn.
-    const view = ored ? new THREE.Vector3(0.22, 0.3, 1) : miter ? new THREE.Vector3(0.85, 0.42, -1) : olat ? new THREE.Vector3(0.3, 0.45, 1) : lltee ? new THREE.Vector3(-0.3, 0.5, 1) : tee ? new THREE.Vector3(1, 0.6, 0.7) : new THREE.Vector3(0.3, 0.32, 1);
+    // Wyes: from the front (a flat side), a little to the right and above, so the pentagon and the 45° legs read as drawn.
+    const view = owye ? new THREE.Vector3(0.28, 0.32, 1) : ored ? new THREE.Vector3(0.22, 0.3, 1) : miter ? new THREE.Vector3(0.85, 0.42, -1) : olat ? new THREE.Vector3(0.3, 0.45, 1) : lltee ? new THREE.Vector3(-0.3, 0.5, 1) : tee ? new THREE.Vector3(1, 0.6, 0.7) : new THREE.Vector3(0.3, 0.32, 1);
     let scale = DEFAULT_A;
     const frame = () => {
       if (!model) return;
@@ -1605,7 +1757,12 @@ export default function OvalElbow3D({
       const style: EndStyle = currentC === "coupling" ? "crimp" : currentC === "flange" ? "plain" : "bead";
       let kit = ovalKit(A, minor);
       let built: { group: THREE.Group; ends: THREE.Group[] };
-      if (ored) {
+      let endKits: Kit[] | null = null;
+      if (owye) {
+        const w = buildOvalWye(current.wyeType, { A, a: minor }, current.out, current.top, mats, style);
+        built = w;
+        endKits = w.kits;
+      } else if (ored) {
         const r = buildOvalReducer(current.redType, { A, a: minor }, current.out, mats, style);
         built = r;
         kit = r.connKit; // the connection goes on the outlet (B) end
@@ -1618,12 +1775,14 @@ export default function OvalElbow3D({
       }
       const { group: elbow, ends } = built;
       // Connection on the bottom end (the duct hangs straight down under the elbow), same as the round elbows; tees: the outlet.
-      const joint = currentC === "coupling" ? slipJoint(kit, ends[0], mats, screwMat) : currentC === "flange" ? flangeJoint(kit, ends[0], mats, metal, sheet, gasketMat, screwMat) : null;
-      moving = joint ? joint.moving.map((m) => ({ ...m, base: m.obj.position.x })) : [];
-      screws = joint ? joint.screws.items : [];
+      // Wyes: on all three ends at once, each its own size (as the round wyes).
+      const jointOn = (k: Kit, f: THREE.Group) => (currentC === "coupling" ? slipJoint(k, f, mats, screwMat) : currentC === "flange" ? flangeJoint(k, f, mats, metal, sheet, gasketMat, screwMat) : null);
+      const joints = (endKits ? ends.map((f, i) => jointOn(endKits![i], f)) : [jointOn(kit, ends[0])]).filter((j): j is Joint => !!j);
+      moving = joints.flatMap((j) => j.moving.map((m) => ({ ...m, base: m.obj.position.x })));
+      screws = joints.flatMap((j) => j.screws.items);
       stopPlay();
       // Bottom end on the left, the other end out to the right, as drawn on the sheet (the miter is built that way round).
-      if (!miter && !tee && !ored) elbow.rotation.y = Math.PI;
+      if (!miter && !tee && !ored && !owye) elbow.rotation.y = Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -1633,7 +1792,9 @@ export default function OvalElbow3D({
       scale = A;
       renderer.domElement.setAttribute(
         "aria-label",
-        ored
+        owye
+          ? `3D ${OVAL_WYES[current.wyeType].code} oval ${OVAL_WYES[current.wyeType].name.toLowerCase()}, inlet ${A} by ${minor} inches${current.wyeType === "ry45" ? `, legs ${current.out.A} by ${current.out.a} and ${current.top.A} by ${current.top.a}` : ""}. Drag to turn, pinch to zoom.`
+          : ored
           ? `3D ${OVAL_REDS[current.redType].code} oval ${OVAL_REDS[current.redType].name.toLowerCase()}, ${A} by ${minor} to ${current.out.A} by ${current.out.a} inches. Drag to turn, pinch to zoom.`
           : tee
           ? `3D ${OVAL_TEES[current.teeType].code} oval ${OVAL_TEES[current.teeType].name.toLowerCase()}, main ${A} by ${minor} inches. Drag to turn, pinch to zoom.`
@@ -1716,9 +1877,12 @@ export default function OvalElbow3D({
   const bottom = teeSpec.cross ? snapSz(wantBottom, bottomList) : null;
   const redOutList = redOutsFor(main);
   const redOut = redOutList.length ? snapSz(wantRedOut, redOutList) : main;
-  const modelKey = ored ? `${redType}|${szKey(redOut)}` : tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
+  // RY45 legs: B and C each up to A x α, at least one axis smaller (the reducer card's outlets); may differ.
+  const wyeB = redOutList.length ? snapSz(wantWyeB, redOutList) : main;
+  const wyeC = redOutList.length ? snapSz(wantWyeC, redOutList) : main;
+  const modelKey = owye ? `${wyeType}|${szKey(wyeB)}|${szKey(wyeC)}` : ored ? `${redType}|${szKey(redOut)}` : tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
   useEffect(() => {
-    api.current?.setModel({ type, bend, A, minor, teeType, redType, out: ored ? redOut : out, top, bottom });
+    api.current?.setModel({ type, bend, A, minor, teeType, redType, wyeType, out: ored ? redOut : owye ? wyeB : out, top: owye ? wyeC : top, bottom });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, bend, A, minor, modelKey]);
   useEffect(() => {
@@ -1726,7 +1890,9 @@ export default function OvalElbow3D({
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    const [prefix, hash] = ored
+    const [prefix, hash] = owye
+      ? [SWFO_WYE_3D_HASH, ovalWyeHash(wyeType)]
+      : ored
       ? [SWFO_RED_3D_HASH, ovalRedHash(redType)]
       : olat
       ? [SWFO_LAT_3D_HASH, ovalLatHash(teeType as OvalLatType)]
@@ -1737,7 +1903,7 @@ export default function OvalElbow3D({
       : tee
         ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType as OvalTeeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
     if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
-  }, [type, bend, miter, tee, ctee, lltee, olat, ored, teeType, redType]);
+  }, [type, bend, miter, tee, ctee, lltee, olat, ored, owye, teeType, redType, wyeType]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -1750,10 +1916,11 @@ export default function OvalElbow3D({
     return () => ro.disconnect();
   }, [connection, failed]);
 
-  // reducers: only inlets with a smaller outlet in the chart
-  const minors = ored ? ovalMinorsFor(A).filter((m) => redOutsFor({ A, a: m }).length) : ovalMinorsFor(A);
+  // reducers and RY45: only inlets with a smaller outlet in the chart
+  const needOut = ored || (owye && wyeType === "ry45");
+  const minors = needOut ? ovalMinorsFor(A).filter((m) => redOutsFor({ A, a: m }).length) : ovalMinorsFor(A);
   // the R types need an outlet smaller than the main, so not the smallest major
-  const majors = ored
+  const majors = needOut
     ? OVAL_MAJORS.filter((d) => ovalMinorsFor(d).some((m) => redOutsFor({ A: d, a: m }).length))
     : tee && teeSpec.reducing ? OVAL_MAJORS.filter((d) => d > OVAL_MAJORS[0]) : OVAL_MAJORS;
   const pickTeeType = (t: OvalAnyTee) => {
@@ -1768,9 +1935,25 @@ export default function OvalElbow3D({
   const size = ovalSize(A, minor);
   const pickA = (next: number) => {
     setA(next);
-    const ms = ored ? ovalMinorsFor(next).filter((m) => redOutsFor({ A: next, a: m }).length) : ovalMinorsFor(next);
+    const ms = needOut ? ovalMinorsFor(next).filter((m) => redOutsFor({ A: next, a: m }).length) : ovalMinorsFor(next);
     if (!ms.includes(minor)) setMinor(ms.reduce((best, m) => (Math.abs(m - minor) < Math.abs(best - minor) ? m : best), ms[0]));
   };
+  const pickWyeType = (t: OvalWyeType) => {
+    setWyeType(t);
+    // RY45 needs an inlet with a smaller leg size (the smallest sizes have none): back to the default inlet
+    if (t === "ry45" && !redOutsFor(main).length) {
+      setA(DEFAULT_A);
+      setMinor(DEFAULT_MINOR);
+    }
+  };
+  const wd = ovalWyeDims(wyeType, main, wyeB, wyeC);
+  const wyeSpec = OVAL_WYES[wyeType];
+  const legR = (r: ReturnType<typeof ovalRedDims> | null, leg: string, sz: OvalSz) =>
+    r ? `${leg} × ${leg.toLowerCase()} (${szText(sz)}) R = ${inches(r.R)}″ (${r.byMinor ? `α − ${leg.toLowerCase()} = ${r.red}″, more than the major's, assumed` : `A − ${leg} = ${r.red}″`}${r.past ? ", past the table, +4″ steps, assumed" : ""})` : "";
+  const wyeText =
+    wyeType === "y45"
+      ? `Inlet A × α (${szText(main)}) at the bottom, splitting into two A × α legs at 45° each side (90° apart), split across the major A (assumed). As the round Y45 (the sheet gives no leg length, assumed): 2″ straight past the crotch, each leg ${inches(wd.reach)}″ from the junction to its 2″ collar.`
+      : `Inlet A × α (${szText(main)}), left leg to ${legR(wd.rB, "B", wyeB)} and right leg to ${legR(wd.rC, "C", wyeC)}, each through a concentric reducer (CR table), then 2″ collars. Legs at 45°, split across the major A (assumed).`;
   const R = 1.5 * (hard ? A : minor);
   const seams = goreSeams(spec.angle, spec.pieces);
   const endGore = seams[1];
@@ -1795,7 +1978,7 @@ export default function OvalElbow3D({
     redType === "cr"
       ? `Oval A × α (${szText(main)}) in on the left to B × b (${szText(redOut)}) out on the right, both on one axis. ${redBasis}, so R = ${inches(rd.R)}″ (${redRule}). 2″ collars, ${inches(rd.L)}″ overall.`
       : `Oval A × α (${szText(main)}) in to B × b (${szText(redOut)}) out, ${rd.dy < 0 ? `bottom flat kept in line (as drawn), outlet ${inches(-rd.dy)}″ lower, top sloped` : "α = b, so both flats stay in line"}. ${redBasis}, so R = ${inches(rd.R)}″ (${redRule}). 2″ collars, ${inches(rd.L)}″ overall.`;
-  const title = ored ? `${redSpec.name} (${redSpec.code})` : tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
+  const title = owye ? `${wyeSpec.name} (${wyeSpec.code})` : ored ? `${redSpec.name} (${redSpec.code})` : tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
   const rNote = teeR > 0 ? `reducer R = ${teeR}″ (${teeR > OVAL_CR_TABLE_MAX ? "past the CR table, assumed" : "CR table"})` : "";
   const cone = "conical oval branch";
   const teeText: Record<OvalAnyTee, string> = {
@@ -1818,12 +2001,16 @@ export default function OvalElbow3D({
   };
   const info =
     connection !== "none"
-      ? ored
+      ? owye
+        ? OWYE_CONNECTION_TEXT[connection]
+        : ored
         ? { title: CONNECTION_TEXT[connection].title, text: `${CONNECTION_TEXT[connection].text.replace(/elbow/g, "outlet")} On the right (outlet, B × b) end.` }
         : tee
         ? { title: CONNECTION_TEXT[connection].title, text: `${CONNECTION_TEXT[connection].text.replace(/elbow/g, "outlet")} On the right (outlet) end.` }
         : CONNECTION_TEXT[connection]
-      : ored
+      : owye
+        ? { title, text: wyeText }
+        : ored
         ? { title, text: redText }
         : tee
         ? { title: `${teeSpec.name} (${teeSpec.code})`, text: teeText[teeType] }
@@ -1838,7 +2025,7 @@ export default function OvalElbow3D({
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={ored ? "Oval reducers 3D model" : olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={owye ? "Oval wyes 3D model" : ored ? "Oval reducers 3D model" : olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1953,7 +2140,56 @@ export default function OvalElbow3D({
           </label>
         </div>
       )}
-      {!miter && !tee && !ored && (
+      {owye && (
+        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2">
+          <div className="col-span-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Oval wye type">
+            {OVAL_WYE_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={wyeType === t}
+                aria-label={`${OVAL_WYES[t].name} (${OVAL_WYES[t].code})`}
+                onClick={() => pickWyeType(t)}
+                className="btn-raised btn-raised-sm flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-10"
+              >
+                {OVAL_WYES[t].code}
+                <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_WYES[t].short}</span>
+              </button>
+            ))}
+          </div>
+          {wyeType === "ry45" ? (
+            (
+              [
+                ["b", "B×b · left", wyeB, setWantWyeB],
+                ["c", "C×c · right", wyeC, setWantWyeC],
+              ] as const
+            ).map(([id, label, cur, set]) => (
+              <label key={id} className="flex min-w-0 flex-col" data-testid="oval-wye-sizes">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted">{label}</span>
+                <select
+                  value={szKey(cur)}
+                  onChange={(e) => {
+                    const [a1, a2] = e.target.value.split("x").map(Number);
+                    set({ A: a1, a: a2 });
+                  }}
+                  aria-label={`Size ${label}`}
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {redOutList.map((d) => (
+                    <option key={szKey(d)} value={szKey(d)}>
+                      {szText(d)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))
+          ) : (
+            <p className="col-span-2 self-center text-xs leading-snug text-muted">All three ends A × α ({szText(main)})</p>
+          )}
+        </div>
+      )}
+      {!miter && !tee && !ored && !owye && (
         <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
           {OVAL_ELBOW_TYPES.map((t) => (
             <button
@@ -1971,7 +2207,7 @@ export default function OvalElbow3D({
           ))}
         </div>
       )}
-      {!tee && !ored && (
+      {!tee && !ored && !owye && (
       <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Bend">
         <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
           Bend
@@ -2059,7 +2295,17 @@ export default function OvalElbow3D({
         </label>
         <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="oval-elbow-info">
           <p className="truncate">
-            {ored ? (
+            {owye ? (
+              wyeType === "ry45" ? (
+                <>
+                  R <b className="font-semibold">{inches(wd.RB)}&Prime;</b> B / <b className="font-semibold">{inches(wd.RC)}&Prime;</b> C · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+                </>
+              ) : (
+                <>
+                  Legs 45° · <b className="font-semibold">{inches(wd.reach)}&Prime;</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+                </>
+              )
+            ) : ored ? (
               <>
                 R <b className="font-semibold">{inches(rd.R)}&Prime;</b> · <b className="font-semibold">{inches(rd.L)}&Prime;</b> overall · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
               </>
@@ -2084,7 +2330,7 @@ export default function OvalElbow3D({
               </>
             )}
           </p>
-          <p className="truncate text-muted">Gauge assumed (oval chart{ored ? ", inlet" : tee ? ", main" : ""})</p>
+          <p className="truncate text-muted">Gauge assumed (oval chart{ored || owye ? ", inlet" : tee ? ", main" : ""})</p>
         </div>
         <button
           type="button"

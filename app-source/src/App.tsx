@@ -8,7 +8,7 @@ import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
 import { SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -101,8 +101,9 @@ export default function App() {
         llteeType={route.ovalLlteeType}
         latType={route.ovalLatType}
         redType={route.ovalRedType}
+        wyeType={route.ovalWyeType}
         onBack={() => goBack(SWF_OVAL_HASH)}
-        onOpen3d={(id) => navigate(id === "miter" ? ovalMiterHash() : id === "tee" ? ovalTeeHash() : id === "ctee" ? ovalCteeHash() : id === "lltee" ? ovalLlteeHash() : id === "lat" ? ovalLatHash() : id === "red" ? ovalRedHash() : ovalElbowHash("90hb5"))}
+        onOpen3d={(id) => navigate(id === "miter" ? ovalMiterHash() : id === "tee" ? ovalTeeHash() : id === "ctee" ? ovalCteeHash() : id === "lltee" ? ovalLlteeHash() : id === "lat" ? ovalLatHash() : id === "red" ? ovalRedHash() : id === "wye" ? ovalWyeHash() : ovalElbowHash("90hb5"))}
         onClose3d={() => goBack(SWFO_MODELS_HASH)}
       />
     );
