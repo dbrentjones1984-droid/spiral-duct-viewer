@@ -2,10 +2,12 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Box, ChevronLeft, Download, Maximize, Minus, Plus } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import type { SheetDoc } from "@/lib/sheets";
+import type { DwIns, DwType } from "@/lib/route";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
 const SpiralPipe3D = lazy(() => import("@/components/spiral-pipe-3d"));
 const OvalPipe3D = lazy(() => import("@/components/oval-pipe-3d"));
+const DoubleWallPipe3D = lazy(() => import("@/components/double-wall-pipe-3d"));
 
 /** Zoom steps. "Fit" (the default) shows each whole letter page in the space under the sticky bar, one per screen;
  * "Width" fills the screen width; the % steps are relative to Width. */
@@ -31,12 +33,15 @@ type Layout = { vw: number; barH: number; availH: number };
 export function SheetPage({
   doc,
   model3d,
+  dw,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
   doc: SheetDoc;
   model3d: boolean;
+  /** Double wall pipe model: type and insulation it opens on (from the deep link). */
+  dw?: { type: DwType; ins: DwIns };
   onBack: () => void;
   onOpen3d: () => void;
   onClose3d: () => void;
@@ -291,7 +296,13 @@ export function SheetPage({
             <div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>
           }
         >
-          {doc.model === "oval" ? <OvalPipe3D onClose={onClose3d} /> : <SpiralPipe3D onClose={onClose3d} />}
+          {doc.model === "oval" ? (
+            <OvalPipe3D onClose={onClose3d} />
+          ) : doc.model === "dw-round" ? (
+            <DoubleWallPipe3D onClose={onClose3d} initialType={dw?.type ?? "ss"} initialIns={dw?.ins ?? 1} />
+          ) : (
+            <SpiralPipe3D onClose={onClose3d} />
+          )}
         </Suspense>
       )}
     </main>

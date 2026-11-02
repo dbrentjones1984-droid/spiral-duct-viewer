@@ -57,15 +57,27 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/offset"   same, with the oval offset & square-to-oval open on top (OS shown);
  *   "#/single-wall-fittings/oval/3d/offset?type=sq2rd"   ... opened on that type (os or sq2rd)
  *                                             and bend (hard or easy)
+ *   "#/double-wall/round"      Double Wall Duct · Round catalog sheet (sheet 1, Stock Pipe and Fittings construction)
+ *   "#/double-wall/round/3d"   same, with the double wall spiral pipe 3D model open on top (Solid / Solid, 1" insulation);
+ *   "#/double-wall/round/3d?type=sp&ins=2"   ... opened on that type (ss = Solid / Solid, sp = Solid / Perforated)
+ *                                             and insulation thickness (1, 2 or 3 inch)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
+  | { page: "dw-round"; model3d: boolean; dwType: DwType; dwIns: DwIns }
   | { page: "swf-round" }
   | { page: "swf-oval" }
   | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType; ovalOsType?: OvalOsType }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
+
+/** Double wall spiral pipe construction (sheet 1): Solid / Solid or Solid / Perforated (outer shell / inner liner). */
+export const DW_TYPES = ["ss", "sp"] as const;
+export type DwType = (typeof DW_TYPES)[number];
+/** Double wall insulation thickness, inches (sheet 1: 1", 2" and 3", 1-1/2 lb density; 1" standard). */
+export const DW_INS = [1, 2, 3] as const;
+export type DwIns = (typeof DW_INS)[number];
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
 export const TEE_TYPES = ["t90", "rt90", "c180", "rc180"] as const;
@@ -139,6 +151,13 @@ export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
 export const SW_OVAL_HASH = "#/single-wall/oval";
 export const SW_OVAL_3D_HASH = "#/single-wall/oval/3d";
+export const DW_ROUND_HASH = "#/double-wall/round";
+export const DW_ROUND_3D_HASH = "#/double-wall/round/3d";
+/** Deep link to the double wall pipe model (Solid / Solid with 1" insulation is the default, so it gets the plain link). */
+export const dwRoundHash = (t: DwType = "ss", ins: DwIns = 1) => {
+  const q = [t !== "ss" ? `type=${t}` : "", ins !== 1 ? `ins=${ins}` : ""].filter(Boolean).join("&");
+  return q ? `${DW_ROUND_3D_HASH}?${q}` : DW_ROUND_3D_HASH;
+};
 export const SWF_ROUND_HASH = "#/single-wall-fittings/round";
 export const SWF_MODELS_HASH = "#/single-wall-fittings/round/3d";
 export const SWF_E90_3D_HASH = "#/single-wall-fittings/round/3d/e90";
@@ -221,6 +240,13 @@ function parse(hash: string): Route {
   if (h === SW_ROUND_HASH) return { page: "sw-round", model3d: false };
   if (h === SW_OVAL_3D_HASH) return { page: "sw-oval", model3d: true };
   if (h === SW_OVAL_HASH) return { page: "sw-oval", model3d: false };
+  if (h === DW_ROUND_HASH) return { page: "dw-round", model3d: false, dwType: "ss", dwIns: 1 };
+  if (h === DW_ROUND_3D_HASH || h.startsWith(`${DW_ROUND_3D_HASH}?`)) {
+    const q = new URLSearchParams(h.slice(DW_ROUND_3D_HASH.length + 1));
+    const t = q.get("type")?.toLowerCase();
+    const ins = Number(q.get("ins")?.replace(/[^0-9]/g, ""));
+    return { page: "dw-round", model3d: true, dwType: DW_TYPES.find((x) => x === t) ?? "ss", dwIns: DW_INS.find((x) => x === ins) ?? 1 };
+  }
   if (h === SWF_E90_3D_HASH) return { page: "swf-models", model3d: "e90" };
   if (h === SWF_DS90_3D_HASH) return { page: "swf-models", model3d: "ds90" };
   if (h === SWF_ME90_3D_HASH) return { page: "swf-models", model3d: "me90" };

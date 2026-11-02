@@ -321,6 +321,25 @@ export const SWF_ROUND_SHEETS = [
   },
 ] as const;
 
+// Double Wall Duct · Round: Brent's sheet 1 "Stock Pipe and Fittings" (Double Wall Round Spiral Pipe and Fittings
+// Construction), kept as sent. The PDF is that one image on a letter page, pixels unchanged (lossless).
+export const DW_ROUND_PDF = {
+  href: `${base}docs/Spiral-Systems-Double-Wall-Round-Duct.pdf`,
+  fileName: "Spiral-Systems-Double-Wall-Round-Duct.pdf",
+  sizeLabel: "1.3 MB",
+};
+
+export const DW_ROUND_SHEETS = [
+  {
+    n: 1,
+    title: "Stock Pipe and Fittings",
+    src: `${base}sheets/double-wall-round-1.webp`,
+    w: 1113,
+    h: 1414,
+    alt: "Sheet 1, Double Wall Round, Stock Pipe and Fittings: Double Wall Round Spiral Pipe and Fittings Construction. Solid / Solid: solid materials on both the outer and inner shells. Solid / Perforated: solid outer shell, perforated inner shell. Standard double wall pipe and fittings have 1 inch thick, 1-1/2 lb density fiberglass insulation; pipe lengths 1 to 20 feet (specify when ordering); standard fittings have a solid inner liner, perforated liner when specified; insulation 1, 2 or 3 inch thick, 1-1/2 lb density; standard slip joint construction, other connections on request; all SMACNA pressure classes; positive or negative systems.",
+  },
+] as const;
+
 const sheetCount = (n: number) => (n === 1 ? "sheet 1" : `sheets 1-${n}`);
 
 /** What a sheet page shows: Round and Oval use the same page. */
@@ -330,7 +349,7 @@ export type SheetDoc = {
   sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
   pdf: { href: string; fileName: string; sizeLabel: string };
   /** Which 3D model "View 3D Model" opens ("fittings": the list of fitting models); null = not built yet ("Coming soon"). */
-  model: "round" | "oval" | "fittings" | null;
+  model: "round" | "oval" | "fittings" | "dw-round" | null;
 };
 
 export const SW_ROUND_DOC: SheetDoc = {
@@ -363,6 +382,14 @@ export const SWF_OVAL_DOC: SheetDoc = {
   sheets: SWF_OVAL_SHEETS,
   pdf: SWF_OVAL_PDF,
   model: "fittings",
+};
+
+export const DW_ROUND_DOC: SheetDoc = {
+  title: "DOUBLE WALL ROUND",
+  subtitle: `Spiral pipe · ${sheetCount(DW_ROUND_SHEETS.length)}`,
+  sheets: DW_ROUND_SHEETS,
+  pdf: DW_ROUND_PDF,
+  model: "dw-round",
 };
 
 /** Stock sizes and gauges from sheet 1 (used by the 3D model's size picker). */
