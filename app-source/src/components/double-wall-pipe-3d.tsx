@@ -27,9 +27,9 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * Units are inches; pipe axis is X.
  */
 
-const STEP_PAUSE_MS = 250;
-const SCREW_TURNS = 4;
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+export const STEP_PAUSE_MS = 250;
+export const SCREW_TURNS = 4;
+export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
 type ScrewItem = NonNullable<BuiltConnection["screws"]>["items"][number];
 
@@ -60,14 +60,14 @@ const CUT_A1 = THREE.MathUtils.degToRad(158);
 const CUT_OUTER = 13; // outer shell open for |x| < this (main section)
 const CUT_STEP = 4; // insulation cut back this much less, so it steps down
 const INS_SETBACK = 3; // insulation held back at each pipe end (outer coupling room; assumed)
-const PERF_TILE = 0.75; // drawn perforation pitch (real 3/16" stagger, 4x)
+export const PERF_TILE = 0.75; // drawn perforation pitch (real 3/16" stagger, 4x)
 // Joint views: the main section ends at the joint, the next section comes in from +X.
 const MAIN_LENGTH = 30;
 const PIECE_LENGTH = 22;
 const BEAD = 0.5; // outer coupling's center bead width (as the single wall PC, duct-connections buildCoupling)
-const FLANGE_T = 0.12; // flange ring thickness as drawn
-const GASKET_T = 0.125; // gasket (single wall flange)
-const FLANGE_APART = 4; // flanged joint: how far apart the ends start
+export const FLANGE_T = 0.12; // flange ring thickness as drawn
+export const GASKET_T = 0.125; // gasket (single wall flange)
+export const FLANGE_APART = 4; // flanged joint: how far apart the ends start
 
 /** Spread screws evenly over their phase (after the cut-away side's screws are dropped). */
 function retime(items: ScrewItem[]) {
@@ -123,7 +123,7 @@ function radialFace(r0: number, r1: number, x0: number, x1: number, a: number) {
 }
 
 /** Flat annulus sector in the plane x (end faces and the window's cut ends). */
-function ringSector(r0: number, r1: number, a0: number, a1: number, x: number, seg: number) {
+export function ringSector(r0: number, r1: number, a0: number, a1: number, x: number, seg: number) {
   const g = new THREE.RingGeometry(r0, r1, seg, 1, a0, a1 - a0);
   // RingGeometry is in XY (angle from +X toward +Y); map its (X, Y) to our (Y, Z) at the given x.
   const p = g.getAttribute("position") as THREE.BufferAttribute;
@@ -164,12 +164,12 @@ function seamRuns(r: number, x0: number, x1: number, phase: number, tubeR: numbe
   return geos;
 }
 
-type DwMats = { outer: THREE.Material; seam: THREE.Material; edge: THREE.Material; insul: THREE.Material; insulCut: THREE.Material; liner: THREE.Material; linerSeam: THREE.Material };
+export type DwMats = { outer: THREE.Material; seam: THREE.Material; edge: THREE.Material; insul: THREE.Material; insulCut: THREE.Material; liner: THREE.Material; linerSeam: THREE.Material };
 type Range = [number, number];
 
 /** Wall thickness as drawn (a little thicker than real so the cut edges read). */
-const drawWall = (d: number) => Math.max(0.06, d * 0.006);
-const segsFor = (od: number) => Math.min(180, 72 + Math.round(od * 3));
+export const drawWall = (d: number) => Math.max(0.06, d * 0.006);
+export const segsFor = (od: number) => Math.min(180, 72 + Math.round(od * 3));
 const inCut = (a: number) => a > CUT_A0 && a < CUT_A1;
 
 /**
@@ -210,7 +210,7 @@ function tube(add: (g: THREE.BufferGeometry, m: THREE.Material) => void, radii: 
  * windows (o: outer shell, i: insulation; the insulation window is a little smaller so the layers step down).
  * ID = inner liner diameter, t = insulation thickness; outer shell radius = ID / 2 + t.
  */
-function buildSection(ID: number, t: number, m: DwMats, spec: { liner?: Range; outer?: Range; ins?: Range; win: { o: Range; i: Range }[] }) {
+export function buildSection(ID: number, t: number, m: DwMats, spec: { liner?: Range; outer?: Range; ins?: Range; win: { o: Range; i: Range }[] }) {
   const group = new THREE.Group();
   const ri = ID / 2;
   const ro = ri + t;
@@ -266,7 +266,7 @@ function buildInnerPC(ri: number, len: number, w: number, segFull: number, mat: 
 }
 
 /** Flat ring x0..x1 from r0 to r1 (flange plate or gasket), with a rolled lip at the rim when `lip`. */
-function flatRing(r0: number, r1: number, x0: number, x1: number, segs: number, mat: THREE.Material, lip: boolean) {
+export function flatRing(r0: number, r1: number, x0: number, x1: number, segs: number, mat: THREE.Material, lip: boolean) {
   const group = new THREE.Group();
   const add = (g: THREE.BufferGeometry) => group.add(new THREE.Mesh(g, mat));
   add(ringSector(r0, r1, 0, Math.PI * 2, x0, segs));
@@ -282,14 +282,14 @@ function flatRing(r0: number, r1: number, x0: number, x1: number, segs: number, 
   return group;
 }
 
-function disposeGroup(group: THREE.Object3D) {
+export function disposeGroup(group: THREE.Object3D) {
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
   });
 }
 
 /** Perforation alpha map: staggered round holes (black = hole) on a square tile, one in the middle, quarters in the corners. */
-function perfTexture() {
+export function perfTexture() {
   const s = 64;
   const c = document.createElement("canvas");
   c.width = c.height = s;
@@ -311,7 +311,7 @@ function perfTexture() {
 }
 
 /** Fiberglass: warm yellow with soft fibrous streaks. */
-function fiberTexture() {
+export function fiberTexture() {
   const s = 256;
   const c = document.createElement("canvas");
   c.width = c.height = s;
@@ -340,7 +340,7 @@ function fiberTexture() {
   return tex;
 }
 
-const TYPE_LABEL: Record<DwType, string> = { ss: "Solid / Solid", sp: "Solid / Perforated" };
+export const TYPE_LABEL: Record<DwType, string> = { ss: "Solid / Solid", sp: "Solid / Perforated" };
 
 export default function DoubleWallPipe3D({
   onClose,

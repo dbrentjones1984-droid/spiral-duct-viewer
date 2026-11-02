@@ -323,12 +323,12 @@ export const SWF_ROUND_SHEETS = [
 
 // Double Wall Duct · Round: Brent's sheet 1 "Stock Pipe and Fittings" (Double Wall Round Spiral Pipe and Fittings
 // Construction), sheet 2 "Positive Pressure Gauges" (galvanized / paint grade / stainless gauge tables) and sheet 3
-// "Aluminum Gauges" (aluminum 3003-H14); sheets 2 and 3 are sheets only, no 3D model. All kept as sent. The PDF is
-// the three images, one per letter page, pixels unchanged (lossless).
+// "Aluminum Gauges" (aluminum 3003-H14), sheets only, no 3D model; and sheet 4 "Gored Elbows" (DE90 / DE60 / DE45 /
+// DE30, its own 3D model). All kept as sent. The PDF is the four images, one per letter page, pixels unchanged (lossless).
 export const DW_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Duct.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Duct.pdf",
-  sizeLabel: "4.3 MB",
+  sizeLabel: "5.4 MB",
 };
 
 export const DW_ROUND_SHEETS = [
@@ -355,6 +355,14 @@ export const DW_ROUND_SHEETS = [
     w: 1055,
     h: 1491,
     alt: "Sheet 3, Double Wall Round Spiral Duct Construction Standards, aluminum 3003-H14. Gauges by inner diameter, spiral pipe / fittings, I.D. gauges at +2 inch W.G. and O.D. gauges at -2 inch W.G. (the same values on both sides): 3 to 8 inch, .025 / .032 inch; 9 to 14 inch, .025 / .032; 15 to 26 inch, .032 / .040; 27 to 36 inch, .040 / .050; 37 to 50 inch, .050 / .063; 51 to 60 inch, .063 / .071; 61 to 84 inch, spiral pipe NA, fittings .090. NA: not available or not assigned.",
+  },
+  {
+    n: 4,
+    title: "Gored Elbows",
+    src: `${base}sheets/double-wall-round-4.webp`,
+    w: 1122,
+    h: 1402,
+    alt: "Sheet 4, Double Wall Round, Gored Elbows: DE90, 90 degree 5-piece elbow; DE60, 60 degree 3-piece elbow; DE45, 45 degree 3-piece elbow; DE30, 30 degree 2-piece elbow. Each drawn with its outer shell in blue and the inner liner dashed in red, the inner collar sticking out past the outer shell at both ends, A dimensioned across the end, 2 inch end dimensions, and R the radius. Standard center line radius equals 1-1/2 times diameter, R = 1.5 x A.",
   },
 ] as const;
 
@@ -404,11 +412,19 @@ export const SWF_OVAL_DOC: SheetDoc = {
 
 export const DW_ROUND_DOC: SheetDoc = {
   title: "DOUBLE WALL ROUND",
-  subtitle: `Spiral pipe · ${sheetCount(DW_ROUND_SHEETS.length)}`,
+  subtitle: `Pipe & fittings · ${sheetCount(DW_ROUND_SHEETS.length)}`,
   sheets: DW_ROUND_SHEETS,
   pdf: DW_ROUND_PDF,
   model: "dw-round",
 };
+
+/**
+ * Double wall fittings gauges (sheet 2, +2" W.G. galvanized, fittings column, by inner diameter): the inner liner (I.D.)
+ * and the outer shell (O.D.) are the same gauge up to 60". Used by the double wall gored elbow model.
+ */
+export function dwFittingGauge(id: number) {
+  return id <= 14 ? 26 : id <= 26 ? 24 : id <= 36 ? 22 : id <= 50 ? 20 : 18;
+}
 
 /** Stock sizes and gauges from sheet 1 (used by the 3D model's size picker). */
 export const STOCK_DIAMETERS = [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24] as const;

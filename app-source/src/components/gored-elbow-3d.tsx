@@ -77,8 +77,8 @@ import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
  * see-through pipe and rods, no connection buttons; Play shows how it goes on.
  */
 
-const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
-const COLLAR = 2; // straight ends, as dimensioned on the sheet
+export const TEX_LENGTH = 48; // spangle size matches the Round pipe's 4 ft section
+export const COLLAR = 2; // straight ends, as dimensioned on the sheet
 const DEG = Math.PI / 180;
 /**
  * Clam shell hanger sizes: the sheet covers 3"-64". The stock round list (3"-10", then even sizes to 24") extended in
@@ -460,12 +460,12 @@ function cteeDims(type: CteeType, sizes: readonly number[]) {
 const TEE_RUN_DEFAULT = 10;
 
 const B = new THREE.Vector3(0, 0, 1);
-const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
-const tangent = (a: number) => new THREE.Vector3(-Math.sin(a), Math.cos(a), 0);
+export const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
+export const tangent = (a: number) => new THREE.Vector3(-Math.sin(a), Math.cos(a), 0);
 const outward = (a: number) => new THREE.Vector3(Math.cos(a), Math.sin(a), 0);
 
 /** A straight round piece along the line O + s*T (T tangent to the centerline at angle t), from sFrom(phi) to sTo(phi). */
-function piece(
+export function piece(
   t: number,
   R: number,
   rr: number,
@@ -511,7 +511,7 @@ function piece(
 }
 
 /** Where the piece tangent at t crosses the radial joint plane at angle a, for a point at radius rr, angle phi. */
-const miter = (t: number, a: number, R: number, rr: number) => (phi: number) => (R + rr * Math.cos(phi)) * Math.tan(a - t);
+export const miter = (t: number, a: number, R: number, rr: number) => (phi: number) => (R + rr * Math.cos(phi)) * Math.tan(a - t);
 
 /** Smooth bend (die-stamped): the torus section from 0 to 90°, radius rr about the centerline. */
 function bend(R: number, rr: number, vBase: number, radial: number) {
@@ -565,7 +565,7 @@ class BendLine extends THREE.Curve<THREE.Vector3> {
 }
 
 /** Closed loop around a gore joint (the mitre ellipse), pushed out a little so the seam sits on the surface. */
-class JointLoop extends THREE.Curve<THREE.Vector3> {
+export class JointLoop extends THREE.Curve<THREE.Vector3> {
   constructor(
     private t: number,
     private a: number,
@@ -744,7 +744,7 @@ function buildTeeVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Ma
   return g;
 }
 
-type Mats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material };
+export type Mats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Material };
 
 /**
  * How the elbow's ends are made, by connection (Brent):
@@ -752,7 +752,7 @@ type Mats = { metal: THREE.Material; inside: THREE.Material; seam: THREE.Materia
  *   crimp  Coupling (slip joint): bead, then the end is crimped past it (a little smaller, fluted) so the duct slides over it.
  *   plain  Flange: straight ends, no beads; a flange's collar goes inside the end.
  */
-type EndStyle = "bead" | "crimp" | "plain";
+export type EndStyle = "bead" | "crimp" | "plain";
 
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 /**
@@ -770,8 +770,8 @@ function endFrame(end: 0 | 1, R: number) {
 
 /** Crimped end: the bead sits BEAD_X in from the end; past it the end steps down and is fluted to the cut edge. */
 const BEAD_X = -1.55;
-const CRIMP_X = -1.3; // crimp starts (the duct slides on up to here, against the bead)
-const CRIMP_TAPER = 0.22;
+export const CRIMP_X = -1.3; // crimp starts (the duct slides on up to here, against the bead)
+export const CRIMP_TAPER = 0.22;
 
 function crimpRadius(d: number) {
   const r = d / 2;
@@ -788,7 +788,7 @@ function crimpRadius(d: number) {
 }
 
 /** One end's 2" collar (outside + inside), its bead and the cut rim, in its end frame. */
-function buildCollar(d: number, style: EndStyle, { metal, inside, seam }: Mats, bead: number, radial: number) {
+export function buildCollar(d: number, style: EndStyle, { metal, inside, seam }: Mats, bead: number, radial: number) {
   const g = new THREE.Group();
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);
@@ -2541,7 +2541,7 @@ function buildElbow(d: number, mats: Mats, style: EndStyle, kind: ElbowKind = "e
 }
 
 /** Screws around the duct over the crimped end (one row), driven one after another. */
-function crimpScrews(d: number, x: number, mat: THREE.Material) {
+export function crimpScrews(d: number, x: number, mat: THREE.Material) {
   const r = d / 2;
   const n = screwCount(d);
   const k = screwScale(d);

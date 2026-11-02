@@ -62,12 +62,17 @@ import { useEffect, useState } from "react";
  *   "#/double-wall/round/3d?type=sp&ins=2&conn=flange"   ... opened on that type (ss = Solid / Solid, sp = Solid / Perforated),
  *                                             insulation thickness (1, 2 or 3 inch) and connection (coupling = default,
  *                                             flange or none)
+ *   "#/double-wall/round/3d/elbow"   same, with the double wall gored elbow 3D model open on top (DE90, Solid / Solid,
+ *                                             1" insulation, slip joint);
+ *   "#/double-wall/round/3d/elbow?type=de45&shells=sp&ins=2&conn=flange"   ... opened on that elbow (de90, de60, de45
+ *                                             or de30), shells (ss or sp), insulation (1, 2 or 3 inch) and connection
+ *                                             (slip = default, flange or none; coupling also means slip)
  */
 export type Route =
   | { page: "home" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
-  | { page: "dw-round"; model3d: boolean; dwType: DwType; dwIns: DwIns; dwConn: DwConn }
+  | { page: "dw-round"; model3d: boolean; dwType: DwType; dwIns: DwIns; dwConn: DwConn; dwElbow?: { type: DwElbowType; shells: DwType; ins: DwIns; conn: DwElbowConn } }
   | { page: "swf-round" }
   | { page: "swf-oval" }
   | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType; ovalOsType?: OvalOsType }
@@ -82,6 +87,12 @@ export type DwIns = (typeof DW_INS)[number];
 /** Double wall pipe joint shown on the model: inner + outer couplings (standard slip joint; default), flanged, or none (layers only). */
 export const DW_CONNS = ["coupling", "flange", "none"] as const;
 export type DwConn = (typeof DW_CONNS)[number];
+/** Double wall gored elbows (sheet 4): DE90 5-piece, DE60 / DE45 3-piece, DE30 2-piece (one model, picked in the viewer). */
+export const DW_ELBOW_TYPES = ["de90", "de60", "de45", "de30"] as const;
+export type DwElbowType = (typeof DW_ELBOW_TYPES)[number];
+/** Double wall elbow end: slip joint (inner first, then outer; default), flange, or none (the elbow alone). */
+export const DW_ELBOW_CONNS = ["slip", "flange", "none"] as const;
+export type DwElbowConn = (typeof DW_ELBOW_CONNS)[number];
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
 export const TEE_TYPES = ["t90", "rt90", "c180", "rc180"] as const;
@@ -161,6 +172,12 @@ export const DW_ROUND_3D_HASH = "#/double-wall/round/3d";
 export const dwRoundHash = (t: DwType = "ss", ins: DwIns = 1, conn: DwConn = "coupling") => {
   const q = [t !== "ss" ? `type=${t}` : "", ins !== 1 ? `ins=${ins}` : "", conn !== "coupling" ? `conn=${conn}` : ""].filter(Boolean).join("&");
   return q ? `${DW_ROUND_3D_HASH}?${q}` : DW_ROUND_3D_HASH;
+};
+export const DW_ELBOW_3D_HASH = "#/double-wall/round/3d/elbow";
+/** Deep link to the double wall gored elbow model (defaults left out: DE90, Solid / Solid, 1" insulation, slip joint). */
+export const dwElbowHash = (t: DwElbowType = "de90", shells: DwType = "ss", ins: DwIns = 1, conn: DwElbowConn = "slip") => {
+  const q = [t !== "de90" ? `type=${t}` : "", shells !== "ss" ? `shells=${shells}` : "", ins !== 1 ? `ins=${ins}` : "", conn !== "slip" ? `conn=${conn}` : ""].filter(Boolean).join("&");
+  return q ? `${DW_ELBOW_3D_HASH}?${q}` : DW_ELBOW_3D_HASH;
 };
 export const SWF_ROUND_HASH = "#/single-wall-fittings/round";
 export const SWF_MODELS_HASH = "#/single-wall-fittings/round/3d";
@@ -245,6 +262,22 @@ function parse(hash: string): Route {
   if (h === SW_OVAL_3D_HASH) return { page: "sw-oval", model3d: true };
   if (h === SW_OVAL_HASH) return { page: "sw-oval", model3d: false };
   if (h === DW_ROUND_HASH) return { page: "dw-round", model3d: false, dwType: "ss", dwIns: 1, dwConn: "coupling" };
+  if (h === DW_ELBOW_3D_HASH || h.startsWith(`${DW_ELBOW_3D_HASH}?`)) {
+    const q = new URLSearchParams(h.slice(DW_ELBOW_3D_HASH.length + 1));
+    const t = q.get("type")?.toLowerCase();
+    const sh = q.get("shells")?.toLowerCase();
+    const ins = Number(q.get("ins")?.replace(/[^0-9]/g, ""));
+    const c = q.get("conn")?.toLowerCase();
+    const conn = c === "coupling" ? "slip" : c;
+    return {
+      page: "dw-round",
+      model3d: true,
+      dwType: "ss",
+      dwIns: 1,
+      dwConn: "coupling",
+      dwElbow: { type: DW_ELBOW_TYPES.find((x) => x === t) ?? "de90", shells: DW_TYPES.find((x) => x === sh) ?? "ss", ins: DW_INS.find((x) => x === ins) ?? 1, conn: DW_ELBOW_CONNS.find((x) => x === conn) ?? "slip" },
+    };
+  }
   if (h === DW_ROUND_3D_HASH || h.startsWith(`${DW_ROUND_3D_HASH}?`)) {
     const q = new URLSearchParams(h.slice(DW_ROUND_3D_HASH.length + 1));
     const t = q.get("type")?.toLowerCase();

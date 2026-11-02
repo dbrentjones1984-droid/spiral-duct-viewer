@@ -7,7 +7,7 @@
      older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
      on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = '6e16c611d8';
+const VERSION = 'c1ecfbdfcd';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -18,19 +18,20 @@ const PRECACHE = [
   "assets/barlow-condensed-latin-600-normal-DepVgxBB.woff2",
   "assets/barlow-condensed-latin-700-normal-Dmwat-ge.woff",
   "assets/barlow-condensed-latin-700-normal-v1xN8_Wq.woff2",
-  "assets/double-wall-pipe-3d-qfQm4vbD.js",
-  "assets/gored-elbow-3d-C7s9E3re.js",
+  "assets/double-wall-elbow-3d-BwLuryFo.js",
+  "assets/double-wall-pipe-3d-BhJyI6IW.js",
+  "assets/gored-elbow-3d-CqJvSneL.js",
   "assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2",
   "assets/ibm-plex-sans-latin-400-normal-CYLoc0-x.woff",
   "assets/ibm-plex-sans-latin-500-normal-6ng42L7E.woff2",
   "assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff",
   "assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff",
   "assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2",
-  "assets/index-DCl9QIGy.css",
-  "assets/index-DsL9gJn6.js",
-  "assets/oval-elbow-3d-DcsN3R59.js",
-  "assets/oval-pipe-3d-C2Lw84PH.js",
-  "assets/spiral-pipe-3d-DSIFHir4.js",
+  "assets/index-C8aPr2yz.js",
+  "assets/index-DgaMk8Du.css",
+  "assets/oval-elbow-3d-C_t9vC2s.js",
+  "assets/oval-pipe-3d-jzV70_xh.js",
+  "assets/spiral-pipe-3d-bXf0TYT3.js",
   "blueprint.png",
   "icons/apple-touch-icon-v2.png",
   "icons/favicon-16-v2.png",
@@ -48,6 +49,7 @@ const PRECACHE = [
   "sheets/double-wall-round-1.webp",
   "sheets/double-wall-round-2.webp",
   "sheets/double-wall-round-3.webp",
+  "sheets/double-wall-round-4.webp",
   "sheets/single-wall-oval-1.webp",
   "sheets/single-wall-oval-2.webp",
   "sheets/single-wall-oval-3.webp",
