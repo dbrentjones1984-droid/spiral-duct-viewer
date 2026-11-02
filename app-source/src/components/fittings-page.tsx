@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
+import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType, OvalLatType, OvalRedType, OvalWyeType, OvalCapType } from "@/lib/route";
 
@@ -173,20 +174,24 @@ export function FittingsPage({
     <main className="flex min-h-svh flex-col bg-paper text-ink">
       <div className="sticky top-0 z-30 shadow-[0_2px_10px_rgb(0_28_64/0.25)]">
         <header className="flex items-center gap-2 bg-accent px-2 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
-            aria-label="Back to fitting sheets"
-          >
-            <ChevronLeft className="size-6" />
-            Back
-          </button>
+          <div className={HEADER_SLOT}>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
+              aria-label="Back to fitting sheets"
+            >
+              <ChevronLeft className="size-6" />
+              Back
+            </button>
+          </div>
           <div className="min-w-0 flex-1 text-center">
             <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">3D MODELS</h1>
             <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">Single wall round fittings</p>
           </div>
-          <span className="w-[4.5rem] shrink-0" aria-hidden="true" />
+          <div className={`${HEADER_SLOT} justify-end`}>
+            <HomeButton />
+          </div>
         </header>
       </div>
 
@@ -358,20 +363,24 @@ export function OvalFittingsPage({
     <main className="flex min-h-svh flex-col bg-paper text-ink">
       <div className="sticky top-0 z-30 shadow-[0_2px_10px_rgb(0_28_64/0.25)]">
         <header className="flex items-center gap-2 bg-accent px-2 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
-            aria-label="Back to fitting sheets"
-          >
-            <ChevronLeft className="size-6" />
-            Back
-          </button>
+          <div className={HEADER_SLOT}>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
+              aria-label="Back to fitting sheets"
+            >
+              <ChevronLeft className="size-6" />
+              Back
+            </button>
+          </div>
           <div className="min-w-0 flex-1 text-center">
             <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">3D MODELS</h1>
             <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">Single wall oval fittings</p>
           </div>
-          <span className="w-[4.5rem] shrink-0" aria-hidden="true" />
+          <div className={`${HEADER_SLOT} justify-end`}>
+            <HomeButton />
+          </div>
         </header>
       </div>
       <ul className="mx-auto grid w-full max-w-3xl grid-cols-1 auto-rows-fr items-stretch gap-3 px-3 pt-4 pb-8 sm:grid-cols-2">

@@ -320,6 +320,25 @@ export function navigate(hash: string) {
   location.hash = hash;
 }
 
+/**
+ * Home button: to the start page (no hash) from anywhere, closing any open 3D model. Steps back over the in-app history
+ * first (so the phone's back button doesn't walk through the pages again), then makes that entry the start page.
+ */
+export function goHome() {
+  const toRoot = () => {
+    history.replaceState(null, "", location.pathname + location.search);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  };
+  if (pushed > 0) {
+    const n = pushed;
+    pushed = 0;
+    window.addEventListener("popstate", toRoot, { once: true });
+    history.go(-n);
+  } else {
+    toRoot();
+  }
+}
+
 export function goBack(fallbackHash: string) {
   if (pushed > 0) {
     pushed--;

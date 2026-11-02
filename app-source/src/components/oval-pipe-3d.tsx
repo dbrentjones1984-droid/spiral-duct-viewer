@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import { HomeButton } from "@/components/home-button";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -380,6 +381,7 @@ export default function OvalPipe3D({ onClose }: { onClose: () => void }) {
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
           <p className="truncate text-xs text-white/80">Single Wall Flat Oval Spiral Duct · 25&Prime; × 16&Prime;</p>
         </div>
+        <HomeButton variant="round" />
         <button
           type="button"
           onClick={onClose}

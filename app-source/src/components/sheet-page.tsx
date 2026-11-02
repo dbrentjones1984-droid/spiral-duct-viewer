@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, ChevronLeft, Download, Maximize, Minus, Plus } from "lucide-react";
+import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import type { SheetDoc } from "@/lib/sheets";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
@@ -148,20 +149,24 @@ export function SheetPage({
           className="flex items-center gap-2 bg-accent px-2 py-2 text-accent-ink short:min-w-0 short:flex-1"
           style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}
         >
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
-            aria-label="Back to tabs"
-          >
-            <ChevronLeft className="size-6" />
-            Back
-          </button>
+          <div className={HEADER_SLOT}>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
+              aria-label="Back to tabs"
+            >
+              <ChevronLeft className="size-6" />
+              Back
+            </button>
+          </div>
           <div className="min-w-0 flex-1 text-center">
             <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">{doc.title}</h1>
             <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">{doc.subtitle}</p>
           </div>
-          <span className="w-[4.5rem] shrink-0 short:hidden" aria-hidden="true" />
+          <div className={`${HEADER_SLOT} justify-end`}>
+            <HomeButton />
+          </div>
         </header>
         <div className="grid grid-cols-2 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[23rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
           {doc.model ? (

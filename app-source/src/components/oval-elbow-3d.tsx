@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
+import { HomeButton } from "@/components/home-button";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -2300,6 +2301,7 @@ export default function OvalElbow3D({
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
           <p className="truncate text-xs text-white/80">Single Wall Oval · {title}</p>
         </div>
+        <HomeButton variant="round" />
         <button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-full bg-white/15 active:bg-white/25" aria-label="Close 3D model">
           <X className="size-6" />
         </button>
