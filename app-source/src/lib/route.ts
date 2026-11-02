@@ -74,6 +74,10 @@ import { useEffect, useState } from "react";
  *                                             1" insulation, slip joint; solid liner);
  *   "#/double-wall-fittings/round/3d/miter?type=d3p90h&ins=2&conn=flange"   ... opened on that elbow (dmev90, dme90,
  *                                             d3p90 or d3p90h), insulation and connection as the gored elbows
+ *   "#/double-wall-fittings/round/3d/bullhead"   same, with the double wall bullhead tee 3D model open on top (DBT90,
+ *                                             1" insulation, slip joint; solid liner);
+ *   "#/double-wall-fittings/round/3d/bullhead?type=dbtv90&ins=2&conn=flange"   ... opened on that tee (dbt90 or
+ *                                             dbtv90), insulation and connection as the gored elbows
  *   "#/double-wall/round/3d/elbow(?...)"   old link (first published on the duct page): replaced by the fittings link
  *                                             above, same query
  */
@@ -83,7 +87,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "dw-round"; model3d: boolean; dwType: DwType; dwIns: DwIns; dwConn: DwConn }
   | { page: "dwf-round" }
-  | { page: "dwf-models"; model3d: "elbow" | "miter" | null; dwElbow: { type: DwElbowType; ins: DwIns; conn: DwElbowConn }; dwMiter: { type: DwMiterType; ins: DwIns; conn: DwElbowConn } }
+  | { page: "dwf-models"; model3d: "elbow" | "miter" | "bullhead" | null; dwElbow: { type: DwElbowType; ins: DwIns; conn: DwElbowConn }; dwMiter: { type: DwMiterType; ins: DwIns; conn: DwElbowConn }; dwBull: { type: DwBullType; ins: DwIns; conn: DwElbowConn } }
   | { page: "swf-round" }
   | { page: "swf-oval" }
   | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType; ovalOsType?: OvalOsType }
@@ -104,6 +108,9 @@ export type DwElbowType = (typeof DW_ELBOW_TYPES)[number];
 /** Double wall mitered elbows (Double Wall Fittings sheet 2): DMEV90 2-piece with vanes, DME90 2-piece, D3P90 3-piece, D3P90H 3-piece with the B collar on top (one model, picked in the viewer). */
 export const DW_MITER_TYPES = ["dmev90", "dme90", "d3p90", "d3p90h"] as const;
 export type DwMiterType = (typeof DW_MITER_TYPES)[number];
+/** Double wall bullhead tees (Double Wall Fittings sheet 3): DBT90, and DBTV90 with splitter vanes (one model, picked in the viewer). */
+export const DW_BULL_TYPES = ["dbt90", "dbtv90"] as const;
+export type DwBullType = (typeof DW_BULL_TYPES)[number];
 /** Double wall elbow end: slip joint (inner first, then outer; default), flange, or none (the elbow alone). */
 export const DW_ELBOW_CONNS = ["slip", "flange", "none"] as const;
 export type DwElbowConn = (typeof DW_ELBOW_CONNS)[number];
@@ -191,6 +198,7 @@ export const DWF_ROUND_HASH = "#/double-wall-fittings/round";
 export const DWF_ROUND_3D_HASH = "#/double-wall-fittings/round/3d";
 export const DW_ELBOW_3D_HASH = "#/double-wall-fittings/round/3d/elbow";
 export const DW_MITER_3D_HASH = "#/double-wall-fittings/round/3d/miter";
+export const DW_BULL_3D_HASH = "#/double-wall-fittings/round/3d/bullhead";
 /** Where the elbow model was first published (on the duct page); old links are sent on to DW_ELBOW_3D_HASH. */
 const OLD_DW_ELBOW_3D_HASH = "#/double-wall/round/3d/elbow";
 /** Deep link to the double wall gored elbow model (defaults left out: DE90, 1" insulation, slip joint). */
@@ -202,6 +210,11 @@ export const dwElbowHash = (t: DwElbowType = "de90", ins: DwIns = 1, conn: DwElb
 export const dwMiterHash = (t: DwMiterType = "dmev90", ins: DwIns = 1, conn: DwElbowConn = "slip") => {
   const q = [t !== "dmev90" ? `type=${t}` : "", ins !== 1 ? `ins=${ins}` : "", conn !== "slip" ? `conn=${conn}` : ""].filter(Boolean).join("&");
   return q ? `${DW_MITER_3D_HASH}?${q}` : DW_MITER_3D_HASH;
+};
+/** Deep link to the double wall bullhead tee model (defaults left out: DBT90, 1" insulation, slip joint). */
+export const dwBullHash = (t: DwBullType = "dbt90", ins: DwIns = 1, conn: DwElbowConn = "slip") => {
+  const q = [t !== "dbt90" ? `type=${t}` : "", ins !== 1 ? `ins=${ins}` : "", conn !== "slip" ? `conn=${conn}` : ""].filter(Boolean).join("&");
+  return q ? `${DW_BULL_3D_HASH}?${q}` : DW_BULL_3D_HASH;
 };
 export const SWF_ROUND_HASH = "#/single-wall-fittings/round";
 export const SWF_MODELS_HASH = "#/single-wall-fittings/round/3d";
@@ -287,10 +300,12 @@ function parse(hash: string): Route {
   if (h === SW_OVAL_HASH) return { page: "sw-oval", model3d: false };
   if (h === DW_ROUND_HASH) return { page: "dw-round", model3d: false, dwType: "ss", dwIns: 1, dwConn: "coupling" };
   {
-    // Double wall fittings models: the gored elbows or the mitered elbows, type / insulation / connection from the query.
-    const fam = h === DW_ELBOW_3D_HASH || h.startsWith(`${DW_ELBOW_3D_HASH}?`) ? "elbow" : h === DW_MITER_3D_HASH || h.startsWith(`${DW_MITER_3D_HASH}?`) ? "miter" : null;
+    // Double wall fittings models: the gored elbows, the mitered elbows or the bullhead tees, type / insulation /
+    // connection from the query.
+    const is = (base: string) => h === base || h.startsWith(`${base}?`);
+    const fam = is(DW_ELBOW_3D_HASH) ? "elbow" : is(DW_MITER_3D_HASH) ? "miter" : is(DW_BULL_3D_HASH) ? "bullhead" : null;
     if (fam) {
-      const q = new URLSearchParams(h.slice((fam === "elbow" ? DW_ELBOW_3D_HASH : DW_MITER_3D_HASH).length + 1));
+      const q = new URLSearchParams(h.slice((fam === "elbow" ? DW_ELBOW_3D_HASH : fam === "miter" ? DW_MITER_3D_HASH : DW_BULL_3D_HASH).length + 1));
       const t = q.get("type")?.toLowerCase();
       const ins = DW_INS.find((x) => x === Number(q.get("ins")?.replace(/[^0-9]/g, ""))) ?? 1;
       const c = q.get("conn")?.toLowerCase();
@@ -300,10 +315,11 @@ function parse(hash: string): Route {
         model3d: fam,
         dwElbow: { type: (fam === "elbow" && DW_ELBOW_TYPES.find((x) => x === t)) || "de90", ins, conn },
         dwMiter: { type: (fam === "miter" && DW_MITER_TYPES.find((x) => x === t)) || "dmev90", ins, conn },
+        dwBull: { type: (fam === "bullhead" && DW_BULL_TYPES.find((x) => x === t)) || "dbt90", ins, conn },
       };
     }
   }
-  if (h === DWF_ROUND_3D_HASH) return { page: "dwf-models", model3d: null, dwElbow: { type: "de90", ins: 1, conn: "slip" }, dwMiter: { type: "dmev90", ins: 1, conn: "slip" } };
+  if (h === DWF_ROUND_3D_HASH) return { page: "dwf-models", model3d: null, dwElbow: { type: "de90", ins: 1, conn: "slip" }, dwMiter: { type: "dmev90", ins: 1, conn: "slip" }, dwBull: { type: "dbt90", ins: 1, conn: "slip" } };
   if (h === DWF_ROUND_HASH) return { page: "dwf-round" };
   if (h === DW_ROUND_3D_HASH || h.startsWith(`${DW_ROUND_3D_HASH}?`)) {
     const q = new URLSearchParams(h.slice(DW_ROUND_3D_HASH.length + 1));

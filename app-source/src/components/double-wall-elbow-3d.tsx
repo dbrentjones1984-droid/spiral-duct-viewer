@@ -6,7 +6,34 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { buildFlangeScrews, JOIN_LENGTH, shell, type BuiltConnection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { buildCollar, buildVanes, centerline, COLLAR, CRIMP_TAPER, CRIMP_X, crimpScrews, JointLoop, miter, MITER_LEG, miterLeg, MiterLoop, piece, tangent, TEX_LENGTH, vaneSpec, VANES_FROM, type Mats } from "@/components/gored-elbow-3d";
+import {
+  buildCollar,
+  buildTeeVanes,
+  buildVanes,
+  centerline,
+  COLLAR,
+  CRIMP_TAPER,
+  CRIMP_X,
+  crimpScrews,
+  JointLoop,
+  miter,
+  MITER_LEG,
+  miterLeg,
+  MiterLoop,
+  piece,
+  reducerLength,
+  tangent,
+  TEE_BRANCH,
+  TEE_EXTRA,
+  TEE_RUN_DEFAULT,
+  teeBody,
+  teeBranch,
+  TeeLoop,
+  TEX_LENGTH,
+  vaneSpec,
+  VANES_FROM,
+  type Mats,
+} from "@/components/gored-elbow-3d";
 import {
   buildSection,
   disposeGroup,
@@ -23,7 +50,7 @@ import {
   STEP_PAUSE_MS,
   type DwMats,
 } from "@/components/double-wall-pipe-3d";
-import { DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, DW_MITER_3D_HASH, DW_MITER_TYPES, dwElbowHash, dwMiterHash, type DwElbowConn, type DwElbowType, type DwIns, type DwMiterType } from "@/lib/route";
+import { DW_BULL_3D_HASH, DW_BULL_TYPES, DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, DW_MITER_3D_HASH, DW_MITER_TYPES, dwBullHash, dwElbowHash, dwMiterHash, type DwBullType, type DwElbowConn, type DwElbowType, type DwIns, type DwMiterType } from "@/lib/route";
 import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
 
 /*
@@ -49,6 +76,14 @@ import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
  * the same 3-piece elbow with collar B on top, in line with the lower leg, its outer collar ending 5" above the top of
  * the elbow (sheet). Assumed for D3P90H (*): B round and concentric with the lower leg, B up to A (default about 3/4
  * A), the B outlet starting at the lower gore's seam, ends made like the others (B liner + B + 2 x insulation).
+ * And the double wall bullhead tees (family "bullhead", Brent's Bullhead Tees sheet, printed page 6): DBT90 and DBTV90,
+ * the single wall BT90 / BTV90 drawn twice (outer shell and liner): a straight body, L = A + 3", with the inlet A
+ * coming into its side at 90° (the bottom, as drawn; the single wall tee's 4" branch, 2" collar included), and on each
+ * run end a concentric reducer down to B (left) and C (right), R from the reducer sheet (reducerLength(), as the single
+ * wall tee), each with a 2" collar. The body is A, as drawn (the single wall rule). DBTV90 adds the single wall BTV90's
+ * curved splitter vanes inside the liner (a mirrored pair of sets, counted by A from the MEV90 table, as the single
+ * wall tee: an assumption), seen through the open ends (no cutaway). B and C up to A, default 10" (single wall
+ * default). The connection plays on the inlet A, as the single wall tee.
  * Units are inches.
  */
 
@@ -56,9 +91,9 @@ type PlayState = "idle" | "playing" | "paused" | "done";
 type ScrewItem = NonNullable<BuiltConnection["screws"]>["items"][number];
 const DEG = Math.PI / 180;
 
-type Kind = DwElbowType | DwMiterType;
-/** gored: gores on R = 1.5 x A; miter: two straight legs on a 45° cut; heel: gored + the B collar on top. */
-type Build = "gored" | "miter" | "heel";
+type Kind = DwElbowType | DwMiterType | DwBullType;
+/** gored: gores on R = 1.5 x A; miter: two straight legs on a 45° cut; heel: gored + the B collar on top; tee: bullhead tee. */
+type Build = "gored" | "miter" | "heel" | "tee";
 const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: string; build: Build; vanes?: boolean }> = {
   de90: { angle: 90, pieces: 5, name: "Gored 90° Elbow (DE90)", short: "90° 5-piece", build: "gored" },
   de60: { angle: 60, pieces: 3, name: "Gored 60° Elbow (DE60)", short: "60° 3-piece", build: "gored" },
@@ -68,7 +103,11 @@ const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: 
   dme90: { angle: 90, pieces: 2, name: "Mitered 90° Elbow (DME90)", short: "90° 2-piece mitered", build: "miter" },
   d3p90: { angle: 90, pieces: 3, name: "3-Piece 90° Elbow (D3P90)", short: "90° 3-piece", build: "gored" },
   d3p90h: { angle: 90, pieces: 3, name: "3-Piece 90° Elbow, B on Top (D3P90H)", short: "90° 3-piece, collar B on top", build: "heel" },
+  dbt90: { angle: 90, pieces: 0, name: "Bullhead Tee 90° (DBT90)", short: "90° bullhead tee", build: "tee" },
+  dbtv90: { angle: 90, pieces: 0, name: "Bullhead Tee 90° w/ Vanes (DBTV90)", short: "90° bullhead tee, vanes", build: "tee", vanes: true },
 };
+/** Bullhead tee outlets B and C: the single wall default (10"), no bigger than A. */
+const teeRun = (a: number) => Math.min(TEE_RUN_DEFAULT, a);
 const HEEL_H = 5; // D3P90H: B's outer collar ends 5" above the top of the elbow (sheet)
 /** D3P90H collar B: the stock size nearest under 3/4 A (as drawn), at least the smallest. Assumed. */
 export function defaultB(a: number): number {
@@ -169,9 +208,69 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0);
  * at the corner (R, R), R = the outer shell's radius + 4" - 2" (each leg runs to its outer collar, which ends 4" past
  * the other leg's outer wall), and the vanes (DMEV90) inside the liner.
  */
-function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: ElbowMats, B: number) {
+/**
+ * The bullhead tee (DBT90 / DBTV90), in the single wall tee's frame (body along x, inlet A down -y, centre at the
+ * origin): body and inlet, outer shell (A + 2 x insulation) and liner (A), the seam where they meet, the vanes
+ * (DBTV90), and on each run end the reducer (outer and liner, each over the same R) to B (left) or C (right). ends[0]
+ * is the inlet A (the connection plays there), then B and C; +X out of each.
+ */
+function buildDwTee(A: number, t: number, conn: DwElbowConn, m: ElbowMats, B: number, C: number, vanes: number) {
   const group = new THREE.Group();
+  const ri = A / 2;
+  const ro = ri + t;
+  const OD = A + 2 * t;
+  const radial = Math.min(144, 64 + Math.round(OD * 4));
+  const rib = Math.min(0.34, 0.04 + OD * 0.012);
+  const L = A + TEE_EXTRA;
+  for (const [rr, mat] of [[ro, m.outer.metal], [ri, m.liner]] as const) {
+    for (const g of teeBody(rr, L, radial)) group.add(new THREE.Mesh(g, mat));
+  }
+  // The inlet runs down to its 2" outer collar: TEE_BRANCH below the outer shell, collar included.
+  const yTo = ro + TEE_BRANCH - COLLAR;
+  group.add(new THREE.Mesh(teeBranch(ro, yTo, radial), m.outer.metal));
+  group.add(new THREE.Mesh(teeBranch(ri, yTo, radial), m.liner));
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new TeeLoop(ro + rib * 0.35), radial * 2, rib, 8, true), m.outer.seam));
+  if (vanes > 0) group.add(buildTeeVanes(A, vanes, m.vane, m.vaneEdge));
+  const out = conn === "flange" ? COLLAR : COLLAR + STICK_OUT;
+  const fa = new THREE.Group();
+  fa.position.set(0, -(yTo + out), 0);
+  fa.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, -1, 0));
+  buildEnd(fa, A, t, conn, m);
+  group.add(fa);
+  const ends = [fa];
+  const Rs: number[] = [];
+  ([
+    [-1, B],
+    [1, C],
+  ] as const).forEach(([side, d]) => {
+    const R = reducerLength(A, d);
+    Rs.push(R);
+    const f = new THREE.Group();
+    f.position.set(side * (L / 2 + R + out), 0, 0);
+    f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(side, 0, 0));
+    if (R > 0) {
+      const x0 = -out - R;
+      const k = (x: number) => (x - x0) / R;
+      const xs = [x0, -out];
+      f.add(new THREE.Mesh(shell(xs, radial, (x) => ro + (d / 2 - ri) * k(x), 1 / TEX_LENGTH), m.outer.metal));
+      f.add(new THREE.Mesh(shell(xs, radial, (x) => ri + (d / 2 - ri) * k(x), 1 / TEX_LENGTH), m.liner));
+      // raised seam where the reducer joins the body (outer shell)
+      const tor = new THREE.TorusGeometry(ro + rib * 0.2, rib * 0.8, 8, radial);
+      tor.rotateY(Math.PI / 2);
+      tor.translate(x0, 0, 0);
+      f.add(new THREE.Mesh(tor, m.outer.seam));
+    }
+    buildEnd(f, d, t, conn, m);
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends, R: 0, OD, L, rB: Rs[0], rC: Rs[1] };
+}
+
+function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: ElbowMats, B: number, C: number) {
   const { angle, pieces, build, vanes } = ELBOW[kind];
+  if (build === "tee") return buildDwTee(A, t, conn, m, B, C, vanes ? (vaneSpec(A)?.n ?? 0) : 0);
+  const group = new THREE.Group();
   const theta = angle * DEG;
   const ri = A / 2;
   const ro = ri + t;
@@ -240,13 +339,13 @@ function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: El
 export default function DoubleWallElbow3D({
   onClose,
   family = "gored",
-  initialType = family === "miter" ? "dmev90" : "de90",
+  initialType = family === "miter" ? "dmev90" : family === "bullhead" ? "dbt90" : "de90",
   initialIns = 1,
   initialConn = "slip",
 }: {
   onClose: () => void;
-  /** gored: DE90 / DE60 / DE45 / DE30 (sheet 1); miter: DMEV90 / DME90 / D3P90 / D3P90H (sheet 2). */
-  family?: "gored" | "miter";
+  /** gored: DE90 / DE60 / DE45 / DE30 (sheet 1); miter: DMEV90 / DME90 / D3P90 / D3P90H (sheet 2); bullhead: DBT90 / DBTV90 (sheet 3). */
+  family?: "gored" | "miter" | "bullhead";
   initialType?: Kind;
   initialIns?: DwIns;
   initialConn?: DwElbowConn;
@@ -254,7 +353,7 @@ export default function DoubleWallElbow3D({
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
-    set: (d: number, t: DwIns, kind: Kind, c: DwElbowConn, b: number) => void;
+    set: (d: number, t: DwIns, kind: Kind, c: DwElbowConn, b: number, cc: number) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
@@ -262,7 +361,8 @@ export default function DoubleWallElbow3D({
   const [play, setPlay] = useState<PlayState>("idle");
   const [diameter, setDiameter] = useState(12);
   const [kind, setKind] = useState<Kind>(initialType);
-  const [bDia, setBDia] = useState(() => defaultB(12));
+  const [bDia, setBDia] = useState(() => (family === "bullhead" ? teeRun(12) : defaultB(12)));
+  const [cDia, setCDia] = useState(() => teeRun(12)); // bullhead tee outlet C (B is bDia)
   const [ins, setIns] = useState<DwIns>(initialIns);
   const [connection, setConnection] = useState<DwElbowConn>(initialConn);
   const [step, setStep] = useState(0);
@@ -271,7 +371,11 @@ export default function DoubleWallElbow3D({
   const od = diameter + 2 * ins;
   const gauge = dwFittingGauge(diameter);
   const spec = ELBOW[kind];
-  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : DW_ELBOW_TYPES;
+  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : family === "bullhead" ? DW_BULL_TYPES : DW_ELBOW_TYPES;
+  const bull = family === "bullhead";
+  const teeL = diameter + TEE_EXTRA;
+  const rB = reducerLength(diameter, bDia);
+  const rC = reducerLength(diameter, cDia);
   const vanes = spec.vanes ? vaneSpec(diameter) : null;
 
   // Follow a deep link change (back / forward).
@@ -280,7 +384,9 @@ export default function DoubleWallElbow3D({
   useEffect(() => setConnection(initialConn), [initialConn]);
   // Keep the address on what is shown (replace, so the back button still closes the model).
   useEffect(() => {
-    if (family === "miter") {
+    if (family === "bullhead") {
+      if (location.hash.startsWith(DW_BULL_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwBullHash(kind as DwBullType, ins, connection));
+    } else if (family === "miter") {
       if (location.hash.startsWith(DW_MITER_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwMiterHash(kind as DwMiterType, ins, connection));
     } else if (location.hash.startsWith(DW_ELBOW_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwElbowHash(kind as DwElbowType, ins, connection));
   }, [family, kind, ins, connection]);
@@ -468,13 +574,13 @@ export default function DoubleWallElbow3D({
       }
     };
 
-    let cur = { d: 12, t: 1 as DwIns, kind: "de90" as Kind, c: "slip" as DwElbowConn, b: defaultB(12) };
+    let cur = { d: 12, t: 1 as DwIns, kind: "de90" as Kind, c: "slip" as DwElbowConn, b: defaultB(12), cc: teeRun(12) };
     const build = () => {
       if (model) {
         scene.remove(model);
         disposeGroup(model);
       }
-      const { d, t, kind: k, c, b } = cur;
+      const { d, t, kind: k, c, b, cc } = cur;
       const OD = d + 2 * t;
       const ri = d / 2;
       const ro = ri + t;
@@ -490,7 +596,7 @@ export default function DoubleWallElbow3D({
         flange: couplingMat,
         vane: vaneMat,
         vaneEdge,
-      }, b);
+      }, b, cc);
       const ductMats: DwMats = { outer, seam, edge, insul, insulCut, liner: linerSolid, linerSeam };
       steps = [];
       bases = new Map();
@@ -500,7 +606,8 @@ export default function DoubleWallElbow3D({
         if (!bases.has(obj)) bases.set(obj, obj.position.x);
         return { obj, delta };
       };
-      // The connection goes on the bottom end (end 0): the duct hangs straight down under the elbow, as on the single wall elbow.
+      // The connection goes on the bottom end (end 0): the duct hangs straight down under the elbow, as on the single wall
+      // elbow (the bullhead tee's inlet A, as on the single wall tee).
       const f = el.ends[0];
       if (c === "slip") {
         // Duct piece D (its liner end at D's x = 0): 12" liner; its outer shell + insulation (dO) start pulled back.
@@ -560,9 +667,10 @@ export default function DoubleWallElbow3D({
       steps = steps.map((st, i) => (st.cap === -1 ? { ...st, cap: steps[i + 1]?.cap ?? 0 } : st));
       playMs = steps.reduce((sum, st) => sum + st.ms, 0);
       stopPlay();
-      // As drawn on the sheet: the bottom end on the left pointing down, the turn going up and to the right.
+      // As drawn on the sheet: the bottom end on the left pointing down, the turn going up and to the right (the tee: B
+      // left, C right, inlet A at the bottom).
       const elbow = el.group;
-      elbow.rotation.y = Math.PI;
+      elbow.rotation.y = ELBOW[k].build === "tee" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -591,9 +699,10 @@ export default function DoubleWallElbow3D({
     ro.observe(el);
 
     api.current = {
-      set: (d, t, k, c, b) => {
-        if (model && d === cur.d && t === cur.t && k === cur.kind && c === cur.c && (b === cur.b || ELBOW[k].build !== "heel")) return;
-        cur = { d, t, kind: k, c, b };
+      set: (d, t, k, c, b, cc) => {
+        const bld = ELBOW[k].build;
+        if (model && d === cur.d && t === cur.t && k === cur.kind && c === cur.c && ((b === cur.b && cc === cur.cc) || (bld !== "heel" && bld !== "tee"))) return;
+        cur = { d, t, kind: k, c, b, cc };
         build();
       },
       setTopInset: (px) => {
@@ -633,8 +742,8 @@ export default function DoubleWallElbow3D({
   }, []);
 
   useEffect(() => {
-    api.current?.set(diameter, ins, kind, connection, bDia);
-  }, [diameter, ins, kind, connection, bDia]);
+    api.current?.set(diameter, ins, kind, connection, bDia, cDia);
+  }, [diameter, ins, kind, connection, bDia, cDia]);
 
   // Keep the model clear of the caption card at the top of the view.
   useLayoutEffect(() => {
@@ -652,10 +761,24 @@ export default function DoubleWallElbow3D({
   const info =
     connection === "none"
       ? { title: spec.name, text: noneText() }
-      : STEPS[connection][step];
+      : tee(STEPS[connection][step]);
+  // The bullhead tee's captions: the same steps, "tee" for "elbow" (a step can be missing for a moment as the connection changes).
+  function tee(st: { title: string; text: string } | undefined) {
+    return bull && st ? { ...st, text: st.text.replace(/elbow/g, "tee") } : st;
+  }
   function noneText() {
     const ends = "2″ outer collars, the inner collar 2″ past each.";
     const r = `R = 1.5 × A* = ${R_FACTOR * diameter}″`;
+    if (spec.build === "tee") {
+      // Each run end: a reducer (R per the reducer sheet) when the outlet is smaller than A, else straight (R = 0).
+      const outlet = (n: string, d: number, side: string) => (d < diameter ? `reducer to ${n} ${d}″ (${side})` : `straight to ${n} ${d}″ (${side}, no reducer)`);
+      const outs = `${outlet("B", bDia, "left")} and ${outlet("C", cDia, "right")}${bDia < diameter || cDia < diameter ? ", R per the reducer sheet" : ""}`;
+      const body = `Inlet A ${diameter}″ into the side of the body, L = A + 3″ = ${teeL}″; ${outs}. ${ends}`;
+      if (!spec.vanes) return `90° bullhead tee, solid liner, no vanes. ${body}`;
+      return vanes
+        ? `90° bullhead tee, solid liner, ${vanes.n} splitter vanes each side (${vanes.range}*): look in an open end. ${body}`
+        : `90° bullhead tee, solid liner. No vanes under ${VANES_FROM}″ (the sheet's table starts at ${VANES_FROM}″*). ${body}`;
+    }
     if (spec.build === "miter") {
       const legs = `Each leg runs 4″ past the inside corner; ${ends}`;
       if (!spec.vanes) return `90° 2-piece mitered elbow, solid liner, no vanes. ${legs}`;
@@ -670,7 +793,7 @@ export default function DoubleWallElbow3D({
   const label = "text-[11px] font-medium tracking-wide text-muted uppercase";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered" : "gored"} elbows`}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered elbows" : bull ? "bullhead tees" : "gored elbows"}`}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -700,8 +823,10 @@ export default function DoubleWallElbow3D({
         {hint && !failed && <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-xs font-medium text-steel">Drag to turn · pinch to zoom</p>}
       </div>
       <div className="border-t border-[#8e9bab]/50 bg-surface/90 px-3 pt-2 short:pt-1">
-        <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Elbow">
-          <span className={`${label} col-span-4 -mb-1`}>Elbow · {spec.short}</span>
+        <div className={`grid ${bull ? "grid-cols-2" : "grid-cols-4"} gap-1.5`} role="radiogroup" aria-label={bull ? "Tee" : "Elbow"}>
+          <span className={`${label} ${bull ? "col-span-2" : "col-span-4"} -mb-1`}>
+            {bull ? "Tee" : "Elbow"} · {spec.short}
+          </span>
           {types.map((k) => (
             <button key={k} type="button" role="radio" aria-checked={kind === k} aria-label={`${k.toUpperCase()}, ${ELBOW[k].short}`} onClick={() => setKind(k)} className={`${radio} px-0`}>
               {k.toUpperCase()}
@@ -741,7 +866,36 @@ export default function DoubleWallElbow3D({
           ) : null}
         </div>
       </div>
+      {bull && (
+        // Bullhead tee sizes: inlet A (inside), outlets B (left) and C (right), each no bigger than A (single wall rule).
+        <div className="grid grid-cols-3 gap-1.5 bg-surface/90 px-3 pt-2">
+          {(
+            [
+              ["A · inlet ID", diameter, (d: number) => {
+                setDiameter(d);
+                setBDia((b) => Math.min(b, d));
+                setCDia((c) => Math.min(c, d));
+              }, STOCK_DIAMETERS, "Inner diameter", "″ ID"],
+              ["B · left", bDia, setBDia, STOCK_DIAMETERS.filter((d) => d <= diameter), "Size B (left)", "″"],
+              ["C · right", cDia, setCDia, STOCK_DIAMETERS.filter((d) => d <= diameter), "Size C (right)", "″"],
+            ] as const
+          ).map(([text, value, set, sizes, aria, unit]) => (
+            <label key={text} className="flex min-w-0 flex-col">
+              <span className={`${label} truncate`}>{text}</span>
+              <select value={value} onChange={(e) => set(Number(e.target.value))} aria-label={aria} className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg">
+                {sizes.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
       <div className="flex items-center gap-1.5 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+        {bull ? null : (
         <label className="flex w-[5.5rem] shrink-0 flex-col">
           <span className={label}>Inside Ø</span>
           <select
@@ -758,6 +912,7 @@ export default function DoubleWallElbow3D({
             ))}
           </select>
         </label>
+        )}
         {kind === "d3p90h" && (
           // Collar B: the sheet gives no sizes; any stock size up to A* (default about 3/4 A, as drawn).
           <label className="flex w-[4.25rem] shrink-0 flex-col">
@@ -772,6 +927,20 @@ export default function DoubleWallElbow3D({
           </label>
         )}
         <div className="min-w-0 flex-1 text-[11px] leading-snug whitespace-nowrap text-ink" data-testid="dw-readout">
+          {bull ? (
+            <>
+              <p className="truncate">
+                <b className="font-semibold">
+                  A {diameter}&Prime; ID · {od}&Prime; OD* · L {teeL}&Prime; · R {rB}&Prime; / {rC}&Prime;
+                </b>
+              </p>
+              <p className="truncate">
+                {gauge} ga outer · {gauge} liner*{spec.vanes ? (vanes ? ` · ${vanes.n} vanes each side*` : ` · vanes from ${VANES_FROM}″`) : ""}
+              </p>
+              <p className="truncate text-muted">* assumed · +2&Prime; W.G. gauges</p>
+            </>
+          ) : (
+          <>
           <p className="truncate">
             <b className="font-semibold">
               {kind === "d3p90h" ? "" : <>{diameter}&Prime; ID · </>}
@@ -782,6 +951,8 @@ export default function DoubleWallElbow3D({
             {gauge} ga outer · {gauge} liner*{spec.vanes ? (vanes ? ` · ${vanes.n} vanes` : ` · vanes from ${VANES_FROM}″`) : ""}
           </p>
           <p className="truncate text-muted">* assumed · +2&Prime; W.G. gauges</p>
+          </>
+          )}
         </div>
         <button type="button" onClick={() => api.current?.reset()} className="btn-raised btn-raised-sm grid size-11 shrink-0 place-items-center rounded-[0.65rem]" aria-label="Reset view">
           <RotateCcw className="size-5" />

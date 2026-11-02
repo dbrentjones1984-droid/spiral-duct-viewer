@@ -120,8 +120,8 @@ export function vaneSpec(d: number) {
 }
 
 /** Bullhead tee: body length L = A + TEE_EXTRA (sheet); the branch runs TEE_BRANCH below the body, collar included. */
-const TEE_EXTRA = 3;
-const TEE_BRANCH = 4;
+export const TEE_EXTRA = 3;
+export const TEE_BRANCH = 4;
 /** Conical taps (sheet): the cone is 5" tall from the main's wall to the collar, L = top tap + 5". */
 const CONE_H = 5;
 const CTEE_EXTRA = 5;
@@ -457,7 +457,7 @@ function cteeDims(type: CteeType, sizes: readonly number[]) {
 }
 
 /** Bullhead tee run outlets by default (B and C; the branch A defaults to 12"). */
-const TEE_RUN_DEFAULT = 10;
+export const TEE_RUN_DEFAULT = 10;
 
 const B = new THREE.Vector3(0, 0, 1);
 export const centerline = (a: number, R: number) => new THREE.Vector3(R * Math.cos(a), R * Math.sin(a), 0);
@@ -711,7 +711,7 @@ function vaneBlade(g: THREE.Group, arc: [number, number][], half: (x: number, y:
  * at even steps from the top of the body over the branch's centre (the heel) to the branch's corner with the body's
  * bottom (the throat), mirrored left and right. Each spans the duct to the round wall.
  */
-function buildTeeVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
+export function buildTeeVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
   const g = new THREE.Group();
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);
@@ -892,7 +892,7 @@ function gridGeo(pos: number[], nor: number[], uv: number[], rows: number, cols:
  * the same size, so at the angle theta around the body (y = rr cos, z = rr sin) the bottom half is cut away for
  * |x| < rr |cos theta| (the two cylinders' intersection). Built as a left and a right strip that meet along the top.
  */
-function teeBody(rr: number, L: number, radial: number) {
+export function teeBody(rr: number, L: number, radial: number) {
   const rows = 8;
   return ([-1, 1] as const).map((side) => {
     const pos: number[] = [];
@@ -914,7 +914,7 @@ function teeBody(rr: number, L: number, radial: number) {
 }
 
 /** Tee branch (radius rr, down -y from where it meets the body, |x| = ... y = -rr |cos phi|, to y = -yTo). */
-function teeBranch(rr: number, yTo: number, radial: number) {
+export function teeBranch(rr: number, yTo: number, radial: number) {
   const rows = 8;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -933,7 +933,7 @@ function teeBranch(rr: number, yTo: number, radial: number) {
 }
 
 /** The seam where the branch meets the body: the intersection of two equal cylinders (two ellipses crossing at the sides). */
-class TeeLoop extends THREE.Curve<THREE.Vector3> {
+export class TeeLoop extends THREE.Curve<THREE.Vector3> {
   constructor(private rr: number) {
     super();
   }
