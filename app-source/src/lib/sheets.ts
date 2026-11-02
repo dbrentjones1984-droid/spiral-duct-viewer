@@ -322,11 +322,13 @@ export const SWF_ROUND_SHEETS = [
 ] as const;
 
 // Double Wall Duct · Round: Brent's sheet 1 "Stock Pipe and Fittings" (Double Wall Round Spiral Pipe and Fittings
-// Construction), kept as sent. The PDF is that one image on a letter page, pixels unchanged (lossless).
+// Construction), sheet 2 "Positive Pressure Gauges" (galvanized / paint grade / stainless gauge tables) and sheet 3
+// "Aluminum Gauges" (aluminum 3003-H14); sheets 2 and 3 are sheets only, no 3D model. All kept as sent. The PDF is
+// the three images, one per letter page, pixels unchanged (lossless).
 export const DW_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Duct.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Duct.pdf",
-  sizeLabel: "1.3 MB",
+  sizeLabel: "4.3 MB",
 };
 
 export const DW_ROUND_SHEETS = [
@@ -337,6 +339,22 @@ export const DW_ROUND_SHEETS = [
     w: 1113,
     h: 1414,
     alt: "Sheet 1, Double Wall Round, Stock Pipe and Fittings: Double Wall Round Spiral Pipe and Fittings Construction. Solid / Solid: solid materials on both the outer and inner shells. Solid / Perforated: solid outer shell, perforated inner shell. Standard double wall pipe and fittings have 1 inch thick, 1-1/2 lb density fiberglass insulation; pipe lengths 1 to 20 feet (specify when ordering); standard fittings have a solid inner liner, perforated liner when specified; insulation 1, 2 or 3 inch thick, 1-1/2 lb density; standard slip joint construction, other connections on request; all SMACNA pressure classes; positive or negative systems.",
+  },
+  {
+    n: 2,
+    title: "Positive Pressure Gauges",
+    src: `${base}sheets/double-wall-round-2.webp`,
+    w: 1108,
+    h: 1419,
+    alt: "Sheet 2, Double Wall Round, Positive Pressure Spiral Duct and Fittings Construction Standards, for galvanized, paint grade and stainless steel. Gauges by inner diameter, spiral pipe / fittings, for the I.D. (inner liner) and O.D. (outer shell). +2 inch W.G.: 3 to 14 inch, I.D. 26 / 26, O.D. 26 / 26; 15 to 26 inch, I.D. 26* / 24, O.D. 26 / 24; 27 to 36 inch, I.D. 24* / 22, O.D. 24 / 22; 37 to 50 inch, I.D. 22* / 20, O.D. 22 / 20; 51 to 60 inch, I.D. 20* / 18, O.D. 20 / 18; 61 to 86 inch, I.D. 18* / 18, O.D. 18 / 16. +4 inch W.G.: 3 to 13 inch, I.D. 26 / 26, O.D. 26 / 26; 14 to 18 inch, I.D. 26 / 24, O.D. 26 / 24; 19 to 26 inch, I.D. 26* / 24, O.D. 24 / 22; 27 to 36 inch, I.D. 24* / 22, O.D. 22 / 20; 37 to 50 inch, I.D. 22* / 20, O.D. 20 / 20; 51 to 60 inch, I.D. 20* / 18, O.D. 18 / 18; 61 to 86 inch, I.D. 18* / 18, O.D. 18 / 16. +10 inch W.G.: 3 to 11 inch, I.D. 26 / 26, O.D. 26 / 26; 12 to 15 inch, I.D. 26 / 24, O.D. 26 / 24; 16 to 26 inch, I.D. 26* / 24, O.D. 24 / 20; 27 to 36 inch, I.D. 24* / 22, O.D. 22 / 20; 37 to 50 inch, I.D. 22* / 20, O.D. 20 / 20; 51 to 60 inch, I.D. 20* / 18, O.D. 18 / 18; 61 to 86 inch, I.D. 18* / 18, O.D. 18 / 16. * Beaded spiral pipe and fittings. Notes: a) if longitudinal seam duct is required, the fitting gauge standards will apply; b) standard inner liner for all duct is solid galvanized steel, regardless of outer material; c) standard inner liner for all fittings is solid galvanized steel, regardless of outer material.",
+  },
+  {
+    n: 3,
+    title: "Aluminum Gauges",
+    src: `${base}sheets/double-wall-round-3.webp`,
+    w: 1055,
+    h: 1491,
+    alt: "Sheet 3, Double Wall Round Spiral Duct Construction Standards, aluminum 3003-H14. Gauges by inner diameter, spiral pipe / fittings, I.D. gauges at +2 inch W.G. and O.D. gauges at -2 inch W.G. (the same values on both sides): 3 to 8 inch, .025 / .032 inch; 9 to 14 inch, .025 / .032; 15 to 26 inch, .032 / .040; 27 to 36 inch, .040 / .050; 37 to 50 inch, .050 / .063; 51 to 60 inch, .063 / .071; 61 to 84 inch, spiral pipe NA, fittings .090. NA: not available or not assigned.",
   },
 ] as const;
 

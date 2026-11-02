@@ -57,7 +57,7 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/offset"   same, with the oval offset & square-to-oval open on top (OS shown);
  *   "#/single-wall-fittings/oval/3d/offset?type=sq2rd"   ... opened on that type (os or sq2rd)
  *                                             and bend (hard or easy)
- *   "#/double-wall/round"      Double Wall Duct · Round catalog sheet (sheet 1, Stock Pipe and Fittings construction)
+ *   "#/double-wall/round"      Double Wall Duct · Round catalog sheets (sheet 1, Stock Pipe and Fittings construction; sheets 2-3, gauge tables)
  *   "#/double-wall/round/3d"   same, with the double wall spiral pipe 3D model open on top (Solid / Solid, 1" insulation);
  *   "#/double-wall/round/3d?type=sp&ins=2&conn=flange"   ... opened on that type (ss = Solid / Solid, sp = Solid / Perforated),
  *                                             insulation thickness (1, 2 or 3 inch) and connection (coupling = default,
