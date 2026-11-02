@@ -6,9 +6,9 @@ import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
-import { FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
+import { DoubleWallFittingsPage, FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, dwElbowHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, DWF_ROUND_3D_HASH, dwElbowHash, dwMiterHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
 import { DW_ROUND_DOC, DWF_ROUND_DOC, SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -81,17 +81,27 @@ export default function App() {
     );
   }
   if (route.page === "dwf-round") {
-    // Double Wall Fittings · Round: same sheet page as the other fittings; one model so far (the gored elbows), so View
-    // 3D Model opens it directly and Close comes back here.
+    // Double Wall Fittings · Round: same sheet page as the other fittings; View 3D Model opens the list of models.
     return (
       <SheetPage
         key="dwf-round"
         doc={DWF_ROUND_DOC}
+        model3d={false}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(DWF_ROUND_3D_HASH)}
+        onClose3d={() => {}}
+      />
+    );
+  }
+  if (route.page === "dwf-models") {
+    return (
+      <DoubleWallFittingsPage
         model3d={route.model3d}
         dwElbow={route.dwElbow}
-        onBack={() => goBack("")}
-        onOpen3d={() => navigate(dwElbowHash())}
-        onClose3d={() => goBack(DWF_ROUND_HASH)}
+        dwMiter={route.dwMiter}
+        onBack={() => goBack(DWF_ROUND_HASH)}
+        onOpen3d={(id) => navigate(id === "miter" ? dwMiterHash() : dwElbowHash())}
+        onClose3d={() => goBack(DWF_ROUND_3D_HASH)}
       />
     );
   }

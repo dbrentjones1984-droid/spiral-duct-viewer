@@ -3,6 +3,7 @@ import { Box, ChevronLeft } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType, OvalLatType, OvalRedType, OvalWyeType, OvalCapType, OvalOsType } from "@/lib/route";
+import type { DwElbowConn, DwElbowType, DwIns, DwMiterType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -440,6 +441,121 @@ export function OvalFittingsPage({
             capType={capType ?? "pc"}
             osType={osType ?? "os"}
             teeType={model3d === "ctee" ? (cteeType ?? "oct90") : model3d === "lltee" ? (llteeType ?? "ot90-l") : model3d === "lat" ? (latType ?? "ol45") : (teeType ?? "0t90")}
+            onClose={onClose3d}
+          />
+        </Suspense>
+      )}
+    </main>
+  );
+}
+
+const DoubleWallElbow3D = lazy(() => import("@/components/double-wall-elbow-3d"));
+
+/** Double wall round fitting models: one card per sheet so far (as the single wall list: gored and mitered apart). */
+const DW_FITTINGS = [
+  {
+    id: "elbow",
+    name: "Gored Elbows (DE90 / 60 / 45 / 30)",
+    text: "90° 5-piece, 60° / 45° 3-piece, 30° 2-piece · R = 1.5 × A",
+    source: "Sheet 1 · Gored Elbows",
+  },
+  {
+    id: "miter",
+    name: "Mitered Elbows (DMEV90 / DME90 / D3P90 / D3P90H)",
+    text: "90° 2-piece mitered, optional vanes · 90° 3-piece, collar B option",
+    source: "Sheet 2 · Mitered Elbows",
+  },
+] as const;
+
+/**
+ * Double Wall Fittings > Round > View 3D Model: the list of double wall fitting models (same page as the single wall
+ * list), each card opening its 3D model on top (its own history step).
+ */
+export function DoubleWallFittingsPage({
+  model3d,
+  dwElbow,
+  dwMiter,
+  onBack,
+  onOpen3d,
+  onClose3d,
+}: {
+  model3d: "elbow" | "miter" | null;
+  dwElbow: { type: DwElbowType; ins: DwIns; conn: DwElbowConn };
+  dwMiter: { type: DwMiterType; ins: DwIns; conn: DwElbowConn };
+  onBack: () => void;
+  onOpen3d: (id: "elbow" | "miter") => void;
+  onClose3d: () => void;
+}) {
+  const open = model3d === "miter" ? dwMiter : dwElbow;
+  return (
+    <main className="flex min-h-svh flex-col bg-paper text-ink">
+      <div className="sticky top-0 z-30 shadow-[0_2px_10px_rgb(0_28_64/0.25)]">
+        <header className="flex items-center gap-2 bg-accent px-2 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
+          <div className={HEADER_SLOT}>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-10 shrink-0 items-center gap-0.5 rounded-full bg-white/15 pr-3 pl-1.5 font-display text-base active:bg-white/25"
+              aria-label="Back to fitting sheets"
+            >
+              <ChevronLeft className="size-6" />
+              Back
+            </button>
+          </div>
+          <div className="min-w-0 flex-1 text-center">
+            <h1 className="font-display text-2xl leading-none tracking-wide whitespace-nowrap">3D MODELS</h1>
+            <p className="truncate text-[11px] tracking-wider text-white/80 uppercase">Double wall round fittings</p>
+          </div>
+          <div className={`${HEADER_SLOT} justify-end`}>
+            <HomeButton />
+          </div>
+        </header>
+      </div>
+      <ul className="mx-auto grid w-full max-w-3xl grid-cols-1 auto-rows-fr items-stretch gap-3 px-3 pt-4 pb-8 sm:grid-cols-2">
+        {DW_FITTINGS.map((f) => (
+          <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
+            <div className="flex items-start gap-3">
+              <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
+                <DuctElbowIcon className="h-12 w-auto" gores={f.id === "elbow"} miter={f.id === "miter"} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="line-clamp-2 font-display text-xl leading-tight text-accent">{f.name}</h2>
+                <p className="line-clamp-2 min-h-[2lh] text-xs leading-snug text-ink">{f.text}</p>
+                <p className="mt-0.5 truncate text-[11px] leading-snug text-muted">{f.source}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpen3d(f.id)}
+              aria-haspopup="dialog"
+              aria-label={`View 3D Model: ${f.name}`}
+              className="btn-raised btn-raised-sm btn-primary mt-auto flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none"
+            >
+              <Box className="size-5 shrink-0" />
+              View 3D Model
+            </button>
+          </li>
+        ))}
+        <li
+          role="note"
+          className="flex h-full items-center justify-center rounded-card border-2 border-dashed border-[#8e9bab] bg-surface/60 p-3 text-center font-display text-lg leading-tight text-muted"
+        >
+          <span className="flex flex-col items-center">
+            More fittings
+            <span className="font-sans text-[10px] font-medium tracking-wider uppercase">Coming soon</span>
+          </span>
+        </li>
+      </ul>
+      {model3d && (
+        <Suspense
+          fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
+        >
+          <DoubleWallElbow3D
+            key={`dw${model3d}`}
+            family={model3d === "miter" ? "miter" : "gored"}
+            initialType={open.type}
+            initialIns={open.ins}
+            initialConn={open.conn}
             onClose={onClose3d}
           />
         </Suspense>

@@ -105,7 +105,7 @@ const DS_CLR = 1.5;
 const DS_MAX_D = 10;
 
 /** Mitered elbow: each leg runs MITER_LEG past the other leg's outside wall, collar included (sheet's 4"). */
-const MITER_LEG = 4;
+export const MITER_LEG = 4;
 /** MEV90 turning vanes by diameter (sheet's table). */
 const VANE_TABLE = [
   { from: 8, to: 9, n: 2 },
@@ -589,7 +589,7 @@ export class JointLoop extends THREE.Curve<THREE.Vector3> {
  * Mitered elbow leg (local frame: miter corner at the origin, cut plane x = y): straight round pipe along dir, its
  * circle in (perp, B), from the 45° cut (s = -rr cos phi) out to sTo.
  */
-function miterLeg(dir: THREE.Vector3, perp: THREE.Vector3, rr: number, sTo: number, vBase: number, radial: number) {
+export function miterLeg(dir: THREE.Vector3, perp: THREE.Vector3, rr: number, sTo: number, vBase: number, radial: number) {
   const rows = 4;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -628,7 +628,7 @@ function miterLeg(dir: THREE.Vector3, perp: THREE.Vector3, rr: number, sTo: numb
 }
 
 /** The miter seam: the ellipse where the two legs meet on the cut plane x = y. */
-class MiterLoop extends THREE.Curve<THREE.Vector3> {
+export class MiterLoop extends THREE.Curve<THREE.Vector3> {
   constructor(private rr: number) {
     super();
   }
@@ -643,7 +643,7 @@ class MiterLoop extends THREE.Curve<THREE.Vector3> {
  * is a quarter-arc blade whose middle sits on the cut plane, leading edge along +y and trailing edge along -x, set at
  * even steps along the miter from throat to heel. Each blade spans the full width of the duct (to the round wall).
  */
-function buildVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
+export function buildVanes(d: number, n: number, mat: THREE.Material, edge: THREE.Material) {
   const g = new THREE.Group();
   const r = d / 2;
   const wall = Math.max(0.05, d * 0.006);

@@ -358,13 +358,13 @@ export const DW_ROUND_SHEETS = [
   },
 ] as const;
 
-// Double Wall Fittings · Round: Brent's sheet "Gored Elbows" (DE90 / DE60 / DE45 / DE30; its own 3D model), kept as
-// sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// Double Wall Fittings · Round: Brent's sheets "Gored Elbows" (DE90 / DE60 / DE45 / DE30) and "Mitered Elbows" (DMEV90 /
+// DME90 / D3P90 / D3P90H; printed page 5), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
 // below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
 export const DWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
-  sizeLabel: "1.1 MB",
+  sizeLabel: "2.4 MB",
 };
 
 export const DWF_ROUND_SHEETS = [
@@ -375,6 +375,14 @@ export const DWF_ROUND_SHEETS = [
     w: 1122,
     h: 1402,
     alt: "Double Wall Round Fittings, Gored Elbows: DE90, 90 degree 5-piece elbow; DE60, 60 degree 3-piece elbow; DE45, 45 degree 3-piece elbow; DE30, 30 degree 2-piece elbow. Each drawn with its outer shell in blue and the inner liner dashed in red, the inner collar sticking out past the outer shell at both ends, A dimensioned across the end, 2 inch end dimensions, and R the radius. Standard center line radius equals 1-1/2 times diameter, R = 1.5 x A.",
+  },
+  {
+    n: 2,
+    title: "Mitered Elbows",
+    src: `${base}sheets/double-wall-round-fittings-2.webp`,
+    w: 1125,
+    h: 1398,
+    alt: "Double Wall Round Fittings, Mitered Elbows: DMEV90, 90 degree 2-piece mitered elbow with vanes (8 to 9 inch diameter A, 2 vanes; 10 to 14 inch, 3; 15 to 19 inch, 4; 20 to 60 inch, 5); DME90, 90 degree 2-piece mitered elbow; both with a 4 inch leg past the inside corner and 2 inch ends. D3P90, 90 degree 3-piece elbow, and D3P90H, 90 degree 3-piece elbow with a collar B on top in line with the lower leg, 5 inch above the top of the elbow; 2 inch ends, R the radius. Outer shell in blue, inner liner dashed in red, the inner collar sticking out past the outer shell at each end. Standard center line radius equals 1-1/2 times diameter, R = 1.5 x A.",
   },
 ] as const;
 
@@ -387,7 +395,7 @@ export type SheetDoc = {
   sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
   pdf: { href: string; fileName: string; sizeLabel: string };
   /** Which 3D model "View 3D Model" opens ("fittings": the list of fitting models); null = not built yet ("Coming soon"). */
-  model: "round" | "oval" | "fittings" | "dw-round" | "dw-fittings" | null;
+  model: "round" | "oval" | "fittings" | "dw-round" | null;
 };
 
 export const SW_ROUND_DOC: SheetDoc = {
@@ -435,7 +443,7 @@ export const DWF_ROUND_DOC: SheetDoc = {
   subtitle: `Fittings · ${sheetCount(DWF_ROUND_SHEETS.length)}`,
   sheets: DWF_ROUND_SHEETS,
   pdf: DWF_ROUND_PDF,
-  model: "dw-fittings",
+  model: "fittings",
 };
 
 /**

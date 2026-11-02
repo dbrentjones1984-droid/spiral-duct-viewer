@@ -2,13 +2,12 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Box, ChevronLeft, Download, Maximize, Minus, Plus } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import type { SheetDoc } from "@/lib/sheets";
-import type { DwConn, DwElbowConn, DwElbowType, DwIns, DwType } from "@/lib/route";
+import type { DwConn, DwIns, DwType } from "@/lib/route";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
 const SpiralPipe3D = lazy(() => import("@/components/spiral-pipe-3d"));
 const OvalPipe3D = lazy(() => import("@/components/oval-pipe-3d"));
 const DoubleWallPipe3D = lazy(() => import("@/components/double-wall-pipe-3d"));
-const DoubleWallElbow3D = lazy(() => import("@/components/double-wall-elbow-3d"));
 
 /** Zoom steps. "Fit" (the default) shows each whole letter page in the space under the sticky bar, one per screen;
  * "Width" fills the screen width; the % steps are relative to Width. */
@@ -35,7 +34,6 @@ export function SheetPage({
   doc,
   model3d,
   dw,
-  dwElbow,
   onBack,
   onOpen3d,
   onClose3d,
@@ -44,8 +42,6 @@ export function SheetPage({
   model3d: boolean;
   /** Double wall pipe model: type, insulation and connection it opens on (from the deep link). */
   dw?: { type: DwType; ins: DwIns; conn: DwConn };
-  /** Double wall fittings: what the gored elbow model opens on (from the deep link). */
-  dwElbow?: { type: DwElbowType; ins: DwIns; conn: DwElbowConn };
   onBack: () => void;
   onOpen3d: () => void;
   onClose3d: () => void;
@@ -186,15 +182,7 @@ export function SheetPage({
               className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
             >
               <Box className="size-5 shrink-0" />
-              {doc.model === "dw-fittings" ? (
-                // Double Wall Fittings has one model so far (the gored elbows), so the button opens it directly.
-                <span className="flex flex-col items-start">
-                  View 3D Model
-                  <span className="font-sans text-[10px] font-medium tracking-wider text-white/80 uppercase">Gored Elbows</span>
-                </span>
-              ) : (
-                "View 3D Model"
-              )}
+              View 3D Model
             </button>
           ) : (
             // Spot kept for the 3D model (not built yet): same size and place as View 3D Model, dashed and inactive.
@@ -310,8 +298,6 @@ export function SheetPage({
         >
           {doc.model === "oval" ? (
             <OvalPipe3D onClose={onClose3d} />
-          ) : doc.model === "dw-fittings" ? (
-            <DoubleWallElbow3D onClose={onClose3d} initialType={dwElbow?.type ?? "de90"} initialIns={dwElbow?.ins ?? 1} initialConn={dwElbow?.conn ?? "slip"} />
           ) : doc.model === "dw-round" ? (
             <DoubleWallPipe3D onClose={onClose3d} initialType={dw?.type ?? "ss"} initialIns={dw?.ins ?? 1} initialConn={dw?.conn ?? "coupling"} />
           ) : (
