@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { Box, ChevronLeft, Download, Maximize, Minus, Plus } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import type { SheetDoc } from "@/lib/sheets";
-import type { DwIns, DwType } from "@/lib/route";
+import type { DwConn, DwIns, DwType } from "@/lib/route";
 
 // three.js is only downloaded when the model is opened (it is still precached for offline use).
 const SpiralPipe3D = lazy(() => import("@/components/spiral-pipe-3d"));
@@ -40,8 +40,8 @@ export function SheetPage({
 }: {
   doc: SheetDoc;
   model3d: boolean;
-  /** Double wall pipe model: type and insulation it opens on (from the deep link). */
-  dw?: { type: DwType; ins: DwIns };
+  /** Double wall pipe model: type, insulation and connection it opens on (from the deep link). */
+  dw?: { type: DwType; ins: DwIns; conn: DwConn };
   onBack: () => void;
   onOpen3d: () => void;
   onClose3d: () => void;
@@ -299,7 +299,7 @@ export function SheetPage({
           {doc.model === "oval" ? (
             <OvalPipe3D onClose={onClose3d} />
           ) : doc.model === "dw-round" ? (
-            <DoubleWallPipe3D onClose={onClose3d} initialType={dw?.type ?? "ss"} initialIns={dw?.ins ?? 1} />
+            <DoubleWallPipe3D onClose={onClose3d} initialType={dw?.type ?? "ss"} initialIns={dw?.ins ?? 1} initialConn={dw?.conn ?? "coupling"} />
           ) : (
             <SpiralPipe3D onClose={onClose3d} />
           )}

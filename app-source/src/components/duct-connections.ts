@@ -140,7 +140,7 @@ export function flangeScrewCount(d: number) {
 }
 
 /** Screws around both pipe ends, 1" back from the coupling bead on each side, in the assembled pose. */
-function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
+export function buildScrews(d: number, mainX: number, pieceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
   const r = d / 2;
   const n = screwCount(d);
   const k = screwScale(d);
@@ -320,7 +320,7 @@ export function buildFlange(
  * Screws through both flange rings and the gasket, parallel to the pipe: heads on the 12" piece's flange (faceX, facing +X),
  * points out the far side of the main pipe's flange. Driven one after another around the ring.
  */
-function buildFlangeScrews(d: number, rs: number, faceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
+export function buildFlangeScrews(d: number, rs: number, faceX: number, mat: THREE.Material): NonNullable<BuiltConnection["screws"]> {
   const n = flangeScrewCount(d);
   const k = screwScale(d);
   const group = new THREE.Group();

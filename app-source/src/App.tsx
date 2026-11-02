@@ -72,7 +72,7 @@ export default function App() {
         key="dw-round"
         doc={DW_ROUND_DOC}
         model3d={route.model3d}
-        dw={{ type: route.dwType, ins: route.dwIns }}
+        dw={{ type: route.dwType, ins: route.dwIns, conn: route.dwConn }}
         onBack={() => goBack("")}
         onOpen3d={() => navigate(dwRoundHash())}
         onClose3d={() => goBack(DW_ROUND_HASH)}

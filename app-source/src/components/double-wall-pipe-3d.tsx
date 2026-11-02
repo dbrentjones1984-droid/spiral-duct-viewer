@@ -4,31 +4,53 @@ import { HomeButton } from "@/components/home-button";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { buildCoupling, JOIN_LENGTH, type BuiltConnection } from "@/components/duct-connections";
+import { buildFlangeScrews, buildScrews, type BuiltConnection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { DW_INS, DW_ROUND_3D_HASH, dwRoundHash, type DwIns, type DwType } from "@/lib/route";
+import { DW_INS, DW_ROUND_3D_HASH, dwRoundHash, type DwConn, type DwIns, type DwType } from "@/lib/route";
 import { STOCK_DIAMETERS, stockGauge } from "@/lib/sheets";
 
 /*
  * Interactive 3D model of double wall round spiral pipe (Double Wall Duct > Round), from Brent's sheet 1:
  * a solid outer spiral shell, fiberglass insulation (1", 2" or 3", 1-1/2 lb density; 1" standard) and an inner spiral
  * liner, solid (Solid / Solid) or perforated (Solid / Perforated). A cutaway window (outer shell cut back further than
- * the insulation, so the layers step down) shows all three layers. Standard slip joint construction: Play slides an
- * inner coupling into the liners and an outer coupling into the outer shells.
+ * the insulation, so the layers step down) shows all three layers. Connection (Brent): Coupling (standard slip joint:
+ * a short plain pipe coupling for the inner shells, connected and screwed first, then a short pipe coupling for
+ * the outer shells with a bead around its middle, which the outer shells slide onto and are screwed to) or Flange (each end capped by one flange; the ends meet face to face on a gasket and
+ * are screwed), or None (one section, layers only). Play runs the steps in order with a caption for each.
  *
  * Assumptions (not on the sheet, flagged in the UI): outer diameter = inner + 2 x insulation; gauges for both shells
  * from the single wall round chart (by each shell's diameter); perforation 3/32" holes on 3/16" stagger (Double Wall
- * Submittal) drawn 4x larger so they read on a phone; insulation held back 3" from each pipe end for the outer coupling.
+ * Submittal) drawn 4x larger so they read on a phone; at a coupling joint both couplings slip inside (like the single
+ * wall PC, lengths by its rule), the inner shells meet butt on the inner coupling, the outer shells slide together
+ * onto the outer coupling to its bead, and the insulation stops clear of the outer coupling; at a flanged joint (Brent's sketch) there is no inner coupling: each end is capped by one
+ * flange ring that the outer shell and liner both run out to, with the single wall flange's gasket and screws.
  * Units are inches; pipe axis is X.
  */
 
-const SLIDE_MS = 2300;
-const SCREW_PAUSE_MS = 200;
-const SCREW_MS = 2300;
+const STEP_PAUSE_MS = 250;
 const SCREW_TURNS = 4;
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 type PlayState = "idle" | "playing" | "paused" | "done";
-type DwConnection = "none" | "slip";
+type ScrewItem = NonNullable<BuiltConnection["screws"]>["items"][number];
+
+/** Play captions (0 = shown apart, before Play; then one per step; the last when assembled). * = assumed. */
+const STEPS: Record<Exclude<DwConn, "none">, { title: string; text: string }[]> = {
+  coupling: [
+    { title: "Coupling · inner + outer", text: "Shown apart: the inner shells stick out past the outer shells; the outer pipe coupling (bead) and inner pipe coupling sit between. Press Play." },
+    { title: "1 · Inner coupling", text: "The inner coupling slides into the lower inner shell, then the inner shells slide together on it." },
+    { title: "2 · Screw the inner shells", text: "Screws go through both inner shells into the inner coupling." },
+    { title: "3 · Outer coupling", text: "The outer coupling drops over the joint and the outer shells* slide together onto it, up to its bead." },
+    { title: "4 · Screw the outer shells", text: "Screws go through both outer shells into the outer coupling." },
+    { title: "Assembled", text: "Inner connected first, then the outer. * assumed" },
+  ],
+  flange: [
+    { title: "Flange · each end capped", text: "Shown apart. Outer shell and inner liner both run out to one flange ring that caps the insulation; gasket between. Press Play." },
+    { title: "1 · Flanges together", text: "The pipe ends meet flange face to face on the gasket." },
+    { title: "2 · Screw the flanges", text: "Screws go through both flanges and the gasket." },
+    { title: "Assembled", text: "Flanged joint: one flange per end, gasket, screws. * assumed" },
+  ],
+};
+const CONN_LABEL: Record<DwConn, string> = { none: "None", coupling: "Coupling", flange: "Flange" };
 
 const SECTION_LENGTH = 48; // 4 ft shown (pipe comes 1 to 20 ft, specify when ordering)
 const STRIP_PITCH = 5.6;
@@ -39,9 +61,26 @@ const CUT_OUTER = 13; // outer shell open for |x| < this (main section)
 const CUT_STEP = 4; // insulation cut back this much less, so it steps down
 const INS_SETBACK = 3; // insulation held back at each pipe end (outer coupling room; assumed)
 const PERF_TILE = 0.75; // drawn perforation pitch (real 3/16" stagger, 4x)
+// Joint views: the main section ends at the joint, the next section comes in from +X.
+const MAIN_LENGTH = 30;
+const PIECE_LENGTH = 22;
+const BEAD = 0.5; // outer coupling's center bead width (as the single wall PC, duct-connections buildCoupling)
+const FLANGE_T = 0.12; // flange ring thickness as drawn
+const GASKET_T = 0.125; // gasket (single wall flange)
+const FLANGE_APART = 4; // flanged joint: how far apart the ends start
+
+/** Spread screws evenly over their phase (after the cut-away side's screws are dropped). */
+function retime(items: ScrewItem[]) {
+  const each = 0.3;
+  items.forEach((it, i) => {
+    it.start = items.length > 1 ? (i / (items.length - 1)) * (1 - each) : 0;
+    it.end = it.start + each;
+  });
+}
 
 /** Part of a cylinder of radius r: x0..x1 along X, angles a0..a1. UVs in inches (u around, v along). */
-function cylPatch(r: number, x0: number, x1: number, a0: number, a1: number, segA: number, segX = 1) {
+/** (rEnd: radius at x1, for a cone, e.g. a swaged step; defaults to r.) */
+function cylPatch(r: number, x0: number, x1: number, a0: number, a1: number, segA: number, segX = 1, rEnd = r) {
   const pos: number[] = [];
   const nor: number[] = [];
   const uv: number[] = [];
@@ -50,7 +89,8 @@ function cylPatch(r: number, x0: number, x1: number, a0: number, a1: number, seg
     const x = x0 + ((x1 - x0) * i) / segX;
     for (let j = 0; j <= segA; j++) {
       const a = a0 + ((a1 - a0) * j) / segA;
-      pos.push(x, r * Math.cos(a), r * Math.sin(a));
+      const rr = r + ((rEnd - r) * i) / segX;
+      pos.push(x, rr * Math.cos(a), rr * Math.sin(a));
       nor.push(0, Math.cos(a), Math.sin(a));
       uv.push(r * a, x);
     }
@@ -98,18 +138,20 @@ function ringSector(r0: number, r1: number, a0: number, a1: number, x: number, s
   return g;
 }
 
-/** Helix rib (lock seam) at radius r, drawn only outside the window (runs split where the shell is cut away). */
-function seamRuns(r: number, L: number, phase: number, tubeR: number, hole: ((x: number, a: number) => boolean) | null) {
+/** Helix rib (lock seam) at radius r over x0..x1, skipping where `hole` says the shell is cut away (runs split there). */
+function seamRuns(r: number, x0: number, x1: number, phase: number, tubeR: number, hole: ((x: number, a: number) => boolean) | null) {
   const geos: THREE.BufferGeometry[] = [];
-  const seamL = L - tubeR * 4;
-  const n = Math.max(8, Math.round((seamL / STRIP_PITCH) * 72));
+  const s0 = x0 + tubeR * 2;
+  const s1 = x1 - tubeR * 2;
+  if (s1 - s0 < 1) return geos;
+  const n = Math.max(8, Math.round(((s1 - s0) / STRIP_PITCH) * 72));
   let run: THREE.Vector3[] = [];
   const flush = () => {
     if (run.length >= 3) geos.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(run), run.length * 2, tubeR, 6, false));
     run = [];
   };
   for (let i = 0; i <= n; i++) {
-    const x = -seamL / 2 + (seamL * i) / n;
+    const x = s0 + ((s1 - s0) * i) / n;
     const a = (x / STRIP_PITCH) * Math.PI * 2 + phase;
     const am = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     if (hole?.(x, am)) {
@@ -123,68 +165,120 @@ function seamRuns(r: number, L: number, phase: number, tubeR: number, hole: ((x:
 }
 
 type DwMats = { outer: THREE.Material; seam: THREE.Material; edge: THREE.Material; insul: THREE.Material; insulCut: THREE.Material; liner: THREE.Material; linerSeam: THREE.Material };
+type Range = [number, number];
 
 /** Wall thickness as drawn (a little thicker than real so the cut edges read). */
 const drawWall = (d: number) => Math.max(0.06, d * 0.006);
+const segsFor = (od: number) => Math.min(180, 72 + Math.round(od * 3));
+const inCut = (a: number) => a > CUT_A0 && a < CUT_A1;
 
 /**
- * One double wall pipe section, centred on x = 0. cut: the cutaway window (main section only).
+ * Tube wall from r0 to r1 over x from..to, drawn as surfaces at `radii`, open over the cutaway angles inside each
+ * window (cut faces between r0 and r1 along the window's sides and at its inner ends; end rings at from / to).
+ */
+function tube(add: (g: THREE.BufferGeometry, m: THREE.Material) => void, radii: number[], r0: number, r1: number, from: number, to: number, wins: Range[], surf: THREE.Material, cut: THREE.Material, end: THREE.Material, segFull: number) {
+  const segCut = Math.max(4, Math.round((segFull * (CUT_A1 - CUT_A0)) / (Math.PI * 2)));
+  const segRest = segFull - segCut;
+  const eps = 1e-3;
+  const ws = wins.map(([a, b]): Range => [Math.max(a, from), Math.min(b, to)]).filter(([a, b]) => b - a > eps).sort((p, q) => p[0] - q[0]);
+  const parts: [number, number, boolean][] = [];
+  let x = from;
+  for (const [a, b] of ws) {
+    if (a > x + eps) parts.push([x, a, false]);
+    parts.push([a, b, true]);
+    x = b;
+  }
+  if (x < to - eps) parts.push([x, to, false]);
+  for (const [a, b, open] of parts) {
+    if (open) {
+      for (const r of radii) add(cylPatch(r, a, b, CUT_A1, CUT_A0 + Math.PI * 2, segRest, 4), surf);
+      for (const ang of [CUT_A0, CUT_A1]) add(radialFace(r0, r1, a, b, ang), cut);
+      if (a > from + eps) add(ringSector(r0, r1, CUT_A0, CUT_A1, a, segCut), cut);
+      if (b < to - eps) add(ringSector(r0, r1, CUT_A0, CUT_A1, b, segCut), cut);
+    } else {
+      for (const r of radii) add(cylPatch(r, a, b, 0, Math.PI * 2, segFull, Math.max(1, Math.round((b - a) / 12))), surf);
+    }
+  }
+  for (const xe of [from, to]) {
+    const open = ws.some(([a, b]) => xe >= a - eps && xe <= b + eps);
+    add(open ? ringSector(r0, r1, CUT_A1, CUT_A0 + Math.PI * 2, xe, segRest) : ringSector(r0, r1, 0, Math.PI * 2, xe, segFull), end);
+  }
+}
+
+/**
+ * One double wall pipe section (inner liner, insulation, outer shell), each layer over its own x range, with cutaway
+ * windows (o: outer shell, i: insulation; the insulation window is a little smaller so the layers step down).
  * ID = inner liner diameter, t = insulation thickness; outer shell radius = ID / 2 + t.
  */
-function buildDoubleWall(ID: number, t: number, m: DwMats, L: number, cut: boolean) {
+function buildSection(ID: number, t: number, m: DwMats, spec: { liner?: Range; outer?: Range; ins?: Range; win: { o: Range; i: Range }[] }) {
   const group = new THREE.Group();
   const ri = ID / 2;
   const ro = ri + t;
   const w = drawWall(ID + 2 * t);
-  const segFull = Math.min(180, 72 + Math.round((ID + 2 * t) * 3));
-  const segCut = Math.round((segFull * (CUT_A1 - CUT_A0)) / (Math.PI * 2));
-  const segRest = segFull - segCut;
-  const half = L / 2;
-  const xo = cut ? CUT_OUTER : 0; // outer window half-length
-  const xi = cut ? CUT_OUTER - CUT_STEP : 0; // insulation window half-length
+  const segFull = segsFor(ID + 2 * t);
   const add = (g: THREE.BufferGeometry, mat: THREE.Material) => group.add(new THREE.Mesh(g, mat));
 
-  // ---- Outer shell (solid): full tube outside the window, open over CUT_A0..CUT_A1 inside it.
-  if (cut) {
-    add(cylPatch(ro, -half, -xo, 0, Math.PI * 2, segFull), m.outer);
-    add(cylPatch(ro, xo, half, 0, Math.PI * 2, segFull), m.outer);
-    add(cylPatch(ro, -xo, xo, CUT_A1, CUT_A0 + Math.PI * 2, segRest, 4), m.outer);
-    // Cut edges of the outer shell (bright, so the sheet thickness reads).
-    for (const a of [CUT_A0, CUT_A1]) add(radialFace(ro - w, ro, -xo, xo, a), m.edge);
-    for (const x of [-xo, xo]) add(ringSector(ro - w, ro, CUT_A0, CUT_A1, x, segCut), m.edge);
-  } else {
-    add(cylPatch(ro, -half, half, 0, Math.PI * 2, segFull), m.outer);
-  }
-  for (const x of [-half, half]) add(ringSector(ro - w, ro + 0.005, 0, Math.PI * 2, x, segFull), m.edge);
+  // ---- Outer shell (solid) with its lock seam (split around the windows).
+  if (spec.outer) tube(add, [ro], ro - w, ro + 0.005, spec.outer[0], spec.outer[1], spec.win.map((x) => x.o), m.outer, m.edge, m.edge, segFull);
   const rib = Math.min(0.2, 0.09 + (ID + 2 * t) * 0.004);
-  const outerHole = cut ? (x: number, a: number) => Math.abs(x) < xo + rib && a > CUT_A0 - rib / ro && a < CUT_A1 + rib / ro : null;
-  for (const g of seamRuns(ro + rib * 0.15, L, 0, rib, outerHole)) add(g, m.seam);
-  for (const g of seamRuns(ro + rib * 0.05, L, (rib * 2.1) / ro, rib * 0.75, outerHole)) add(g, m.seam);
-
-  // ---- Insulation (fiberglass), held back from both ends; window cut a little shorter than the outer shell.
-  const ia = ri + w * 0.6; // inner face (just outside the liner)
-  const ib = ro - w; // outer face (inside the outer shell)
-  const ie = half - INS_SETBACK;
-  if (cut) {
-    add(cylPatch(ib, -ie, -xi, 0, Math.PI * 2, segFull), m.insul);
-    add(cylPatch(ib, xi, ie, 0, Math.PI * 2, segFull), m.insul);
-    add(cylPatch(ib, -xi, xi, CUT_A1, CUT_A0 + Math.PI * 2, segRest, 4), m.insul);
-    add(cylPatch(ia, -ie, -xi, 0, Math.PI * 2, segFull), m.insul);
-    add(cylPatch(ia, xi, ie, 0, Math.PI * 2, segFull), m.insul);
-    add(cylPatch(ia, -xi, xi, CUT_A1, CUT_A0 + Math.PI * 2, segRest, 4), m.insul);
-    for (const a of [CUT_A0, CUT_A1]) add(radialFace(ia, ib, -xi, xi, a), m.insulCut);
-    for (const x of [-xi, xi]) add(ringSector(ia, ib, CUT_A0, CUT_A1, x, segCut), m.insulCut);
-  } else {
-    add(cylPatch(ib, -ie, ie, 0, Math.PI * 2, segFull), m.insul);
-    add(cylPatch(ia, -ie, ie, 0, Math.PI * 2, segFull, 2), m.insul);
+  const hole = (x: number, a: number) => spec.win.some(({ o }) => x > o[0] - rib && x < o[1] + rib) && a > CUT_A0 - rib / ro && a < CUT_A1 + rib / ro;
+  if (spec.outer) {
+    for (const g of seamRuns(ro + rib * 0.15, spec.outer[0], spec.outer[1], 0, rib, hole)) add(g, m.seam);
+    for (const g of seamRuns(ro + rib * 0.05, spec.outer[0], spec.outer[1], (rib * 2.1) / ro, rib * 0.75, hole)) add(g, m.seam);
   }
-  for (const x of [-ie, ie]) add(ringSector(ia, ib, 0, Math.PI * 2, x, segFull), m.insulCut);
 
-  // ---- Inner liner (solid or perforated): full length, both sides drawn, with its own lock seam.
-  add(cylPatch(ri, -half, half, 0, Math.PI * 2, segFull, 2), m.liner);
-  for (const x of [-half, half]) add(ringSector(ri - w * 0.5, ri + w * 0.5, 0, Math.PI * 2, x, segFull), m.edge);
+  // ---- Insulation (fiberglass): inner face just outside the liner, outer face inside the outer shell.
+  if (spec.ins) tube(add, [ri + w * 0.6, ro - w], ri + w * 0.6, ro - w, spec.ins[0], spec.ins[1], spec.win.map((x) => x.i), m.insul, m.insulCut, m.insulCut, segFull);
+
+  // ---- Inner liner (solid or perforated): both sides drawn, with its own lock seam.
+  if (!spec.liner) return group;
+  const [l0, l1] = spec.liner;
+  add(cylPatch(ri, l0, l1, 0, Math.PI * 2, segFull, Math.max(2, Math.round((l1 - l0) / 12))), m.liner);
+  for (const x of [l0, l1]) add(ringSector(ri - w * 0.5, ri + w * 0.5, 0, Math.PI * 2, x, segFull), m.edge);
   const lrib = rib * 0.55;
-  for (const g of seamRuns(ri + lrib * 0.4, L, 0.6, lrib, null)) add(g, m.linerSeam);
+  for (const g of seamRuns(ri + lrib * 0.4, l0, l1, 0.6, lrib, null)) add(g, m.linerSeam);
+  return group;
+}
+
+/**
+ * Pipe coupling for the outer shells (Brent's drawing): short sleeve just inside the outer shells (male, like the
+ * single wall PC) with a raised bead around its middle; the outer shells slide onto it and meet at the bead. Cut away
+ * like the shells so the inner joint shows. Centered on x = 0.
+ */
+function buildOuterPC(ro: number, len: number, w: number, segFull: number, mat: THREE.Material, edge: THREE.Material) {
+  const group = new THREE.Group();
+  const add = (g: THREE.BufferGeometry, m: THREE.Material) => group.add(new THREE.Mesh(g, m));
+  const rc = ro - w - 0.03;
+  const h = len / 2;
+  const all: Range[] = [[-h - 1, h + 1]];
+  tube(add, [rc], rc - w, rc, -h, h, all, mat, edge, edge, segFull);
+  tube(add, [ro + 0.14], rc, ro + 0.14, -BEAD / 2, BEAD / 2, all, mat, edge, edge, segFull);
+  return group;
+}
+
+/** Pipe coupling for the inner shells (Brent's drawing): short plain sleeve just inside the inner shells. Centered on x = 0. */
+function buildInnerPC(ri: number, len: number, w: number, segFull: number, mat: THREE.Material, edge: THREE.Material) {
+  const group = new THREE.Group();
+  const add = (g: THREE.BufferGeometry, m: THREE.Material) => group.add(new THREE.Mesh(g, m));
+  const rc = ri - w * 0.5 - 0.03;
+  tube(add, [rc, rc - w], rc - w, rc, -len / 2, len / 2, [], mat, edge, edge, segFull);
+  return group;
+}
+
+/** Flat ring x0..x1 from r0 to r1 (flange plate or gasket), with a rolled lip at the rim when `lip`. */
+function flatRing(r0: number, r1: number, x0: number, x1: number, segs: number, mat: THREE.Material, lip: boolean) {
+  const group = new THREE.Group();
+  const add = (g: THREE.BufferGeometry) => group.add(new THREE.Mesh(g, mat));
+  add(ringSector(r0, r1, 0, Math.PI * 2, x0, segs));
+  add(ringSector(r0, r1, 0, Math.PI * 2, x1, segs));
+  add(cylPatch(r1, x0, x1, 0, Math.PI * 2, segs));
+  add(cylPatch(r0, x0, x1, 0, Math.PI * 2, segs));
+  if (lip) {
+    const tor = new THREE.TorusGeometry(r1, 0.07, 8, segs);
+    tor.rotateY(Math.PI / 2);
+    tor.translate((x0 + x1) / 2, 0, 0);
+    add(tor);
+  }
   return group;
 }
 
@@ -248,10 +342,20 @@ function fiberTexture() {
 
 const TYPE_LABEL: Record<DwType, string> = { ss: "Solid / Solid", sp: "Solid / Perforated" };
 
-export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialIns = 1 }: { onClose: () => void; initialType?: DwType; initialIns?: DwIns }) {
+export default function DoubleWallPipe3D({
+  onClose,
+  initialType = "ss",
+  initialIns = 1,
+  initialConn = "coupling",
+}: {
+  onClose: () => void;
+  initialType?: DwType;
+  initialIns?: DwIns;
+  initialConn?: DwConn;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const api = useRef<{
-    set: (d: number, t: DwIns, type: DwType, c: DwConnection) => void;
+    set: (d: number, t: DwIns, type: DwType, c: DwConn) => void;
     reset: () => void;
     play: () => void;
   } | null>(null);
@@ -259,7 +363,8 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
   const [diameter, setDiameter] = useState(12);
   const [type, setType] = useState<DwType>(initialType);
   const [ins, setIns] = useState<DwIns>(initialIns);
-  const [connection, setConnection] = useState<DwConnection>("none");
+  const [connection, setConnection] = useState<DwConn>(initialConn);
+  const [step, setStep] = useState(0);
   const [failed, setFailed] = useState(false);
   const [hint, setHint] = useState(true);
   const od = diameter + 2 * ins;
@@ -269,10 +374,11 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
   // Follow a deep link change (back / forward) to another type or insulation.
   useEffect(() => setType(initialType), [initialType]);
   useEffect(() => setIns(initialIns), [initialIns]);
+  useEffect(() => setConnection(initialConn), [initialConn]);
   // Keep the address on the shown type + insulation (replace, so the back button still closes the model).
   useEffect(() => {
-    if (location.hash.startsWith(DW_ROUND_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwRoundHash(type, ins));
-  }, [type, ins]);
+    if (location.hash.startsWith(DW_ROUND_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwRoundHash(type, ins, connection));
+  }, [type, ins, connection]);
 
   useEffect(() => {
     const el = host.current!;
@@ -320,6 +426,8 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
     const linerSeam = new THREE.MeshStandardMaterial({ color: 0xc9cfd5, metalness: 0.85, roughness: 0.35 });
     const couplingMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, metalness: 0.8, roughness: 0.24, envMapIntensity: 1.25, side: THREE.DoubleSide });
     const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
+    // Flange gasket: dark matte black rubber (as on the single wall flange).
+    const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4, side: THREE.DoubleSide });
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -336,18 +444,18 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
     controls.addEventListener("start", () => setHint(false));
 
     let model: THREE.Group | null = null;
-    let conn: BuiltConnection | null = null;
+    let focus: { focusX: number; focusR: number } | null = null;
     let fitDistance = 100;
     const frame = (d: number) => {
       const upright = camera.aspect < 0.9;
       if (!model) return;
       model.rotation.z = upright ? Math.PI / 2 : 0;
       model.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(model);
       if (upright) {
         shadow.scale.set(d * 2.4, d * 2.4, 1);
-        shadow.position.set(0, -SECTION_LENGTH / 2 - 0.05, 0);
+        shadow.position.set(0, box.min.y - 0.05, 0);
       } else {
-        const box = new THREE.Box3().setFromObject(model);
         shadow.scale.set((box.max.x - box.min.x) * 1.15, d * 2.2, 1);
         shadow.position.set((box.max.x + box.min.x) / 2, -d / 2 - 0.05, 0);
       }
@@ -358,12 +466,13 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       const halfH = upright ? along : across + SECTION_LENGTH * 0.12;
       const halfW = upright ? across : along * 0.92;
       fitDistance = Math.max(halfH / Math.tan(vHalf), halfW / Math.tan(hHalf)) * 1.12 + d / 2;
-      if (conn) {
-        const focus = model.localToWorld(new THREE.Vector3(conn.focusX, 0, 0));
-        const dist = conn.focusR / Math.sin(Math.min(vHalf, hHalf));
+      if (focus) {
+        // Upright: aim a little below the joint so it sits above the caption box.
+        const at = model.localToWorld(new THREE.Vector3(focus.focusX - (upright ? focus.focusR * 0.22 : 0), 0, 0));
+        const dist = focus.focusR / Math.sin(Math.min(vHalf, hHalf));
         const dir = (upright ? new THREE.Vector3(0.55, 0.5, 1) : new THREE.Vector3(1, 0.45, 0.9)).normalize();
-        camera.position.copy(focus).addScaledVector(dir, dist);
-        controls.target.copy(focus);
+        camera.position.copy(at).addScaledVector(dir, dist);
+        controls.target.copy(at);
       } else {
         const dir = (upright ? new THREE.Vector3(0.42, 0.3, 1) : new THREE.Vector3(0.45, 0.42, 1)).normalize();
         camera.position.copy(dir.multiplyScalar(fitDistance));
@@ -377,26 +486,50 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       controls.update();
     };
 
-    let moving: { obj: THREE.Object3D; base: number; from: number; to: number }[] = [];
-    let screws: NonNullable<BuiltConnection["screws"]>["items"] = [];
-    const playMs = SLIDE_MS + SCREW_PAUSE_MS + SCREW_MS;
+    // ---- Play: a list of steps run one after another. A step slides parts along the pipe axis (offsets add up, so a
+    // part carried by another, e.g. the outer coupling parked on the next section, moves with it) or drives a set of
+    // screws. Each step has a caption (index into the connection's STEPS list).
+    type Step = { ms: number; cap: number; moves?: { obj: THREE.Object3D; delta: number }[]; screws?: ScrewItem[] };
+    let steps: Step[] = [];
+    let bases = new Map<THREE.Object3D, number>();
+    let allScrews: ScrewItem[] = [];
+    let playMs = 0;
+    let doneCap = 0;
     let playT = 0;
     let playing = false;
     let lastTime = 0;
-    const pose = (t: number | null) => {
-      const k = t === null ? 0 : easeInOut(Math.min(1, t / SLIDE_MS));
-      for (const m of moving) m.obj.position.x = m.base + (t === null ? 0 : m.from + (m.to - m.from) * k);
-      const s = t === null ? -1 : (t - SLIDE_MS - SCREW_PAUSE_MS) / SCREW_MS;
-      for (const sc of screws) {
-        const shown = s >= sc.start;
-        sc.obj.visible = shown;
-        if (!shown) continue;
-        const u = Math.min(1, (s - sc.start) / (sc.end - sc.start));
-        const e = easeInOut(u);
-        sc.drive.position.y = sc.lift * (1 - e);
-        sc.drive.rotation.y = -e * SCREW_TURNS * Math.PI * 2;
-        sc.drive.scale.setScalar(Math.min(1, 0.4 + u * 4));
+    let shownCap = -1;
+    const showCap = (c: number) => {
+      if (c !== shownCap) {
+        shownCap = c;
+        setStep(c);
       }
+    };
+    const pose = (t: number | null) => {
+      const off = new Map<THREE.Object3D, number>();
+      for (const k of bases.keys()) off.set(k, 0);
+      for (const sc of allScrews) sc.obj.visible = false;
+      let start = 0;
+      let cap = 0;
+      for (const st of steps) {
+        const raw = t === null ? -1 : (t - start) / st.ms;
+        const p = Math.max(0, Math.min(1, raw));
+        if (t !== null && t >= start) cap = st.cap;
+        for (const m of st.moves ?? []) off.set(m.obj, (off.get(m.obj) ?? 0) + m.delta * easeInOut(p));
+        for (const sc of st.screws ?? []) {
+          const shown = raw >= sc.start;
+          sc.obj.visible = shown;
+          if (!shown) continue;
+          const u = Math.min(1, (raw - sc.start) / (sc.end - sc.start));
+          const e = easeInOut(u);
+          sc.drive.position.y = sc.lift * (1 - e);
+          sc.drive.rotation.y = -e * SCREW_TURNS * Math.PI * 2;
+          sc.drive.scale.setScalar(Math.min(1, 0.4 + u * 4));
+        }
+        start += st.ms;
+      }
+      for (const [obj, base] of bases) obj.position.x = base + (off.get(obj) ?? 0);
+      showCap(t === null ? 0 : t >= playMs ? doneCap : cap);
     };
     const stopPlay = () => {
       playing = false;
@@ -405,7 +538,7 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       setPlay("idle");
     };
     const togglePlay = () => {
-      if (!moving.length) return;
+      if (!steps.length) return;
       if (playing) {
         playing = false;
         setPlay("paused");
@@ -430,7 +563,7 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       }
     };
 
-    let cur = { d: 12, t: 1 as DwIns, type: "ss" as DwType, c: "none" as DwConnection };
+    let cur = { d: 12, t: 1 as DwIns, type: "ss" as DwType, c: initialConn };
     const build = () => {
       if (model) {
         scene.remove(model);
@@ -438,35 +571,124 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       }
       const { d, t, type: ty, c } = cur;
       const OD = d + 2 * t;
+      const ro = d / 2 + t;
+      const w = drawWall(OD);
+      const segs = segsFor(OD);
       const mats: DwMats = { outer, seam, edge, insul, insulCut, liner: ty === "sp" ? linerPerf : linerSolid, linerSeam };
       model = new THREE.Group();
-      model.add(buildDoubleWall(d, t, mats, SECTION_LENGTH, true));
-      if (c === "slip") {
-        // Outer coupling in the outer shells, inner coupling in the liners; one 12" double wall piece slides onto both.
-        const outerC = buildCoupling(OD, SECTION_LENGTH / 2, couplingMat, 1 / SECTION_LENGTH, screwMat);
-        const innerC = buildCoupling(d, SECTION_LENGTH / 2, couplingMat, 1 / SECTION_LENGTH, screwMat);
-        conn = outerC;
-        model.add(outerC.group, innerC.group);
-        const piece = buildDoubleWall(d, t, mats, JOIN_LENGTH, false);
-        piece.position.x = outerC.joinStart + JOIN_LENGTH / 2;
-        model.add(piece);
-        moving = [
-          ...outerC.motion.parts.map((m) => ({ ...m, base: m.obj.position.x })),
-          ...innerC.motion.parts.map((m) => ({ ...m, base: m.obj.position.x })),
-          { obj: piece, base: piece.position.x, ...outerC.motion.piece },
+      steps = [];
+      bases = new Map();
+      allScrews = [];
+      const pause: Step = { ms: STEP_PAUSE_MS, cap: -1 };
+      const move = (obj: THREE.Object3D, delta: number) => {
+        if (!bases.has(obj)) bases.set(obj, obj.position.x);
+        return { obj, delta };
+      };
+      if (c === "none") {
+        // One 4' section, cut away in the middle; insulation held back from the ends.
+        const h = SECTION_LENGTH / 2;
+        const ie = h - INS_SETBACK;
+        model.add(buildSection(d, t, mats, { liner: [-h, h], outer: [-h, h], ins: [-ie, ie], win: [{ o: [-CUT_OUTER, CUT_OUTER], i: [-CUT_OUTER + CUT_STEP, CUT_OUTER - CUT_STEP] }] }));
+        focus = null;
+      } else if (c === "coupling") {
+        // Brent's drawing, top to bottom: outer shell, inner shell sticking out, pipe coupling for the outer shells
+        // (bead), pipe coupling for the inner shells, inner shell sticking out, outer shell. Inner connects first, then
+        // the outer. Main section A below (liner ends at x = 0), section B above; each section's outer shell +
+        // insulation (aO / bO) start pulled back so the inner shell sticks out P, and slide together at the end onto
+        // the outer coupling, meeting at its bead (x = +-BEAD / 2). Coordinates are the assembled positions.
+        const Ci = d <= 12 ? 4 : 6; // inner coupling length (single wall PC rule)
+        const Co = OD <= 12 ? 4 : 6; // outer coupling length (single wall PC rule)
+        const P = Co + 0.75; // inner shell sticks out this far past the pulled-back outer shell
+        const back = P - BEAD / 2; // how far each outer shell is pulled back
+        const gap = d <= 8 ? 1 : d <= 16 ? 1.25 : 1.5;
+        const insEnd = Co / 2 + 0.1; // insulation stops clear of the outer coupling
+        const bead = BEAD / 2;
+        model.add(buildSection(d, t, mats, { liner: [-MAIN_LENGTH, 0], win: [] }));
+        const aO = buildSection(d, t, mats, { outer: [-MAIN_LENGTH, -bead], ins: [-MAIN_LENGTH, -insEnd], win: [{ o: [-bead - 13, -bead], i: [-bead - 9, -insEnd] }] });
+        aO.position.x = -back;
+        model.add(aO);
+        const innerPC = buildInnerPC(d / 2, Ci, w, segs, couplingMat, edge);
+        innerPC.position.x = gap + Ci / 2;
+        model.add(innerPC);
+        const S = gap + Ci + gap + Co + gap; // B's inner shell starts here, apart
+        const B = new THREE.Group();
+        B.position.x = S;
+        model.add(B);
+        B.add(buildSection(d, t, mats, { liner: [0, PIECE_LENGTH], win: [] }));
+        const bO = buildSection(d, t, mats, { outer: [bead, PIECE_LENGTH], ins: [insEnd, PIECE_LENGTH], win: [{ o: [bead, bead + 13], i: [insEnd, bead + 9] }] });
+        bO.position.x = back;
+        B.add(bO);
+        const outerPC = buildOuterPC(ro, Co, w, segs, couplingMat, edge);
+        const parkAt = Co / 2 + 0.4; // waiting on B's inner shell, just below its pulled-back outer shell
+        outerPC.position.x = -gap - Co / 2; // apart: between the inner coupling and B
+        B.add(outerPC);
+        // Screws: inner shells into the inner coupling, then outer shells into the outer coupling (skipping the
+        // cut-away side: no sheet there to hold them).
+        const innerS = buildScrews(d, -Ci / 4, Ci / 4, screwMat);
+        model.add(innerS.group);
+        const outerS = buildScrews(OD, -bead - Co / 4, bead + Co / 4, screwMat);
+        const keep = outerS.items.filter((it) => {
+          const ang = ((it.obj.rotation.x % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          const ok = !(ang > CUT_A0 - 0.25 && ang < CUT_A1 + 0.25);
+          if (!ok) outerS.group.remove(it.obj);
+          return ok;
+        });
+        retime(keep);
+        model.add(outerS.group);
+        allScrews = [...innerS.items, ...keep];
+        steps = [
+          { ms: 1400, cap: 1, moves: [move(innerPC, -(gap + Ci / 2)), move(outerPC, parkAt + gap + Co / 2)] },
+          { ms: 1500, cap: 1, moves: [move(B, -S)] },
+          { ...pause, cap: 2 },
+          { ms: 2200, cap: 2, screws: innerS.items },
+          { ...pause, cap: 3 },
+          { ms: 1300, cap: 3, moves: [move(outerPC, -parkAt)] },
+          { ms: 1600, cap: 3, moves: [move(aO, back), move(bO, -back)] },
+          { ...pause, cap: 4 },
+          { ms: 2200, cap: 4, screws: keep },
         ];
-        screws = outerC.screws?.items ?? [];
-        if (outerC.screws) model.add(outerC.screws.group);
+        const f0 = -P - 4;
+        const f1 = S + P + 4;
+        focus = { focusX: (f0 + f1) / 2, focusR: Math.hypot((f1 - f0) / 2, ro + 0.6) * 1.05 };
       } else {
-        conn = null;
-        moving = [];
-        screws = [];
+        // Flanged (Brent's sketch): no inner coupling. Each pipe end is capped by one flange ring: the outer shell and
+        // the inner liner both run out to it and it closes off the insulation. The ends meet flange face to face on
+        // the gasket; screws through both flanges (as the single wall flange).
+        const fw = OD <= 12 ? 1.25 : 1.5;
+        const rf = ro + fw;
+        const ft = FLANGE_T;
+        const gt = GASKET_T;
+        const S = FLANGE_APART;
+        const B = new THREE.Group();
+        B.position.x = S;
+        model.add(B);
+        const r0 = d / 2 - w * 0.5;
+        model.add(buildSection(d, t, mats, { liner: [-MAIN_LENGTH, -ft], outer: [-MAIN_LENGTH, -ft], ins: [-MAIN_LENGTH, -ft], win: [{ o: [-14, -ft], i: [-10, -ft] }] }));
+        model.add(flatRing(r0, rf, -ft, 0, segs, couplingMat, true));
+        const b0 = gt + ft;
+        B.add(buildSection(d, t, mats, { liner: [b0, b0 + PIECE_LENGTH], outer: [b0, b0 + PIECE_LENGTH], ins: [b0, b0 + PIECE_LENGTH], win: [{ o: [b0, b0 + 14], i: [b0, b0 + 10] }] }));
+        B.add(flatRing(r0, rf, gt, b0, segs, couplingMat, true));
+        const gasket = flatRing(r0 + 0.02, rf - 0.03, 0, gt, segs, gasketMat, false);
+        gasket.position.x = S / 2;
+        model.add(gasket);
+        const fS = buildFlangeScrews(OD, (ro + rf) / 2, b0, screwMat);
+        model.add(fS.group);
+        allScrews = fS.items;
+        steps = [
+          { ms: 1900, cap: 1, moves: [move(B, -S), move(gasket, -S / 2)] },
+          { ...pause, cap: 2 },
+          { ms: 2400, cap: 2, screws: fS.items },
+        ];
+        focus = { focusX: S / 2, focusR: Math.hypot(S / 2 + 7, rf + 0.3) * 0.85 };
       }
+      doneCap = c === "none" ? 0 : STEPS[c].length - 1;
+      steps = steps.map((st, i) => (st.cap === -1 ? { ...st, cap: steps[i + 1]?.cap ?? 0 } : st));
+      playMs = steps.reduce((sum, st) => sum + st.ms, 0);
       stopPlay();
       scene.add(model);
       renderer.domElement.setAttribute(
         "aria-label",
-        `3D double wall spiral pipe, ${TYPE_LABEL[ty]}, ${d} inch inside, ${t} inch insulation, ${OD} inch outside, cut away to show the layers. Drag to turn, pinch to zoom.`,
+        `3D double wall spiral pipe, ${TYPE_LABEL[ty]}, ${d} inch inside, ${t} inch insulation, ${OD} inch outside, ${c === "none" ? "cut away to show the layers" : c === "coupling" ? "inner and outer coupling joint, cut away" : "flanged joint, cut away"}. Drag to turn, pinch to zoom.`,
       );
       frame(OD);
     };
@@ -514,7 +736,7 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
       if (model) disposeGroup(model);
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
-      [outer, seam, edge, insul, insulCut, linerSolid, linerPerf, linerSeam, couplingMat, screwMat].forEach((m) => m.dispose());
+      [outer, seam, edge, insul, insulCut, linerSolid, linerPerf, linerSeam, couplingMat, screwMat, gasketMat].forEach((m) => m.dispose());
       [spangle, fiber, perf, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
@@ -548,16 +770,15 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
         )}
         {hint && !failed && <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-xs font-medium text-steel">Drag to turn · pinch to zoom</p>}
         {!failed &&
-          (connection === "slip" ? (
+          (connection !== "none" ? (
             <div
               className="pointer-events-none absolute inset-x-3 bottom-3 rounded-[0.65rem] border border-[#8e9bab]/60 bg-surface/90 px-3 py-2 shadow-[0_2px_8px_rgb(0_28_64/0.18)] short:inset-x-auto short:top-3 short:bottom-auto short:left-3 short:py-1"
               aria-live="polite"
               data-testid="connection-caption"
+              data-step={step}
             >
-              <p className="font-display text-lg leading-tight text-accent">Slip joint (inner / outer couplings)</p>
-              <p className="text-xs leading-snug text-ink short:hidden">
-                Standard construction. An inner coupling slides into both liners and an outer coupling into both outer shells (insulation held back 3&Prime; at the ends, assumed); screws through the outer shell. Shown pulled apart.
-              </p>
+              <p className="font-display text-lg leading-tight text-accent">{STEPS[connection][step]?.title}</p>
+              <p className="text-xs leading-snug text-ink short:hidden">{STEPS[connection][step]?.text}</p>
             </div>
           ) : (
             // Layer key for the cutaway.
@@ -599,6 +820,14 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
             </button>
           ))}
         </div>
+        <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Connection">
+          <span className={`${label} col-span-3 -mb-1`}>Connection</span>
+          {(["none", "coupling", "flange"] as const).map((c) => (
+            <button key={c} type="button" role="radio" aria-checked={connection === c} onClick={() => setConnection(c)} className={`${radio} px-0`}>
+              {CONN_LABEL[c]}
+            </button>
+          ))}
+        </div>
         <div className="mt-2 grid grid-cols-6 gap-2">
           <div className="col-span-3 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Insulation thickness">
             <span className={`${label} col-span-3 -mb-1`}>Insulation</span>
@@ -608,15 +837,20 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
               </button>
             ))}
           </div>
-          <div className="col-span-3 grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Connection">
-            <span className={`${label} col-span-2 -mb-1`}>Connection</span>
-            <button type="button" role="radio" aria-checked={connection === "none"} onClick={() => setConnection("none")} className={`${radio} px-0`}>
-              None
-            </button>
-            <button type="button" role="radio" aria-checked={connection === "slip"} aria-label="Slip joint" onClick={() => setConnection("slip")} className={`${radio} px-0`}>
-              Slip
-            </button>
-          </div>
+          {connection !== "none" && !failed ? (
+            <div className="col-span-3 flex flex-col">
+              <span className={`${label} -mb-1`}>How it goes together</span>
+              <button
+                type="button"
+                onClick={() => api.current?.play()}
+                aria-label={play === "playing" ? "Pause" : play === "done" ? "Replay how it goes together" : "Play how it goes together"}
+                className={`${radio} mt-2 flex items-center justify-center gap-1.5`}
+              >
+                {play === "playing" ? <Pause className="size-4" aria-hidden="true" /> : play === "done" ? <RotateCw className="size-4" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
+                {play === "playing" ? "Pause" : play === "done" ? "Replay" : play === "paused" ? "Resume" : "Play"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       <div className="flex items-center gap-1.5 bg-surface/90 px-3 py-2" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
@@ -639,19 +873,8 @@ export default function DoubleWallPipe3D({ onClose, initialType = "ss", initialI
           <p className="truncate">
             {gOuter} ga outer · {gLiner} liner*
           </p>
-          <p className="truncate text-muted">* assumed · 4&prime; shown</p>
+          <p className="truncate text-muted">{connection === "none" ? "* assumed · 4′ shown" : "* assumed · joint shown"}</p>
         </div>
-        {connection === "slip" && !failed ? (
-          <button
-            type="button"
-            onClick={() => api.current?.play()}
-            aria-label={play === "playing" ? "Pause" : play === "done" ? "Replay how it goes together" : "Play how it goes together"}
-            className="btn-raised btn-raised-sm flex h-11 w-[4.75rem] shrink-0 items-center justify-center gap-1 rounded-[0.65rem] font-display text-base leading-none"
-          >
-            {play === "playing" ? <Pause className="size-4" aria-hidden="true" /> : play === "done" ? <RotateCw className="size-4" aria-hidden="true" /> : <Play className="size-4" aria-hidden="true" />}
-            {play === "playing" ? "Pause" : play === "done" ? "Replay" : "Play"}
-          </button>
-        ) : null}
         <button type="button" onClick={() => api.current?.reset()} className="btn-raised btn-raised-sm grid size-11 shrink-0 place-items-center rounded-[0.65rem]" aria-label="Reset view">
           <RotateCcw className="size-5" />
         </button>
