@@ -54,6 +54,8 @@ import { useEffect, useState } from "react";
  *   "#/single-wall-fittings/oval/3d/wye?type=ry45"   ... opened on that type (y45 or ry45)
  *   "#/single-wall-fittings/oval/3d/coupling"   same, with the oval couplings & ends open on top (PC shown);
  *   "#/single-wall-fittings/oval/3d/coupling?type=bm"   ... opened on that type (pc, fc, oec, of or bm)
+ *   "#/single-wall-fittings/oval/3d/offset"   same, with the oval offset & square-to-oval open on top (OS shown);
+ *   "#/single-wall-fittings/oval/3d/offset?type=sq2rd"   ... opened on that type (os or sq2rd)
  *                                             and bend (hard or easy)
  */
 export type Route =
@@ -62,7 +64,7 @@ export type Route =
   | { page: "sw-oval"; model3d: boolean }
   | { page: "swf-round" }
   | { page: "swf-oval" }
-  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType }
+  | { page: "swfo-models"; model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset" | null; ovalElbowType?: OvalElbowType; bend?: OvalBend; ovalTeeType?: OvalTeeType; ovalCteeType?: OvalCteeType; ovalLlteeType?: OvalLlteeType; ovalLatType?: OvalLatType; ovalRedType?: OvalRedType; ovalWyeType?: OvalWyeType; ovalCapType?: OvalCapType; ovalOsType?: OvalOsType }
   | { page: "swf-models"; model3d: "e90" | "ds90" | "me90" | "bt90" | "tee" | "ctee" | "lat" | "tap" | "ltap" | "red" | "cap" | "wye" | "os" | "hanger" | "grille" | null; teeType?: TeeType; cteeType?: CteeType; latType?: LatType; tapType?: TapType; ltapType?: LtapType; redType?: RedType; capType?: CapType; wyeType?: WyeType; osType?: OsType; hangerType?: HangerType; grilleType?: GrilleType };
 
 /** Tees & Crosses sheet types (one model, picked in the viewer). */
@@ -127,6 +129,9 @@ export type OvalWyeType = (typeof OVAL_WYE_TYPES)[number];
 /** Single Wall Oval couplings & ends sheet types (pipe / fitting coupling, end cap, flange, bell mouth; one model). */
 export const OVAL_CAP_TYPES = ["pc", "fc", "oec", "of", "bm"] as const;
 export type OvalCapType = (typeof OVAL_CAP_TYPES)[number];
+/** Single Wall Oval Offset and Square-to-Round Transition sheet types (one model, picked in the viewer). */
+export const OVAL_OS_TYPES = ["os", "sq2rd"] as const;
+export type OvalOsType = (typeof OVAL_OS_TYPES)[number];
 export const OVAL_BENDS = ["hard", "easy"] as const;
 export type OvalBend = (typeof OVAL_BENDS)[number];
 
@@ -206,6 +211,9 @@ export const ovalWyeHash = (t: OvalWyeType = "y45") => (t !== "y45" ? `${SWFO_WY
 export const SWFO_CAP_3D_HASH = "#/single-wall-fittings/oval/3d/coupling";
 /** Deep link to one oval coupling / end type (PC is the default, so it gets the plain link). */
 export const ovalCapHash = (t: OvalCapType = "pc") => (t !== "pc" ? `${SWFO_CAP_3D_HASH}?type=${t}` : SWFO_CAP_3D_HASH);
+export const SWFO_OS_3D_HASH = "#/single-wall-fittings/oval/3d/offset";
+/** Deep link to one oval offset / square-to-oval type (OS is the default, so it gets the plain link). */
+export const ovalOsHash = (t: OvalOsType = "os") => (t !== "os" ? `${SWFO_OS_3D_HASH}?type=${t}` : SWFO_OS_3D_HASH);
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
@@ -303,6 +311,10 @@ function parse(hash: string): Route {
   if (h === SWFO_CAP_3D_HASH || h.startsWith(`${SWFO_CAP_3D_HASH}?`)) {
     const t = new URLSearchParams(h.slice(SWFO_CAP_3D_HASH.length + 1)).get("type")?.toLowerCase();
     return { page: "swfo-models", model3d: "cap", ovalCapType: OVAL_CAP_TYPES.find((x) => x === t) ?? "pc" };
+  }
+  if (h === SWFO_OS_3D_HASH || h.startsWith(`${SWFO_OS_3D_HASH}?`)) {
+    const t = new URLSearchParams(h.slice(SWFO_OS_3D_HASH.length + 1)).get("type")?.toLowerCase();
+    return { page: "swfo-models", model3d: "offset", ovalOsType: OVAL_OS_TYPES.find((x) => x === t) ?? "os" };
   }
   if (h === SWFO_MODELS_HASH) return { page: "swfo-models", model3d: null };
   if (h === SWF_OVAL_HASH) return { page: "swf-oval" };

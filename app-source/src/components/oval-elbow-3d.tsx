@@ -6,7 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { CONNECTIONS, flangeScrewCount, JOIN_LENGTH, samples, screwCount, screwMesh, screwScale, type BuiltConnection, type Connection } from "@/components/duct-connections";
 import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
-import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_RED_TYPES, OVAL_TEE_TYPES, OVAL_WYE_TYPES, OVAL_CAP_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalRedHash, ovalTeeHash, ovalWyeHash, ovalCapHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_RED_3D_HASH, SWFO_TEE_3D_HASH, SWFO_WYE_3D_HASH, SWFO_CAP_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalRedType, type OvalTeeType, type OvalWyeType, type OvalCapType } from "@/lib/route";
+import { OVAL_BENDS, OVAL_CTEE_TYPES, OVAL_ELBOW_TYPES, OVAL_LAT_TYPES, OVAL_LLTEE_TYPES, OVAL_RED_TYPES, OVAL_TEE_TYPES, OVAL_WYE_TYPES, OVAL_CAP_TYPES, OVAL_OS_TYPES, ovalCteeHash, ovalElbowHash, ovalLatHash, ovalLlteeHash, ovalMiterHash, ovalRedHash, ovalTeeHash, ovalWyeHash, ovalCapHash, ovalOsHash, SWFO_CTEE_3D_HASH, SWFO_ELBOW_3D_HASH, SWFO_LAT_3D_HASH, SWFO_LLTEE_3D_HASH, SWFO_MITER_3D_HASH, SWFO_RED_3D_HASH, SWFO_TEE_3D_HASH, SWFO_WYE_3D_HASH, SWFO_CAP_3D_HASH, SWFO_OS_3D_HASH, type OvalBend, type OvalCteeType, type OvalElbowType, type OvalLatType, type OvalLlteeType, type OvalRedType, type OvalTeeType, type OvalWyeType, type OvalCapType, type OvalOsType } from "@/lib/route";
 import { OVAL_MAJORS, OVAL_SIZES, ovalMinorsFor, ovalSize } from "@/lib/oval-sizes";
 
 /*
@@ -1719,6 +1719,265 @@ function buildOvalCap(type: OvalCapType, kit: Kit, sheet: THREE.Material, ref: M
   return { group, moving, screws };
 }
 
+/**
+ * Offset and Square-to-Round Transition (oval sheet 10), the round OS / SQ2RD's (sheet 12) build adapted to oval.
+ * OS: A x α both ends with 2" collars, a straight angled middle mitred at both ends shifting the centreline by the OFFSET
+ * (1" up to A, as the round card, assumed). The offset is across the minor α (assumed: the side view, as the reducer's,
+ * shows the minor upright, so the flat sides face up / down and the offset lifts the flat), L = A x 2 (A = the major)
+ * between the 2" collars, as the round card (overall L + 4"). Mitre centres α / 2 in from each end (the round card's
+ * radius, here the half-height in the bend plane, assumed).
+ * SQ2RD: a rectangular W x H end (W across, along the major; H upright, along the minor, as the end view) with a plain 2"
+ * collar (as the round card; the sheet draws a bar, no connection) to the oval A x α with its 2" collar, which takes the
+ * connection. Faces as the end view: each rectangle corner fans in flat triangles to its quarter of the oval's rounded
+ * end, a flat triangle on each short side to the rounded end's tip, a flat trapezoid on the long sides to the oval's flats.
+ * L by the table on its "A" = the larger of W or H minus the oval's major A (assumed; the sheet says "round diameter").
+ * W ≥ A and H ≥ α so the oval sits inside the rectangle on the end view (equal allowed: that face is flat in line).
+ */
+export const OVAL_OSS: Record<OvalOsType, { code: string; name: string; short: string }> = {
+  os: { code: "OS", name: "Offset", short: "Offset" },
+  sq2rd: { code: "SQ2RD", name: "Square to Oval Transition", short: "Sq → oval" },
+};
+/** Rectangular end sizes for SQ2RD: W from A, H from α, in 2" steps (assumed, as the round card's 2" steps) up to 48" past. */
+export const ovalRectWs = (A: number) => Array.from({ length: 25 }, (_, i) => Math.ceil(A / 2) * 2 + i * 2);
+export const ovalRectHs = (a: number) => Array.from({ length: 25 }, (_, i) => Math.ceil(a / 2) * 2 + i * 2);
+/** SQ2RD L by the sheet's table (3-8 -> 12, 9-14 -> 18, 15-26 -> 24, 27+ -> 36); below 3" (not on the table) 12, assumed. */
+export function ovalSq2rdL(diff: number) {
+  return { L: diff <= 8 ? 12 : diff <= 14 ? 18 : diff <= 26 ? 24 : 36, assumed: diff < 3 };
+}
+export function ovalOsDims(type: OvalOsType, main: OvalSz, offset: number, W: number, H: number) {
+  if (type === "os") return { type, L: 2 * main.A, offset, diff: 0, assumed: false };
+  const diff = Math.max(W, H) - main.A;
+  return { type, offset: 0, diff, ...ovalSq2rdL(diff) };
+}
+
+function buildOvalOffset(kit: Kit, offset: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const S = Math.min(220, 96 + Math.round(kit.perimeter(kit.R0) * 1.2));
+  const rib = Math.min(0.34, 0.04 + kit.eqD * 0.012);
+  const L = 2 * kit.A;
+  const s = kit.R0;
+  const X = new THREE.Vector3(1, 0, 0);
+  const Z = new THREE.Vector3(0, 0, 1);
+  const p1 = new THREE.Vector3(s, 0, 0);
+  const p2 = new THREE.Vector3(L - s, offset, 0);
+  const lm = p1.distanceTo(p2);
+  const m = p2.clone().sub(p1).normalize();
+  const up = new THREE.Vector3(-m.y, m.x, 0); // the middle's minor (upright) direction
+  const n = m.clone().add(X).normalize(); // both mitre planes' normal (the bend's bisector)
+  const cutX = (py: number) => (-n.y * py) / n.x;
+  const cutT = (py: number) => (-py * n.dot(up)) / n.dot(m);
+  const rows = 4;
+  const straight = (rho: number, side: 0 | 1) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= S; j++) {
+        const [py, pz, ny, nz] = kit.point(j / S, rho, kit.R0);
+        const xa = side === 0 ? 0 : L - s + cutX(py);
+        const xb = side === 0 ? s + cutX(py) : L;
+        const x = xa + ((xb - xa) * i) / rows;
+        pos.push(x, (side ? offset : 0) + py, pz);
+        nor.push(0, ny, nz);
+        uv.push(j / S, x / TEX_LENGTH);
+      }
+    }
+    return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  };
+  const middle = (rho: number) => {
+    const pos: number[] = [];
+    const nor: number[] = [];
+    const uv: number[] = [];
+    for (let i = 0; i <= rows; i++) {
+      for (let j = 0; j <= S; j++) {
+        const [py, pz, ny, nz] = kit.point(j / S, rho, kit.R0);
+        const t = cutT(py) + (lm * i) / rows;
+        const p = p1.clone().addScaledVector(m, t).addScaledVector(up, py);
+        pos.push(p.x, p.y, pz);
+        nor.push(up.x * ny, up.y * ny, nz);
+        uv.push(j / S, p.x / TEX_LENGTH);
+      }
+    }
+    return orientedGrid(pos, nor, uv, rows + 1, S + 1);
+  };
+  for (const [rho, mat] of [
+    [kit.R0, metal],
+    [kit.R0 - kit.wall, inside],
+  ] as const) {
+    group.add(new THREE.Mesh(straight(rho, 0), mat), new THREE.Mesh(middle(rho), mat), new THREE.Mesh(straight(rho, 1), mat));
+  }
+  // the two mitre seams (ovals on the cut planes), a little proud of the surface
+  const kr = kit.R0 + rib * 0.35;
+  for (const c of [p1, p2]) {
+    const curve = new FnCurve((t, v) => {
+      const [py, pz] = kit.point(t, kr);
+      return v.set(c.x + cutX(py), c.y + py, pz);
+    });
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, S, rib, 8, true), seam));
+  }
+  const fl = teeEndFrame(new THREE.Vector3(-COLLAR, 0, 0), X.clone().negate(), Z.clone());
+  fl.add(buildCollar(kit, style, mats, rib * 0.8, S));
+  const fr = teeEndFrame(new THREE.Vector3(L + COLLAR, offset, 0), X.clone(), Z.clone());
+  fr.add(buildCollar(kit, style, mats, rib * 0.8, S));
+  group.add(fl, fr);
+  return { group, ends: [fl, fr], kits: [kit, kit] };
+}
+
+const OSQ_FAN = 8;
+/** Square-to-oval surface (rectangle W x H at x = 0, H along y, W along z; the oval, end radius rho, at x = L) as flat triangles, flat shaded. */
+function sq2ovalGeo(W: number, H: number, F: number, rho: number, L: number) {
+  const P = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  const tris: THREE.Vector3[][] = [];
+  for (const sy of [1, -1]) {
+    for (const sz of [1, -1]) {
+      const corner = P(0, (sy * H) / 2, (sz * W) / 2);
+      const arc = (k: number) => {
+        const th = (k / OSQ_FAN) * (Math.PI / 2);
+        return P(L, sy * rho * Math.cos(th), sz * (F / 2 + rho * Math.sin(th)));
+      };
+      for (let k = 0; k < OSQ_FAN; k++) tris.push([corner, arc(k), arc(k + 1)]);
+    }
+    // long side (top / bottom): a flat trapezoid to the oval's flat
+    const a = P(0, (sy * H) / 2, -W / 2);
+    const b = P(0, (sy * H) / 2, W / 2);
+    const c = P(L, sy * rho, F / 2);
+    const d = P(L, sy * rho, -F / 2);
+    tris.push([a, b, c], [a, c, d]);
+  }
+  // short sides: a flat triangle to the rounded end's tip
+  for (const sz of [1, -1]) tris.push([P(0, H / 2, (sz * W) / 2), P(0, -H / 2, (sz * W) / 2), P(L, 0, sz * (F / 2 + rho))]);
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  for (const t of tris) {
+    let [p0, p1, p2] = t;
+    const c = p0.clone().add(p1).add(p2).divideScalar(3);
+    let nn = new THREE.Vector3().crossVectors(p1.clone().sub(p0), p2.clone().sub(p0));
+    if (nn.lengthSq() < 1e-10) continue; // degenerate (W = A or H = α edges)
+    nn.normalize();
+    // outward: away from the axis, towards the nearer flat / end
+    const out = new THREE.Vector3(0, c.y / Math.max(H / 2, 1e-6), Math.sign(c.z) * Math.max(0, Math.abs(c.z) - F / 2) / Math.max(W / 2, 1e-6));
+    if (out.lengthSq() < 1e-8) out.set(0, Math.sign(c.y) || 1, 0);
+    if (nn.dot(out) < 0) {
+      [p1, p2] = [p2, p1];
+      nn = nn.negate();
+    }
+    for (const p of [p0, p1, p2]) {
+      pos.push(p.x, p.y, p.z);
+      nor.push(nn.x, nn.y, nn.z);
+      uv.push((p.y + p.z) / TEX_LENGTH + 0.5, p.x / TEX_LENGTH);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  return g;
+}
+/** A rectangular tube (W across z, H along y) from x = x0 to x1, four flat sides, normals out. */
+function rectTubeGeo(W: number, H: number, x0: number, x1: number) {
+  const pos: number[] = [];
+  const nor: number[] = [];
+  const uv: number[] = [];
+  const quad = (a: THREE.Vector3, b: THREE.Vector3, nn: THREE.Vector3) => {
+    const pts = [a.clone().setX(x0), b.clone().setX(x0), b.clone().setX(x1), a.clone().setX(x0), b.clone().setX(x1), a.clone().setX(x1)];
+    const cr = new THREE.Vector3().crossVectors(pts[1].clone().sub(pts[0]), pts[2].clone().sub(pts[0]));
+    if (cr.dot(nn) < 0) {
+      [pts[1], pts[2]] = [pts[2], pts[1]];
+      [pts[4], pts[5]] = [pts[5], pts[4]];
+    }
+    for (const p of pts) {
+      pos.push(p.x, p.y, p.z);
+      nor.push(nn.x, nn.y, nn.z);
+      uv.push((p.y + p.z) / TEX_LENGTH + 0.5, p.x / TEX_LENGTH);
+    }
+  };
+  const c = (y: number, z: number) => new THREE.Vector3(0, y, z);
+  quad(c(H / 2, -W / 2), c(H / 2, W / 2), new THREE.Vector3(0, 1, 0));
+  quad(c(-H / 2, -W / 2), c(-H / 2, W / 2), new THREE.Vector3(0, -1, 0));
+  quad(c(-H / 2, W / 2), c(H / 2, W / 2), new THREE.Vector3(0, 0, 1));
+  quad(c(-H / 2, -W / 2), c(H / 2, -W / 2), new THREE.Vector3(0, 0, -1));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  return g;
+}
+function buildOvalSq2rd(kit: Kit, W: number, H: number, L: number, mats: Mats, style: EndStyle) {
+  const { metal, inside, seam } = mats;
+  const group = new THREE.Group();
+  const S = Math.min(220, 96 + Math.round(kit.perimeter(kit.R0) * 1.2));
+  const ribA = Math.min(0.34, 0.04 + kit.eqD * 0.012);
+  const big = Math.max(W, H);
+  const wall = Math.max(0.05, big * 0.006);
+  const rib = Math.min(0.34, 0.04 + big * 0.012);
+  group.add(new THREE.Mesh(sq2ovalGeo(W, H, kit.F, kit.R0, L), metal));
+  group.add(new THREE.Mesh(sq2ovalGeo(W - 2 * wall, H - 2 * wall, kit.F, kit.R0 - kit.wall, L), inside));
+  group.add(new THREE.Mesh(rectTubeGeo(W, H, -COLLAR, 0), metal));
+  group.add(new THREE.Mesh(rectTubeGeo(W - 2 * wall, H - 2 * wall, -COLLAR, 0), inside));
+  // the rectangular end's cut rim
+  const rimShape = new THREE.Shape([new THREE.Vector2(-W / 2, -H / 2), new THREE.Vector2(W / 2, -H / 2), new THREE.Vector2(W / 2, H / 2), new THREE.Vector2(-W / 2, H / 2)]);
+  rimShape.holes.push(
+    new THREE.Path([
+      new THREE.Vector2(-W / 2 + wall, -H / 2 + wall),
+      new THREE.Vector2(-W / 2 + wall, H / 2 - wall),
+      new THREE.Vector2(W / 2 - wall, H / 2 - wall),
+      new THREE.Vector2(W / 2 - wall, -H / 2 + wall),
+    ]),
+  );
+  const rimG = new THREE.ShapeGeometry(rimShape);
+  rimG.rotateY(-Math.PI / 2);
+  rimG.translate(-COLLAR, 0, 0);
+  group.add(new THREE.Mesh(rimG, metal));
+  // seam where the transition meets the rectangular collar, a little proud
+  const k = rib * 0.35;
+  const hh = H / 2 + k;
+  const ww = W / 2 + k;
+  const per = 2 * (hh + ww);
+  const rect = new FnCurve((t, v) => {
+    let d = (t % 1) * per * 2;
+    if (d < 2 * ww) return v.set(0, hh, -ww + d);
+    d -= 2 * ww;
+    if (d < 2 * hh) return v.set(0, hh - d, ww);
+    d -= 2 * hh;
+    if (d < 2 * ww) return v.set(0, -hh, ww - d);
+    d -= 2 * ww;
+    return v.set(0, -hh + d, -ww);
+  });
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(rect, 256, rib * 0.8, 6, true), seam));
+  // and where it meets the oval collar
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new kit.Loop(kit.R0 + ribA * 0.2, L), S, ribA * 0.8, 8, true), seam));
+  const f = teeEndFrame(new THREE.Vector3(L + COLLAR, 0, 0), new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 1));
+  f.add(buildCollar(kit, style, mats, ribA * 0.8, S));
+  group.add(f);
+  return { group, ends: [f] };
+}
+
+/** OS / SQ2RD connections: OS on both A x α ends (as the round OS); SQ2RD on the oval end only (the rectangular end stays a plain collar). */
+const OOS_CONNECTION_TEXT: Record<OvalOsType, Record<Exclude<Connection, "none">, { title: string; text: string }>> = {
+  os: {
+    coupling: {
+      title: "Coupling (slip joint)",
+      text: "On both A × α ends, as the round OS: each is crimped past the bead, the oval duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+    },
+    flange: {
+      title: "Flange",
+      text: "On both A × α ends, as the round OS: straight ends, no beads. A flange goes in each end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+    },
+  },
+  sq2rd: {
+    coupling: {
+      title: "Coupling (slip joint)",
+      text: "On the oval A × α end (the rectangular end is a plain collar, as the round SQ2RD): crimped past the bead, the oval duct slides over the crimp up to the bead and is screwed on. Shown pulled apart.",
+    },
+    flange: {
+      title: "Flange",
+      text: "On the oval A × α end (the rectangular end is a plain collar, as the round SQ2RD): straight end, no bead. A flange goes in the end; gasket and screws join it to the duct's flange. Shown pulled apart.",
+    },
+  },
+};
+
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((o) => {
     if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).geometry.dispose();
@@ -1748,8 +2007,8 @@ const CONNECTION_TEXT: Record<Exclude<Connection, "none">, { title: string; text
   },
 };
 
-type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; redType: OvalRedType; wyeType: OvalWyeType; capType: OvalCapType; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
-export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap";
+type Model = { type: OvalElbowType; bend: OvalBend; A: number; minor: number; teeType: OvalAnyTee; redType: OvalRedType; wyeType: OvalWyeType; capType: OvalCapType; osType: OvalOsType; offset: number; W: number; H: number; out: OvalSz; top: OvalSz; bottom: OvalSz | null };
+export type OvalElbowKind = "gored" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "os";
 const szKey = (s: OvalSz) => `${s.A}x${s.a}`;
 const szText = (s: OvalSz) => `${s.A}×${s.a}`;
 /** Chart sizes up to max (both axes; the outlet's A strictly smaller), largest first. */
@@ -1771,6 +2030,7 @@ export default function OvalElbow3D({
   redType: redType0 = "cr",
   wyeType: wyeType0 = "y45",
   capType: capType0 = "pc",
+  osType: osType0 = "os",
   onClose,
 }: {
   kind?: OvalElbowKind;
@@ -1780,6 +2040,7 @@ export default function OvalElbow3D({
   redType?: OvalRedType;
   wyeType?: OvalWyeType;
   capType?: OvalCapType;
+  osType?: OvalOsType;
   onClose: () => void;
 }) {
   const miter = kind === "miter";
@@ -1787,6 +2048,7 @@ export default function OvalElbow3D({
   const lltee = kind === "lltee";
   const olat = kind === "lat";
   const ocap = kind === "cap"; // couplings & ends: their own build with see-through duct / fittings / wall, Play puts the part on, no connection
+  const oos = kind === "os"; // offset / square-to-oval: their own build; OS connections on both ends, SQ2RD on the oval end
   const owye = kind === "wye"; // wyes: their own build, inlet A x α and RY45's B / C pickers, connections on all three ends
   const ored = kind === "red"; // reducers: their own build, the tees' outlet picker and connection on the outlet
   const tee = kind === "tee" || ctee || lltee || olat; // the conical, low-loss and lateral ones are the same fitting with other branches
@@ -1815,6 +2077,11 @@ export default function OvalElbow3D({
   const [wantWyeB, setWantWyeB] = useState<OvalSz>({ A: 21, a: 12 });
   const [wantWyeC, setWantWyeC] = useState<OvalSz>({ A: 18, a: 10 });
   const [capType, setCapType] = useState<OvalCapType>(capType0);
+  const [osType, setOsType] = useState<OvalOsType>(osType0);
+  // wanted OS offset and SQ2RD rectangle (snapped to what fits the oval below)
+  const [wantOffset, setWantOffset] = useState(8);
+  const [wantW, setWantW] = useState(36);
+  const [wantH, setWantH] = useState(20);
   const [connection, setConnection] = useState<Connection>("none");
   const [play, setPlay] = useState<PlayState>("idle");
   const [failed, setFailed] = useState(false);
@@ -2016,7 +2283,17 @@ export default function OvalElbow3D({
       }
       let built: { group: THREE.Group; ends: THREE.Group[] };
       let endKits: Kit[] | null = null;
-      if (owye) {
+      if (oos) {
+        // OS: from the front (the flat side faces up, so the offset reads as the side view); SQ2RD: from the oval end's side and above, so the fanned corners and flat panels read.
+        view = current.osType === "os" ? new THREE.Vector3(0.22, 0.3, 1) : new THREE.Vector3(0.85, 0.42, 0.75);
+        if (current.osType === "os") {
+          const o = buildOvalOffset(kit, current.offset, mats, style);
+          built = o;
+          endKits = o.kits;
+        } else {
+          built = buildOvalSq2rd(kit, current.W, current.H, ovalOsDims("sq2rd", { A, a: minor }, 0, current.W, current.H).L, mats, style);
+        }
+      } else if (owye) {
         const w = buildOvalWye(current.wyeType, { A, a: minor }, current.out, current.top, mats, style);
         built = w;
         endKits = w.kits;
@@ -2040,7 +2317,7 @@ export default function OvalElbow3D({
       screws = joints.flatMap((j) => j.screws.items);
       stopPlay();
       // Bottom end on the left, the other end out to the right, as drawn on the sheet (the miter is built that way round).
-      if (!miter && !tee && !ored && !owye) elbow.rotation.y = Math.PI;
+      if (!miter && !tee && !ored && !owye && !oos) elbow.rotation.y = Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -2050,7 +2327,11 @@ export default function OvalElbow3D({
       scale = A;
       renderer.domElement.setAttribute(
         "aria-label",
-        owye
+        oos
+          ? current.osType === "os"
+            ? `3D OS oval offset, ${A} by ${minor} inches, offset ${current.offset} inches across the minor. Drag to turn, pinch to zoom.`
+            : `3D SQ2RD square to oval transition, ${current.W} by ${current.H} inch rectangle to ${A} by ${minor} inch oval. Drag to turn, pinch to zoom.`
+          : owye
           ? `3D ${OVAL_WYES[current.wyeType].code} oval ${OVAL_WYES[current.wyeType].name.toLowerCase()}, inlet ${A} by ${minor} inches${current.wyeType === "ry45" ? `, legs ${current.out.A} by ${current.out.a} and ${current.top.A} by ${current.top.a}` : ""}. Drag to turn, pinch to zoom.`
           : ored
           ? `3D ${OVAL_REDS[current.redType].code} oval ${OVAL_REDS[current.redType].name.toLowerCase()}, ${A} by ${minor} to ${current.out.A} by ${current.out.a} inches. Drag to turn, pinch to zoom.`
@@ -2138,9 +2419,17 @@ export default function OvalElbow3D({
   // RY45 legs: B and C each up to A x α, at least one axis smaller (the reducer card's outlets); may differ.
   const wyeB = redOutList.length ? snapSz(wantWyeB, redOutList) : main;
   const wyeC = redOutList.length ? snapSz(wantWyeC, redOutList) : main;
-  const modelKey = ocap ? capType : owye ? `${wyeType}|${szKey(wyeB)}|${szKey(wyeC)}` : ored ? `${redType}|${szKey(redOut)}` : tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
+  // OS: offset 1" up to A (the round card's convention). SQ2RD: W from A, H from α up (the oval inside the rectangle).
+  const offsetList = Array.from({ length: A }, (_, k) => k + 1);
+  const osOffset = Math.min(Math.max(1, wantOffset), A);
+  const wList = ovalRectWs(A);
+  const hList = ovalRectHs(minor);
+  const snapN = (want: number, list: number[]) => list.reduce((b, x) => (Math.abs(x - want) < Math.abs(b - want) ? x : b), list[0]);
+  const rectW = snapN(wantW, wList);
+  const rectH = snapN(wantH, hList);
+  const modelKey = oos ? `${osType}|${osOffset}|${rectW}|${rectH}` : ocap ? capType : owye ? `${wyeType}|${szKey(wyeB)}|${szKey(wyeC)}` : ored ? `${redType}|${szKey(redOut)}` : tee ? `${teeType}|${szKey(out)}|${szKey(top)}|${bottom ? szKey(bottom) : ""}` : "";
   useEffect(() => {
-    api.current?.setModel({ type, bend, A, minor, teeType, redType, wyeType, capType, out: ored ? redOut : owye ? wyeB : out, top: owye ? wyeC : top, bottom });
+    api.current?.setModel({ type, bend, A, minor, teeType, redType, wyeType, capType, osType, offset: osOffset, W: rectW, H: rectH, out: ored ? redOut : owye ? wyeB : out, top: owye ? wyeC : top, bottom });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, bend, A, minor, modelKey]);
   useEffect(() => {
@@ -2148,7 +2437,9 @@ export default function OvalElbow3D({
   }, [connection]);
   // Keep the link in step with the type and bend shown (replace, so Back still closes the model).
   useEffect(() => {
-    const [prefix, hash] = ocap
+    const [prefix, hash] = oos
+      ? [SWFO_OS_3D_HASH, ovalOsHash(osType)]
+      : ocap
       ? [SWFO_CAP_3D_HASH, ovalCapHash(capType)]
       : owye
       ? [SWFO_WYE_3D_HASH, ovalWyeHash(wyeType)]
@@ -2163,7 +2454,7 @@ export default function OvalElbow3D({
       : tee
         ? [SWFO_TEE_3D_HASH, ovalTeeHash(teeType as OvalTeeType)] : miter ? [SWFO_MITER_3D_HASH, ovalMiterHash(bend)] : [SWFO_ELBOW_3D_HASH, ovalElbowHash(type, bend)];
     if (location.hash.startsWith(prefix)) history.replaceState(history.state, "", location.pathname + location.search + hash);
-  }, [type, bend, miter, tee, ctee, lltee, olat, ored, owye, ocap, teeType, redType, wyeType, capType]);
+  }, [type, bend, miter, tee, ctee, lltee, olat, ored, owye, ocap, oos, teeType, redType, wyeType, capType, osType]);
   useLayoutEffect(() => {
     const c = caption.current;
     const h = host.current;
@@ -2247,7 +2538,13 @@ export default function OvalElbow3D({
     of: `Drawn as the round start collar (assumed): a 2″ oval collar A × α (${szText(main)}) with a 1″ flange all round (${cd.fA}×${cd.fa}), screwed to a duct or plenum wall over the hole. Shown pulled apart.`,
     bm: `Ordered by A. Open intake: 3″ high, the collar A × α (${szText(main)}) on top, a smooth flare out to B × b = ${cd.B}×${cd.b} at the bottom (B = A + 4″; b = α + 4″ assumed). The duct slides over the collar.`,
   };
-  const title = ocap ? `${capSpec.name} (${capSpec.code})` : owye ? `${wyeSpec.name} (${wyeSpec.code})` : ored ? `${redSpec.name} (${redSpec.code})` : tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
+  const osSpec = OVAL_OSS[osType];
+  const od = ovalOsDims(osType, main, osOffset, rectW, rectH);
+  const osText =
+    osType === "os"
+      ? `A × α (${szText(main)}) both ends, 2″ collars. A straight angled middle, mitred at both ends, shifts the centreline ${osOffset}″ across the minor α (assumed, the flat side up). L = A × 2 = ${od.L}″ between the 2″ collars (overall ${od.L + 2 * COLLAR}″).`
+      : `Rectangular W × H (${rectW}×${rectH}, plain 2″ collar) to oval A × α (${szText(main)}, 2″ collar). Corners fan in flat triangles to the oval's rounded ends, flat panels to its flats. Table “A” = larger of W/H − A = ${od.diff}″, so L = ${od.L}″${od.assumed ? " (below 3″, assumed)" : ""}.`;
+  const title = oos ? `${osSpec.name} (${osSpec.code})` : ocap ? `${capSpec.name} (${capSpec.code})` : owye ? `${wyeSpec.name} (${wyeSpec.code})` : ored ? `${redSpec.name} (${redSpec.code})` : tee ? `${teeSpec.name} (${teeSpec.code})` : miter ? `${MITER_NAME} (${miterCode(hard)})` : `${spec.name} (${spec.code})`;
   const rNote = teeR > 0 ? `reducer R = ${teeR}″ (${teeR > OVAL_CR_TABLE_MAX ? "past the CR table, assumed" : "CR table"})` : "";
   const cone = "conical oval branch";
   const teeText: Record<OvalAnyTee, string> = {
@@ -2270,6 +2567,10 @@ export default function OvalElbow3D({
   };
   const info = ocap
     ? { title, text: capText[capType] }
+    : oos
+    ? connection !== "none"
+      ? OOS_CONNECTION_TEXT[osType][connection]
+      : { title, text: osText }
     : connection !== "none"
       ? owye
         ? OWYE_CONNECTION_TEXT[connection]
@@ -2295,7 +2596,7 @@ export default function OvalElbow3D({
         };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={ocap ? "Oval couplings and ends 3D model" : owye ? "Oval wyes 3D model" : ored ? "Oval reducers 3D model" : olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={oos ? "Oval offset and square-to-oval 3D model" : ocap ? "Oval couplings and ends 3D model" : owye ? "Oval wyes 3D model" : ored ? "Oval reducers 3D model" : olat ? "Oval laterals 3D model" : lltee ? "Oval low-loss tees and crosses 3D model" : ctee ? "Oval conical tees and crosses 3D model" : tee ? "Oval tees and crosses 3D model" : miter ? "Oval mitered elbow 3D model" : "Oval elbows 3D model"}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -2498,7 +2799,70 @@ export default function OvalElbow3D({
           )}
         </div>
       )}
-      {!miter && !tee && !ored && !owye && !ocap && (
+      {oos && (
+        <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2">
+          <div className="col-span-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Oval offset or transition type">
+            {OVAL_OS_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={osType === t}
+                aria-label={`${OVAL_OSS[t].name} (${OVAL_OSS[t].code})`}
+                onClick={() => setOsType(t)}
+                className="btn-raised btn-raised-sm flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-[0.65rem] px-1 font-display text-lg leading-none short:h-10"
+              >
+                {OVAL_OSS[t].code}
+                <span className="font-sans text-[10px] leading-none font-medium tracking-wider uppercase opacity-75">{OVAL_OSS[t].short}</span>
+              </button>
+            ))}
+          </div>
+          {osType === "os" ? (
+            <>
+              <label className="flex min-w-0 flex-col" data-testid="oval-os-sizes">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted">Offset</span>
+                <select
+                  value={osOffset}
+                  onChange={(e) => setWantOffset(Number(e.target.value))}
+                  aria-label="Offset"
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {offsetList.map((d) => (
+                    <option key={d} value={d}>
+                      {d}&Prime;
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="self-center text-xs leading-snug text-muted">1″ up to A, across α</p>
+            </>
+          ) : (
+            (
+              [
+                ["w", "W · across", rectW, wList, setWantW, "W (width, along the major A; at least A)"],
+                ["h", "H · height", rectH, hList, setWantH, "H (height, along the minor α; at least α)"],
+              ] as const
+            ).map(([id, label, cur, list, set, aria]) => (
+              <label key={id} className="flex min-w-0 flex-col" data-testid="oval-os-sizes">
+                <span className="truncate text-[11px] font-medium tracking-wide text-muted">{label}</span>
+                <select
+                  value={cur}
+                  onChange={(e) => set(Number(e.target.value))}
+                  aria-label={`Size ${aria}`}
+                  className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
+                >
+                  {list.map((d) => (
+                    <option key={d} value={d}>
+                      {d}&Prime;
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))
+          )}
+        </div>
+      )}
+      {!miter && !tee && !ored && !owye && !ocap && !oos && (
         <div className="grid grid-cols-4 gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Oval elbow type">
           {OVAL_ELBOW_TYPES.map((t) => (
             <button
@@ -2516,7 +2880,7 @@ export default function OvalElbow3D({
           ))}
         </div>
       )}
-      {!tee && !ored && !owye && !ocap && (
+      {!tee && !ored && !owye && !ocap && !oos && (
       <div className="grid grid-cols-3 items-center gap-2 bg-surface/90 px-3 pt-2" role="radiogroup" aria-label="Bend">
         <span className="text-[11px] leading-tight font-medium tracking-wide text-muted uppercase">
           Bend
@@ -2604,7 +2968,18 @@ export default function OvalElbow3D({
         </label>
         <div className="min-w-0 flex-1 text-xs leading-snug text-ink" data-testid="oval-elbow-info">
           <p className="truncate">
-            {ocap ? (
+            {oos ? (
+              osType === "os" ? (
+                <>
+                  L <b className="font-semibold">{od.L}&Prime;</b> · offset <b className="font-semibold">{osOffset}&Prime;</b> · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+                </>
+              ) : (
+                <>
+                  L <b className="font-semibold">{od.L}&Prime;</b>
+                  {od.assumed ? "*" : ""} · {rectW}×{rectH} · <b className="font-semibold">{size?.gauge ?? "–"} ga</b>
+                </>
+              )
+            ) : ocap ? (
               <>
                 {capType === "bm" ? (
                   <>
@@ -2660,7 +3035,9 @@ export default function OvalElbow3D({
               </>
             )}
           </p>
-          <p className="truncate text-muted">Gauge assumed (oval chart{ored || owye ? ", inlet" : tee ? ", main" : ""})</p>
+          <p className="truncate text-muted" data-testid={oos && osType === "sq2rd" ? "oval-sq2rd-note" : undefined}>
+            {oos && osType === "sq2rd" ? `“A” ${Math.max(rectW, rectH)}−${A} = ${od.diff}″${od.assumed ? " *" : ""}` : `Gauge assumed (oval chart${ored || owye ? ", inlet" : tee ? ", main" : ""})`}
+          </p>
         </div>
         <button
           type="button"

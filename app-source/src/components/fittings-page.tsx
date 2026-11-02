@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Box, ChevronLeft } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
-import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType, OvalLatType, OvalRedType, OvalWyeType, OvalCapType } from "@/lib/route";
+import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType, OvalLatType, OvalRedType, OvalWyeType, OvalCapType, OvalOsType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -268,7 +268,7 @@ export function FittingsPage({
   );
 }
 
-/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows, sheet 3: Tees and Crosses, sheet 4: Conical Tees and Conical Crosses, sheet 5: Low-Loss Tees and Crosses, sheet 6: Laterals, sheet 7: Concentric and Eccentric Reducer, sheet 8: Wye and Reducing Wye, sheet 9: Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth); more cards get added as the oval sheets come in. */
+/** Oval fittings shown on the oval models page (sheet 1: Elbows, sheet 2: Mitered Elbows, sheet 3: Tees and Crosses, sheet 4: Conical Tees and Conical Crosses, sheet 5: Low-Loss Tees and Crosses, sheet 6: Laterals, sheet 7: Concentric and Eccentric Reducer, sheet 8: Wye and Reducing Wye, sheet 9: Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth, sheet 10: Offset and Square-to-Round Transition); more cards get added as the oval sheets come in. */
 const OVAL_FITTINGS = [
   {
     id: "elbow",
@@ -324,6 +324,12 @@ const OVAL_FITTINGS = [
     text: "PC / FC couplings · OEC end cap · OF flange · BM bell mouth · A × α, shown on see-through oval duct",
     source: "Pipe Coupling and Fitting Coupling, End Cap, Start Collar, End Cap/Plug, Bellmouth",
   },
+  {
+    id: "offset",
+    name: "Oval Offset & Square-to-Oval",
+    text: "OS offset A × α, L = A × 2 · SQ2RD rectangular W × H to oval A × α, corners fanned · 2″ collars",
+    source: "Offset and Square-to-Round Transition · L from the table",
+  },
 ] as const;
 
 /**
@@ -341,11 +347,12 @@ export function OvalFittingsPage({
   redType,
   wyeType,
   capType,
+  osType,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
-  model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | null;
+  model3d: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset" | null;
   elbowType?: OvalElbowType;
   bend?: OvalBend;
   teeType?: OvalTeeType;
@@ -355,8 +362,9 @@ export function OvalFittingsPage({
   redType?: OvalRedType;
   wyeType?: OvalWyeType;
   capType?: OvalCapType;
+  osType?: OvalOsType;
   onBack: () => void;
-  onOpen3d: (id: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap") => void;
+  onOpen3d: (id: "elbow" | "miter" | "tee" | "ctee" | "lltee" | "lat" | "red" | "wye" | "cap" | "offset") => void;
   onClose3d: () => void;
 }) {
   return (
@@ -388,7 +396,7 @@ export function OvalFittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} cross={f.id === "tee" || f.id === "ctee" || f.id === "lltee"} conical={f.id === "ctee"} lowLoss={f.id === "lltee"} lateral={f.id === "lat"} red={f.id === "red"} wye={f.id === "wye"} cap={f.id === "cap"} />
+                <DuctElbowIcon className="h-12 w-auto" innerWall={false} gores={f.id === "elbow"} miter={f.id === "miter"} cross={f.id === "tee" || f.id === "ctee" || f.id === "lltee"} conical={f.id === "ctee"} lowLoss={f.id === "lltee"} lateral={f.id === "lat"} red={f.id === "red"} wye={f.id === "wye"} cap={f.id === "cap"} os={f.id === "offset"} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -423,13 +431,14 @@ export function OvalFittingsPage({
           fallback={<div className="fixed inset-0 z-50 grid place-items-center bg-[#dfe5eb]/95 font-display text-lg text-accent">Loading 3D model…</div>}
         >
           <OvalElbow3D
-            key={`o${model3d}-${elbowType}-${bend}-${teeType}-${cteeType}-${llteeType}-${latType}-${redType}-${wyeType}-${capType}`}
-            kind={model3d === "miter" ? "miter" : model3d === "tee" ? "tee" : model3d === "ctee" ? "ctee" : model3d === "lltee" ? "lltee" : model3d === "lat" ? "lat" : model3d === "red" ? "red" : model3d === "wye" ? "wye" : model3d === "cap" ? "cap" : "gored"}
+            key={`o${model3d}-${elbowType}-${bend}-${teeType}-${cteeType}-${llteeType}-${latType}-${redType}-${wyeType}-${capType}-${osType}`}
+            kind={model3d === "miter" ? "miter" : model3d === "tee" ? "tee" : model3d === "ctee" ? "ctee" : model3d === "lltee" ? "lltee" : model3d === "lat" ? "lat" : model3d === "red" ? "red" : model3d === "wye" ? "wye" : model3d === "cap" ? "cap" : model3d === "offset" ? "os" : "gored"}
             type={elbowType ?? "90hb5"}
             bend={bend ?? "hard"}
             redType={redType ?? "cr"}
             wyeType={wyeType ?? "y45"}
             capType={capType ?? "pc"}
+            osType={osType ?? "os"}
             teeType={model3d === "ctee" ? (cteeType ?? "oct90") : model3d === "lltee" ? (llteeType ?? "ot90-l") : model3d === "lat" ? (latType ?? "ol45") : (teeType ?? "0t90")}
             onClose={onClose3d}
           />
