@@ -8,8 +8,8 @@ import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, dwElbowHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
-import { DW_ROUND_DOC, SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, dwElbowHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
+import { DW_ROUND_DOC, DWF_ROUND_DOC, SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
   return <DuctElbowIcon className={className} innerWall={false} />;
@@ -29,6 +29,7 @@ function pageFor(group: HomeButtonId, shape: Shape) {
   if (group === "single-fitting" && shape === "Round") return SWF_ROUND_HASH;
   if (group === "single-fitting" && shape === "Oval") return SWF_OVAL_HASH;
   if (group === "double-duct" && shape === "Round") return DW_ROUND_HASH;
+  if (group === "double-fitting" && shape === "Round") return DWF_ROUND_HASH;
   return null;
 }
 
@@ -66,18 +67,31 @@ export default function App() {
     );
   }
   if (route.page === "dw-round") {
-    // Double Wall Duct · Round: same sheet page as Single Wall Round; two 3D models, the double wall pipe and the gored elbows (sheet 4).
+    // Double Wall Duct · Round: same sheet page as Single Wall Round; View 3D Model opens the double wall pipe.
     return (
       <SheetPage
         key="dw-round"
         doc={DW_ROUND_DOC}
         model3d={route.model3d}
         dw={{ type: route.dwType, ins: route.dwIns, conn: route.dwConn }}
-        dwElbow={route.dwElbow}
         onBack={() => goBack("")}
         onOpen3d={() => navigate(dwRoundHash())}
-        onOpenElbow={() => navigate(dwElbowHash())}
         onClose3d={() => goBack(DW_ROUND_HASH)}
+      />
+    );
+  }
+  if (route.page === "dwf-round") {
+    // Double Wall Fittings · Round: same sheet page as the other fittings; one model so far (the gored elbows), so View
+    // 3D Model opens it directly and Close comes back here.
+    return (
+      <SheetPage
+        key="dwf-round"
+        doc={DWF_ROUND_DOC}
+        model3d={route.model3d}
+        dwElbow={route.dwElbow}
+        onBack={() => goBack("")}
+        onOpen3d={() => navigate(dwElbowHash())}
+        onClose3d={() => goBack(DWF_ROUND_HASH)}
       />
     );
   }

@@ -323,12 +323,12 @@ export const SWF_ROUND_SHEETS = [
 
 // Double Wall Duct · Round: Brent's sheet 1 "Stock Pipe and Fittings" (Double Wall Round Spiral Pipe and Fittings
 // Construction), sheet 2 "Positive Pressure Gauges" (galvanized / paint grade / stainless gauge tables) and sheet 3
-// "Aluminum Gauges" (aluminum 3003-H14), sheets only, no 3D model; and sheet 4 "Gored Elbows" (DE90 / DE60 / DE45 /
-// DE30, its own 3D model). All kept as sent. The PDF is the four images, one per letter page, pixels unchanged (lossless).
+// "Aluminum Gauges" (aluminum 3003-H14); sheets 2 and 3 are sheets only, no 3D model. All kept as sent. The PDF is
+// the three images, one per letter page, pixels unchanged (lossless).
 export const DW_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Duct.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Duct.pdf",
-  sizeLabel: "5.4 MB",
+  sizeLabel: "4.3 MB",
 };
 
 export const DW_ROUND_SHEETS = [
@@ -356,13 +356,25 @@ export const DW_ROUND_SHEETS = [
     h: 1491,
     alt: "Sheet 3, Double Wall Round Spiral Duct Construction Standards, aluminum 3003-H14. Gauges by inner diameter, spiral pipe / fittings, I.D. gauges at +2 inch W.G. and O.D. gauges at -2 inch W.G. (the same values on both sides): 3 to 8 inch, .025 / .032 inch; 9 to 14 inch, .025 / .032; 15 to 26 inch, .032 / .040; 27 to 36 inch, .040 / .050; 37 to 50 inch, .050 / .063; 51 to 60 inch, .063 / .071; 61 to 84 inch, spiral pipe NA, fittings .090. NA: not available or not assigned.",
   },
+] as const;
+
+// Double Wall Fittings · Round: Brent's sheet "Gored Elbows" (DE90 / DE60 / DE45 / DE30; its own 3D model), kept as
+// sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
+export const DWF_ROUND_PDF = {
+  href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
+  fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
+  sizeLabel: "1.1 MB",
+};
+
+export const DWF_ROUND_SHEETS = [
   {
-    n: 4,
+    n: 1,
     title: "Gored Elbows",
-    src: `${base}sheets/double-wall-round-4.webp`,
+    src: `${base}sheets/double-wall-round-fittings-1.webp`,
     w: 1122,
     h: 1402,
-    alt: "Sheet 4, Double Wall Round, Gored Elbows: DE90, 90 degree 5-piece elbow; DE60, 60 degree 3-piece elbow; DE45, 45 degree 3-piece elbow; DE30, 30 degree 2-piece elbow. Each drawn with its outer shell in blue and the inner liner dashed in red, the inner collar sticking out past the outer shell at both ends, A dimensioned across the end, 2 inch end dimensions, and R the radius. Standard center line radius equals 1-1/2 times diameter, R = 1.5 x A.",
+    alt: "Double Wall Round Fittings, Gored Elbows: DE90, 90 degree 5-piece elbow; DE60, 60 degree 3-piece elbow; DE45, 45 degree 3-piece elbow; DE30, 30 degree 2-piece elbow. Each drawn with its outer shell in blue and the inner liner dashed in red, the inner collar sticking out past the outer shell at both ends, A dimensioned across the end, 2 inch end dimensions, and R the radius. Standard center line radius equals 1-1/2 times diameter, R = 1.5 x A.",
   },
 ] as const;
 
@@ -375,7 +387,7 @@ export type SheetDoc = {
   sheets: readonly { n: number; title: string; src: string; w: number; h: number; alt: string }[];
   pdf: { href: string; fileName: string; sizeLabel: string };
   /** Which 3D model "View 3D Model" opens ("fittings": the list of fitting models); null = not built yet ("Coming soon"). */
-  model: "round" | "oval" | "fittings" | "dw-round" | null;
+  model: "round" | "oval" | "fittings" | "dw-round" | "dw-fittings" | null;
 };
 
 export const SW_ROUND_DOC: SheetDoc = {
@@ -412,15 +424,23 @@ export const SWF_OVAL_DOC: SheetDoc = {
 
 export const DW_ROUND_DOC: SheetDoc = {
   title: "DOUBLE WALL ROUND",
-  subtitle: `Pipe & fittings · ${sheetCount(DW_ROUND_SHEETS.length)}`,
+  subtitle: `Spiral pipe · ${sheetCount(DW_ROUND_SHEETS.length)}`,
   sheets: DW_ROUND_SHEETS,
   pdf: DW_ROUND_PDF,
   model: "dw-round",
 };
 
+export const DWF_ROUND_DOC: SheetDoc = {
+  title: "DOUBLE WALL ROUND",
+  subtitle: `Fittings · ${sheetCount(DWF_ROUND_SHEETS.length)}`,
+  sheets: DWF_ROUND_SHEETS,
+  pdf: DWF_ROUND_PDF,
+  model: "dw-fittings",
+};
+
 /**
- * Double wall fittings gauges (sheet 2, +2" W.G. galvanized, fittings column, by inner diameter): the inner liner (I.D.)
- * and the outer shell (O.D.) are the same gauge up to 60". Used by the double wall gored elbow model.
+ * Double wall fittings gauges (Double Wall Duct sheet 2, +2" W.G. galvanized, fittings column, by inner diameter): the
+ * inner liner (I.D.) and the outer shell (O.D.) are the same gauge up to 60". Used by the double wall gored elbow model.
  */
 export function dwFittingGauge(id: number) {
   return id <= 14 ? 26 : id <= 26 ? 24 : id <= 36 ? 22 : id <= 50 ? 20 : 18;

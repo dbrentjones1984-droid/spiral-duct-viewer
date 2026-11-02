@@ -38,19 +38,16 @@ export function SheetPage({
   dwElbow,
   onBack,
   onOpen3d,
-  onOpenElbow,
   onClose3d,
 }: {
   doc: SheetDoc;
   model3d: boolean;
   /** Double wall pipe model: type, insulation and connection it opens on (from the deep link). */
   dw?: { type: DwType; ins: DwIns; conn: DwConn };
-  /** Double wall gored elbow model open (instead of the pipe), and what it opens on (from the deep link). */
-  dwElbow?: { type: DwElbowType; shells: DwType; ins: DwIns; conn: DwElbowConn };
+  /** Double wall fittings: what the gored elbow model opens on (from the deep link). */
+  dwElbow?: { type: DwElbowType; ins: DwIns; conn: DwElbowConn };
   onBack: () => void;
   onOpen3d: () => void;
-  /** Second model button (Double Wall Round: the gored elbows, sheet 4); with it the button row has three columns. */
-  onOpenElbow?: () => void;
   onClose3d: () => void;
 }) {
   const [zoomIdx, setZoomIdx] = useState(0);
@@ -180,82 +177,51 @@ export function SheetPage({
             <HomeButton />
           </div>
         </header>
-        {onOpenElbow && doc.model ? (
-          // Two models (pipe + gored elbows) and the PDF: three compact buttons, each with a small label line.
-          <div className="grid grid-cols-3 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[27rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
-            {(
-              [
-                { label: "Pipe", aria: "View 3D Model: Pipe", open: onOpen3d },
-                { label: "Elbows", aria: "View 3D Model: Gored Elbows", open: onOpenElbow },
-              ] as const
-            ).map((b) => (
-              <button
-                key={b.label}
-                type="button"
-                onClick={b.open}
-                aria-haspopup="dialog"
-                aria-label={b.aria}
-                className="btn-raised btn-raised-sm btn-primary flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-[0.65rem] px-1.5 font-display text-lg leading-none short:h-10"
-              >
-                <Box className="size-5 shrink-0" />
-                <span className="flex min-w-0 flex-col items-start">
-                  <span className="font-sans text-[10px] font-medium tracking-wider text-white/80 uppercase">3D Model</span>
-                  {b.label}
-                </span>
-              </button>
-            ))}
-            <a
-              href={doc.pdf.href}
-              download={doc.pdf.fileName}
-              aria-label={`Download PDF, ${doc.pdf.sizeLabel}`}
-              className="btn-raised btn-raised-sm flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-[0.65rem] px-1.5 font-display text-lg leading-none short:h-10"
+        <div className="grid grid-cols-2 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[23rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
+          {doc.model ? (
+            <button
+              type="button"
+              onClick={onOpen3d}
+              aria-haspopup="dialog"
+              className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
             >
-              <Download className="size-5 shrink-0" />
-              <span className="flex min-w-0 flex-col items-start">
-                PDF
-                <span className="font-sans text-[10px] font-medium whitespace-nowrap text-muted">{doc.pdf.sizeLabel}</span>
-              </span>
-            </a>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 bg-paper px-3 pt-2.5 pb-3.5 short:w-[23rem] short:shrink-0 short:bg-accent short:py-2 short:pr-[max(0.75rem,env(safe-area-inset-right))]">
-            {doc.model ? (
-              <button
-                type="button"
-                onClick={onOpen3d}
-                aria-haspopup="dialog"
-                className="btn-raised btn-raised-sm btn-primary flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
-              >
-                <Box className="size-5 shrink-0" />
-                View 3D Model
-              </button>
-            ) : (
-              // Spot kept for the 3D model (not built yet): same size and place as View 3D Model, dashed and inactive.
-              <div
-                role="note"
-                aria-label="3D model coming soon"
-                className="flex h-12 items-center justify-center gap-2 rounded-[0.65rem] border-2 border-dashed border-[#8e9bab] bg-surface/60 font-display text-lg leading-none text-muted short:h-10"
-              >
-                <Box className="size-5 shrink-0" />
+              <Box className="size-5 shrink-0" />
+              {doc.model === "dw-fittings" ? (
+                // Double Wall Fittings has one model so far (the gored elbows), so the button opens it directly.
                 <span className="flex flex-col items-start">
-                  3D Model
-                  <span className="font-sans text-[10px] font-medium tracking-wider uppercase">Coming soon</span>
+                  View 3D Model
+                  <span className="font-sans text-[10px] font-medium tracking-wider text-white/80 uppercase">Gored Elbows</span>
                 </span>
-              </div>
-            )}
-            <a
-              href={doc.pdf.href}
-              download={doc.pdf.fileName}
-              className="btn-raised btn-raised-sm flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
+              ) : (
+                "View 3D Model"
+              )}
+            </button>
+          ) : (
+            // Spot kept for the 3D model (not built yet): same size and place as View 3D Model, dashed and inactive.
+            <div
+              role="note"
+              aria-label="3D model coming soon"
+              className="flex h-12 items-center justify-center gap-2 rounded-[0.65rem] border-2 border-dashed border-[#8e9bab] bg-surface/60 font-display text-lg leading-none text-muted short:h-10"
             >
-              <Download className="size-5 shrink-0" />
+              <Box className="size-5 shrink-0" />
               <span className="flex flex-col items-start">
-                Download PDF
-                <span className="font-sans text-[10px] font-medium text-muted">{doc.pdf.sizeLabel}</span>
+                3D Model
+                <span className="font-sans text-[10px] font-medium tracking-wider uppercase">Coming soon</span>
               </span>
-            </a>
-          </div>
-        )}
+            </div>
+          )}
+          <a
+            href={doc.pdf.href}
+            download={doc.pdf.fileName}
+            className="btn-raised btn-raised-sm flex h-12 items-center justify-center gap-2 rounded-[0.65rem] font-display text-lg leading-none short:h-10"
+          >
+            <Download className="size-5 shrink-0" />
+            <span className="flex flex-col items-start">
+              Download PDF
+              <span className="font-sans text-[10px] font-medium text-muted">{doc.pdf.sizeLabel}</span>
+            </span>
+          </a>
+        </div>
       </div>
 
       {/* At Fit nothing is wider than the screen, so this is not a scroll box then (the page-level snap needs that). */}
@@ -344,8 +310,8 @@ export function SheetPage({
         >
           {doc.model === "oval" ? (
             <OvalPipe3D onClose={onClose3d} />
-          ) : doc.model === "dw-round" && dwElbow ? (
-            <DoubleWallElbow3D onClose={onClose3d} initialType={dwElbow.type} initialShells={dwElbow.shells} initialIns={dwElbow.ins} initialConn={dwElbow.conn} />
+          ) : doc.model === "dw-fittings" ? (
+            <DoubleWallElbow3D onClose={onClose3d} initialType={dwElbow?.type ?? "de90"} initialIns={dwElbow?.ins ?? 1} initialConn={dwElbow?.conn ?? "slip"} />
           ) : doc.model === "dw-round" ? (
             <DoubleWallPipe3D onClose={onClose3d} initialType={dw?.type ?? "ss"} initialIns={dw?.ins ?? 1} initialConn={dw?.conn ?? "coupling"} />
           ) : (

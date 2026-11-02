@@ -17,24 +17,21 @@ import {
   FLANGE_T,
   flatRing,
   GASKET_T,
-  PERF_TILE,
-  perfTexture,
   ringSector,
   SCREW_TURNS,
   segsFor,
   STEP_PAUSE_MS,
-  TYPE_LABEL,
   type DwMats,
 } from "@/components/double-wall-pipe-3d";
-import { DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, dwElbowHash, type DwElbowConn, type DwElbowType, type DwIns, type DwType } from "@/lib/route";
+import { DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, dwElbowHash, type DwElbowConn, type DwElbowType, type DwIns } from "@/lib/route";
 import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
 
 /*
- * Interactive 3D model of the double wall round gored elbows (Double Wall Duct > Round, Brent's sheet 4): DE90 90°
+ * Interactive 3D model of the double wall round gored elbows (Double Wall Fittings > Round, Brent's Gored Elbows sheet): DE90 90°
  * 5-piece, DE60 60° 3-piece, DE45 45° 3-piece and DE30 30° 2-piece. Same gores as the single wall gored elbow
  * (gored-elbow-3d: end gores tangent at the ends of the turn, middle gores at their middle, a raised seam at each
  * joint), drawn twice: the inner liner at the inside diameter A and the outer shell at A + 2 x insulation, with the
- * insulation between (1", 2" or 3"; Solid / Solid or Solid / Perforated liner, as the double wall pipe). Exterior only,
+ * insulation between (1", 2" or 3"). Fittings always have a solid liner (Brent: no perforated option). Exterior only,
  * no cutaway (Brent: the fittings do not show the cut out). Each end has a 2" outer collar, and the inner collar sticks
  * out 2" past it.
  * Connections (Brent): Slip Joint works as the single wall one, inner first, then outer: a 12" piece of double wall
@@ -43,7 +40,7 @@ import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
  * the other flanges (the double wall pipe's: one flange ring caps each end, gasket between, screws through both).
  * Assumptions (flagged * in the UI): A is the inside diameter, R = 1.5 x A on the centerline; outer = A + 2 x
  * insulation; gauges from sheet 2 (+2" W.G. fittings column, same for liner and shell); both collars crimped for the
- * slip joint, the collars solid on a perforated elbow; at a flange the liner runs flush to the flange (no 2" stick-out).
+ * slip joint; at a flange the liner runs flush to the flange (no 2" stick-out).
  * Units are inches.
  */
 
@@ -101,7 +98,7 @@ function endFrame(end: 0 | 1, theta: number, R: number, out: number) {
 
 type ElbowMats = {
   outer: Mats; // outer shell + outer collars: metal, inside, seam (gore UVs)
-  liner: THREE.Material; // liner gores (solid or perforated, gore UVs)
+  liner: THREE.Material; // liner gores (solid, gore UVs)
   collar: Mats; // inner collars (solid)
   insul: THREE.Material;
   insulCut: THREE.Material;
@@ -109,12 +106,11 @@ type ElbowMats = {
 };
 
 /**
- * The elbow: outer gores (with the joint seams) and the liner gores, the insulation's inner face behind a perforated
- * liner, and the two ends. Ends (end frame): None / Slip Joint: outer collar x = -4..-2 (beaded / crimped), inner
+ * The elbow: outer gores (with the joint seams) and the (solid) liner gores, and the two ends. Ends (end frame): None / Slip Joint: outer collar x = -4..-2 (beaded / crimped), inner
  * collar -2..0 (plain / crimped) with the liner carried on through the outer collar, insulation face at x = -2.
  * Flange: both collars plain, x = -2..0, capped by the flange ring at the face (x = -FLANGE_T..0).
  */
-function buildDwElbow(A: number, t: number, kind: DwElbowType, conn: DwElbowConn, perf: boolean, m: ElbowMats) {
+function buildDwElbow(A: number, t: number, kind: DwElbowType, conn: DwElbowConn, m: ElbowMats) {
   const group = new THREE.Group();
   const { angle, pieces } = ELBOW[kind];
   const theta = angle * DEG;
@@ -136,7 +132,6 @@ function buildDwElbow(A: number, t: number, kind: DwElbowType, conn: DwElbowConn
     const gore = (rr: number, mat: THREE.Material) => group.add(new THREE.Mesh(piece(tk, R, rr, miter(tk, a0, R, rr), miter(tk, a1, R, rr), vBase, radial), mat));
     gore(ro, m.outer.metal);
     gore(ri, m.liner);
-    if (perf) gore(ri + w * 0.6, m.insul); // seen through the perforations
     vBase += 2 * R * Math.tan((a1 - a0) / 2) + 3;
   });
   for (let k = 1; k < seams.length - 1; k++) {
@@ -174,20 +169,18 @@ function buildDwElbow(A: number, t: number, kind: DwElbowType, conn: DwElbowConn
 export default function DoubleWallElbow3D({
   onClose,
   initialType = "de90",
-  initialShells = "ss",
   initialIns = 1,
   initialConn = "slip",
 }: {
   onClose: () => void;
   initialType?: DwElbowType;
-  initialShells?: DwType;
   initialIns?: DwIns;
   initialConn?: DwElbowConn;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const caption = useRef<HTMLDivElement>(null);
   const api = useRef<{
-    set: (d: number, t: DwIns, shells: DwType, kind: DwElbowType, c: DwElbowConn) => void;
+    set: (d: number, t: DwIns, kind: DwElbowType, c: DwElbowConn) => void;
     setTopInset: (px: number) => void;
     reset: () => void;
     play: () => void;
@@ -195,7 +188,6 @@ export default function DoubleWallElbow3D({
   const [play, setPlay] = useState<PlayState>("idle");
   const [diameter, setDiameter] = useState(12);
   const [kind, setKind] = useState<DwElbowType>(initialType);
-  const [shells, setShells] = useState<DwType>(initialShells);
   const [ins, setIns] = useState<DwIns>(initialIns);
   const [connection, setConnection] = useState<DwElbowConn>(initialConn);
   const [step, setStep] = useState(0);
@@ -207,13 +199,12 @@ export default function DoubleWallElbow3D({
 
   // Follow a deep link change (back / forward).
   useEffect(() => setKind(initialType), [initialType]);
-  useEffect(() => setShells(initialShells), [initialShells]);
   useEffect(() => setIns(initialIns), [initialIns]);
   useEffect(() => setConnection(initialConn), [initialConn]);
   // Keep the address on what is shown (replace, so the back button still closes the model).
   useEffect(() => {
-    if (location.hash.startsWith(DW_ELBOW_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwElbowHash(kind, shells, ins, connection));
-  }, [kind, shells, ins, connection]);
+    if (location.hash.startsWith(DW_ELBOW_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwElbowHash(kind, ins, connection));
+  }, [kind, ins, connection]);
 
   useEffect(() => {
     const el = host.current!;
@@ -244,36 +235,26 @@ export default function DoubleWallElbow3D({
 
     // Elbow: the single wall gored elbow's materials (UVs around 0..1, along / TEX_LENGTH).
     const spangleE = spangleTexture();
-    const perfE = perfTexture();
     const metalE = new THREE.MeshStandardMaterial({ color: 0xffffff, map: spangleE, metalness: 0.82, roughness: 0.36, envMapIntensity: 0.95 });
     const seamE = new THREE.MeshStandardMaterial({ color: 0xd4d9de, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.05 });
     const insideE = new THREE.MeshStandardMaterial({ color: 0x9aa3ac, metalness: 0.7, roughness: 0.5, side: THREE.BackSide, envMapIntensity: 0.6 });
     const collarE = new THREE.MeshStandardMaterial({ color: 0xdfe3e7, map: spangleE, metalness: 0.8, roughness: 0.4, envMapIntensity: 0.85 });
     const linerE = new THREE.MeshStandardMaterial({ color: 0xb4bcc4, map: spangleE, metalness: 0.75, roughness: 0.45, envMapIntensity: 0.7, side: THREE.DoubleSide });
-    const linerEPerf = linerE.clone();
-    linerEPerf.alphaMap = perfE;
-    linerEPerf.alphaTest = 0.5;
-    linerEPerf.alphaToCoverage = true;
     // Duct piece: the double wall pipe's materials (UVs in inches).
     const spangle = spangleTexture();
     spangle.repeat.set(1 / 10, 1 / 10);
     const fiber = fiberTexture();
-    const perf = perfTexture();
     const outer = new THREE.MeshStandardMaterial({ color: 0xffffff, map: spangle, metalness: 0.82, roughness: 0.36, envMapIntensity: 0.95, side: THREE.DoubleSide });
     const seam = new THREE.MeshStandardMaterial({ color: 0xd4d9de, metalness: 0.85, roughness: 0.3, envMapIntensity: 1.05 });
     const edge = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, metalness: 0.6, roughness: 0.25, envMapIntensity: 1.3, side: THREE.DoubleSide });
     const insul = new THREE.MeshStandardMaterial({ color: 0xf0b640, map: fiber, metalness: 0, roughness: 0.95, envMapIntensity: 0.55, side: THREE.DoubleSide });
     const insulCut = new THREE.MeshStandardMaterial({ color: 0xd9962a, map: fiber, metalness: 0, roughness: 1, envMapIntensity: 0.45, side: THREE.DoubleSide });
     const linerSolid = new THREE.MeshStandardMaterial({ color: 0xdfe3e7, map: spangle, metalness: 0.8, roughness: 0.4, envMapIntensity: 0.85, side: THREE.DoubleSide });
-    const linerPerf = linerSolid.clone();
-    linerPerf.alphaMap = perf;
-    linerPerf.alphaTest = 0.5;
-    linerPerf.alphaToCoverage = true;
     const linerSeam = new THREE.MeshStandardMaterial({ color: 0xc9cfd5, metalness: 0.85, roughness: 0.35 });
     const couplingMat = new THREE.MeshStandardMaterial({ color: 0xf2f5f8, metalness: 0.8, roughness: 0.24, envMapIntensity: 1.25, side: THREE.DoubleSide });
     const screwMat = new THREE.MeshStandardMaterial({ color: 0x6f7a86, metalness: 0.75, roughness: 0.32, envMapIntensity: 1.1 });
     const gasketMat = new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0, roughness: 0.92, envMapIntensity: 0.4, side: THREE.DoubleSide });
-    const allMats = [metalE, seamE, insideE, collarE, linerE, linerEPerf, outer, seam, edge, insul, insulCut, linerSolid, linerPerf, linerSeam, couplingMat, screwMat, gasketMat];
+    const allMats = [metalE, seamE, insideE, collarE, linerE, outer, seam, edge, insul, insulCut, linerSolid, linerSeam, couplingMat, screwMat, gasketMat];
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -405,30 +386,28 @@ export default function DoubleWallElbow3D({
       }
     };
 
-    let cur = { d: 12, t: 1 as DwIns, shells: "ss" as DwType, kind: "de90" as DwElbowType, c: "slip" as DwElbowConn };
+    let cur = { d: 12, t: 1 as DwIns, kind: "de90" as DwElbowType, c: "slip" as DwElbowConn };
     const build = () => {
       if (model) {
         scene.remove(model);
         disposeGroup(model);
       }
-      const { d, t, shells: sh, kind: k, c } = cur;
+      const { d, t, kind: k, c } = cur;
       const OD = d + 2 * t;
       const ri = d / 2;
       const ro = ri + t;
       const w = drawWall(OD);
       const segs = segsFor(OD);
       spangleE.repeat.set(Math.max(2, Math.round((Math.PI * OD) / 10)), TEX_LENGTH / 10);
-      perfE.repeat.set(Math.max(4, Math.round((Math.PI * d) / PERF_TILE)), TEX_LENGTH / PERF_TILE);
-      const perfOn = sh === "sp";
-      const el = buildDwElbow(d, t, k, c, perfOn, {
+      const el = buildDwElbow(d, t, k, c, {
         outer: { metal: metalE, inside: insideE, seam: seamE },
-        liner: perfOn ? linerEPerf : linerE,
+        liner: linerE,
         collar: { metal: collarE, inside: insideE, seam: seamE },
         insul,
         insulCut,
         flange: couplingMat,
       });
-      const ductMats: DwMats = { outer, seam, edge, insul, insulCut, liner: perfOn ? linerPerf : linerSolid, linerSeam };
+      const ductMats: DwMats = { outer, seam, edge, insul, insulCut, liner: linerSolid, linerSeam };
       steps = [];
       bases = new Map();
       allScrews = [];
@@ -507,7 +486,7 @@ export default function DoubleWallElbow3D({
       scene.add(model);
       renderer.domElement.setAttribute(
         "aria-label",
-        `3D double wall ${ELBOW[k].name.toLowerCase()}, ${TYPE_LABEL[sh]}, ${d} inch inside, ${t} inch insulation, ${OD} inch outside, ${c === "none" ? "no connection" : c === "slip" ? "slip joint" : "flanged"}. Drag to turn, pinch to zoom.`,
+        `3D double wall ${ELBOW[k].name.toLowerCase()}, solid liner, ${d} inch inside, ${t} inch insulation, ${OD} inch outside, ${c === "none" ? "no connection" : c === "slip" ? "slip joint" : "flanged"}. Drag to turn, pinch to zoom.`,
       );
       frame(OD);
     };
@@ -528,9 +507,9 @@ export default function DoubleWallElbow3D({
     ro.observe(el);
 
     api.current = {
-      set: (d, t, sh, k, c) => {
-        if (model && d === cur.d && t === cur.t && sh === cur.shells && k === cur.kind && c === cur.c) return;
-        cur = { d, t, shells: sh, kind: k, c };
+      set: (d, t, k, c) => {
+        if (model && d === cur.d && t === cur.t && k === cur.kind && c === cur.c) return;
+        cur = { d, t, kind: k, c };
         build();
       },
       setTopInset: (px) => {
@@ -561,7 +540,7 @@ export default function DoubleWallElbow3D({
       shadow.geometry.dispose();
       (shadow.material as THREE.Material).dispose();
       allMats.forEach((m) => m.dispose());
-      [spangleE, perfE, spangle, fiber, perf, shadowTex].forEach((t) => t.dispose());
+      [spangleE, spangle, fiber, shadowTex].forEach((t) => t.dispose());
       scene.environment?.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
@@ -570,8 +549,8 @@ export default function DoubleWallElbow3D({
   }, []);
 
   useEffect(() => {
-    api.current?.set(diameter, ins, shells, kind, connection);
-  }, [diameter, ins, shells, kind, connection]);
+    api.current?.set(diameter, ins, kind, connection);
+  }, [diameter, ins, kind, connection]);
 
   // Keep the model clear of the caption card at the top of the view.
   useLayoutEffect(() => {
@@ -588,7 +567,7 @@ export default function DoubleWallElbow3D({
 
   const info =
     connection === "none"
-      ? { title: spec.name, text: `${spec.short} gored elbow, ${TYPE_LABEL[shells].toLowerCase()}. R = 1.5 × A* = ${R_FACTOR * diameter}″; 2″ outer collars, the inner collar 2″ past each.` }
+      ? { title: spec.name, text: `${spec.short} gored elbow, solid liner. R = 1.5 × A* = ${R_FACTOR * diameter}″; 2″ outer collars, the inner collar 2″ past each.` }
       : STEPS[connection][step];
   const radio = "btn-raised btn-raised-sm h-10 rounded-[0.65rem] font-display text-lg leading-none short:h-8";
   const label = "text-[11px] font-medium tracking-wide text-muted uppercase";
@@ -629,14 +608,6 @@ export default function DoubleWallElbow3D({
           {DW_ELBOW_TYPES.map((k) => (
             <button key={k} type="button" role="radio" aria-checked={kind === k} aria-label={`${k.toUpperCase()}, ${ELBOW[k].short}`} onClick={() => setKind(k)} className={`${radio} px-0`}>
               {k.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-2" role="radiogroup" aria-label="Shells: outer / inner">
-          <span className={`${label} col-span-2 -mb-1`}>Shells · outer / inner</span>
-          {(["ss", "sp"] as const).map((t) => (
-            <button key={t} type="button" role="radio" aria-checked={shells === t} onClick={() => setShells(t)} className={radio}>
-              {TYPE_LABEL[t]}
             </button>
           ))}
         </div>
