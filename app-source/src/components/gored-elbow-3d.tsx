@@ -1009,7 +1009,7 @@ function buildTee(a: number, b: number, c: number, mats: Mats, style: EndStyle, 
  * Built as a left and a right strip that meet where there is no hole; the angles are refined where the hole's edge
  * turns fast (near its sides), so the saddle reads round.
  */
-function crossBody(rr: number, L: number, radial: number, rt: number, rb: number) {
+export function crossBody(rr: number, L: number, radial: number, rt: number, rb: number) {
   const half = (th: number) => {
     const c = Math.cos(th);
     const z = rr * Math.sin(th);
@@ -1053,7 +1053,7 @@ function crossBody(rr: number, L: number, radial: number, rt: number, rb: number
 }
 
 /** A tap (radius rt) out of the main (radius rr) on the dir side (+1 up, -1 down): from the saddle out to |y| = yTo. */
-function crossTap(rt: number, rr: number, yTo: number, dir: 1 | -1, radial: number) {
+export function crossTap(rt: number, rr: number, yTo: number, dir: 1 | -1, radial: number) {
   const rows = 8;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -1073,7 +1073,7 @@ function crossTap(rt: number, rr: number, yTo: number, dir: 1 | -1, radial: numb
 }
 
 /** The saddle seam where a tap (radius rt) meets the main (radius rr), pushed out by k so it sits on the surface. */
-class SaddleLoop extends THREE.Curve<THREE.Vector3> {
+export class SaddleLoop extends THREE.Curve<THREE.Vector3> {
   constructor(
     private rt: number,
     private rr: number,

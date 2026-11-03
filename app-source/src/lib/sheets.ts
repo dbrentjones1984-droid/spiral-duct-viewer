@@ -359,13 +359,13 @@ export const DW_ROUND_SHEETS = [
 ] as const;
 
 // Double Wall Fittings · Round: Brent's sheets "Gored Elbows" (DE90 / DE60 / DE45 / DE30), "Mitered Elbows" (DMEV90 /
-// DME90 / D3P90 / D3P90H; printed page 5) and "Bullhead Tees" (DBT90 / DBTV90; printed page 6), each with its own 3D
-// model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// DME90 / D3P90 / D3P90H; printed page 5), "Bullhead Tees" (DBT90 / DBTV90; printed page 6) and "Tees and Crosses"
+// (DT90 / DRT90 / DC180 / DRC180; printed page 7, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
 // below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
 export const DWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
-  sizeLabel: "3.3 MB",
+  sizeLabel: "4.6 MB",
 };
 
 export const DWF_ROUND_SHEETS = [
@@ -392,6 +392,14 @@ export const DWF_ROUND_SHEETS = [
     w: 1103,
     h: 1426,
     alt: "Double Wall Round Fittings, Bullhead Tees: DBT90, bullhead tee 90 degree, and DBTV90, bullhead tee 90 degree with vanes (curved splitter vanes inside the body turning the flow left and right). Each drawn with its outer shell in blue and the inner liner dashed in red: a straight body of length L with the inlet A coming into the bottom with a 2 inch collar each side, and on each end a reducer R down to B on the left and C on the right, each with a 2 inch end. L = A + 3 inch. R = refer to reducer drawing.",
+  },
+  {
+    n: 4,
+    title: "Tees and Crosses",
+    src: `${base}sheets/double-wall-round-fittings-4.webp`,
+    w: 1125,
+    h: 1398,
+    alt: "Double Wall Round, Tees and Crosses. DT90, tee 90 degree: main A at both ends with a tap B on top, 2 inch ends and collars, L = B + 3 inch. DRT90, reducing tee 90 degree: A in on the left, tap C on top, reducer R down to B on the right, L = B + 3 inch, R = refer to reducer drawing. DC180, cross 180 degree: A at both ends, tap B on top and tap C on the bottom, L = largest tap + 3 inch. DRC180, reducing cross 180 degree: A in, tap D on top and tap C on the bottom, reducer R down to B, L = largest tap + 3 inch, R = refer to reducer drawing. Outer shell in blue, inner liner dashed.",
   },
 ] as const;
 

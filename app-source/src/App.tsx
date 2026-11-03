@@ -8,7 +8,7 @@ import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
 import { DoubleWallFittingsPage, FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, DWF_ROUND_3D_HASH, dwBullHash, dwElbowHash, dwMiterHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
+import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, DWF_ROUND_3D_HASH, dwBullHash, dwElbowHash, dwMiterHash, dwTeeHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
 import { DW_ROUND_DOC, DWF_ROUND_DOC, SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -100,8 +100,9 @@ export default function App() {
         dwElbow={route.dwElbow}
         dwMiter={route.dwMiter}
         dwBull={route.dwBull}
+        dwTee={route.dwTee}
         onBack={() => goBack(DWF_ROUND_HASH)}
-        onOpen3d={(id) => navigate(id === "miter" ? dwMiterHash() : id === "bullhead" ? dwBullHash() : dwElbowHash())}
+        onOpen3d={(id) => navigate(id === "miter" ? dwMiterHash() : id === "bullhead" ? dwBullHash() : id === "tee" ? dwTeeHash() : dwElbowHash())}
         onClose3d={() => goBack(DWF_ROUND_3D_HASH)}
       />
     );
