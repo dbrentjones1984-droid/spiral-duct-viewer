@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { HomeButton } from "@/components/home-button";
+import { ModelSubtitle } from "@/components/model-subtitle";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -123,10 +124,10 @@ export function vaneSpec(d: number) {
 export const TEE_EXTRA = 3;
 export const TEE_BRANCH = 4;
 /** Conical taps (sheet): the cone is 5" tall from the main's wall to the collar, L = top tap + 5". */
-const CONE_H = 5;
-const CTEE_EXTRA = 5;
+export const CONE_H = 5;
+export const CTEE_EXTRA = 5;
 /** Cone flare each side along the main, at the main's top line (base = tap + 2"; assumed, sheet shows no number). */
-const CONE_FLARE = 1;
+export const CONE_FLARE = 1;
 /** Laterals (sheet): L = top branch x LAT_FACTOR + LAT_EXTRA; LAT_STRAIGHT of straight branch before its 2" collar. */
 const LAT_FACTOR = 1.414;
 const LAT_EXTRA = 3;
@@ -1182,15 +1183,15 @@ function buildCross(type: TeeType, sizes: readonly number[], mats: Mats, style: 
  * A cone tap's shape: round (radius rt) at the collar, height yTop above the main's axis, flaring along the main as it
  * goes down: half-width ax(y) along x, rt across (z). Its outline at height y is the ellipse (ax cos, y, rt sin).
  */
-type ConeTap = { rt: number; ax: (y: number) => number };
-const coneTap = (rt: number, yTop: number): ConeTap => ({ rt, ax: (y) => rt + (CONE_FLARE * (yTop - y)) / CONE_H });
+export type ConeTap = { rt: number; ax: (y: number) => number };
+export const coneTap = (rt: number, yTop: number): ConeTap => ({ rt, ax: (y) => rt + (CONE_FLARE * (yTop - y)) / CONE_H });
 
 /**
  * Conical tee/cross main (radius rr, x from -L/2 to L/2): same as crossBody, but the hole is the cone's footprint. At
  * the angle theta around the main (y = rr cos, z = rr sin) the cone's ellipse at that height gives |x| < ax(y) *
  * sqrt(1 - z^2 / rt^2) on the tap's side.
  */
-function coneBody(rr: number, L: number, radial: number, top: ConeTap | null, bottom: ConeTap | null) {
+export function coneBody(rr: number, L: number, radial: number, top: ConeTap | null, bottom: ConeTap | null) {
   const half = (th: number) => {
     const c = Math.cos(th);
     const z = rr * Math.sin(th);
@@ -1235,7 +1236,7 @@ function coneBody(rr: number, L: number, radial: number, top: ConeTap | null, bo
 }
 
 /** A cone tap out of the main (radius rr) on the dir side: from where it meets the main up to |y| = yTop (collar). */
-function coneTapGeo(t: ConeTap, rr: number, yTop: number, dir: 1 | -1, radial: number) {
+export function coneTapGeo(t: ConeTap, rr: number, yTop: number, dir: 1 | -1, radial: number) {
   const rows = 10;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -1261,7 +1262,7 @@ function coneTapGeo(t: ConeTap, rr: number, yTop: number, dir: 1 | -1, radial: n
 }
 
 /** The seam where a cone tap meets the main (radius rr), pushed out by k so it sits on the surface. */
-class ConeSaddleLoop extends THREE.Curve<THREE.Vector3> {
+export class ConeSaddleLoop extends THREE.Curve<THREE.Vector3> {
   constructor(
     private t: ConeTap,
     private rr: number,
@@ -4090,7 +4091,7 @@ export default function GoredElbow3D({ onClose, kind = "e90", teeType: teeTypeIn
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
-          <p className="truncate text-xs text-white/80">Single Wall Round · {name}</p>
+          <ModelSubtitle family="Single Wall Round" name={name} />
         </div>
         <HomeButton variant="round" />
         <button

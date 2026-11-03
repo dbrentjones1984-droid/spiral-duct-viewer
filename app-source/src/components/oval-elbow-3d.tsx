@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { HomeButton } from "@/components/home-button";
+import { ModelSubtitle } from "@/components/model-subtitle";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
@@ -2600,7 +2601,7 @@ export default function OvalElbow3D({
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
-          <p className="truncate text-xs text-white/80">Single Wall Oval · {title}</p>
+          <ModelSubtitle family="Single Wall Oval" name={title} />
         </div>
         <HomeButton variant="round" />
         <button type="button" onClick={onClose} className="grid size-10 place-items-center rounded-full bg-white/15 active:bg-white/25" aria-label="Close 3D model">

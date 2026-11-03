@@ -359,13 +359,14 @@ export const DW_ROUND_SHEETS = [
 ] as const;
 
 // Double Wall Fittings · Round: Brent's sheets "Gored Elbows" (DE90 / DE60 / DE45 / DE30), "Mitered Elbows" (DMEV90 /
-// DME90 / D3P90 / D3P90H; printed page 5), "Bullhead Tees" (DBT90 / DBTV90; printed page 6) and "Tees and Crosses"
-// (DT90 / DRT90 / DC180 / DRC180; printed page 7, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// DME90 / D3P90 / D3P90H; printed page 5), "Bullhead Tees" (DBT90 / DBTV90; printed page 6), "Tees and Crosses"
+// (DT90 / DRT90 / DC180 / DRC180; printed page 7, with the address banner) and "Conical Tees and Conical Crosses"
+// (DCT90 / DRCT90 / DCC180 / DRCC180; printed page 8, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
 // below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
 export const DWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
-  sizeLabel: "4.6 MB",
+  sizeLabel: "5.9 MB",
 };
 
 export const DWF_ROUND_SHEETS = [
@@ -400,6 +401,14 @@ export const DWF_ROUND_SHEETS = [
     w: 1125,
     h: 1398,
     alt: "Double Wall Round, Tees and Crosses. DT90, tee 90 degree: main A at both ends with a tap B on top, 2 inch ends and collars, L = B + 3 inch. DRT90, reducing tee 90 degree: A in on the left, tap C on top, reducer R down to B on the right, L = B + 3 inch, R = refer to reducer drawing. DC180, cross 180 degree: A at both ends, tap B on top and tap C on the bottom, L = largest tap + 3 inch. DRC180, reducing cross 180 degree: A in, tap D on top and tap C on the bottom, reducer R down to B, L = largest tap + 3 inch, R = refer to reducer drawing. Outer shell in blue, inner liner dashed.",
+  },
+  {
+    n: 5,
+    title: "Conical Tees and Conical Crosses",
+    src: `${base}sheets/double-wall-round-fittings-5.webp`,
+    w: 1123,
+    h: 1401,
+    alt: "Double Wall Round, Conical Tees and Conical Crosses. Each tap is a cone 5 inch tall from the main, then a 2 inch collar. DCT90, conical tee 90 degree: main A at both ends with a cone tap B on top, 2 inch ends, L = B + 5 inch. DRCT90, reducing conical tee 90 degree: A in on the left, cone tap C on top, reducer R down to B on the right, L = C + 5 inch, R = refer to reducer drawing. DCC180, conical cross 180 degree: A at both ends, cone tap B on top and cone tap C on the bottom, L = largest tap + 5 inch. DRCC180, reducing conical cross 180 degree: A in, cone tap C on top and cone tap D on the bottom, reducer R down to B, L = largest tap + 5 inch, R = refer to reducer drawing. Outer shell in blue, inner liner dashed.",
   },
 ] as const;
 
