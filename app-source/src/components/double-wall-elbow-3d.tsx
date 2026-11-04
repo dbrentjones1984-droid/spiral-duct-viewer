@@ -26,6 +26,14 @@ import {
   CTEE_EXTRA,
   crimpScrews,
   JointLoop,
+  LAT_EXTRA,
+  LAT_FACTOR,
+  LAT_STRAIGHT,
+  latBody,
+  latBranch,
+  latS0,
+  LatSaddleLoop,
+  C45,
   miter,
   MITER_LEG,
   miterLeg,
@@ -61,6 +69,7 @@ import {
   STEP_PAUSE_MS,
   type DwMats,
 } from "@/components/double-wall-pipe-3d";
+import { DW_LAT_3D_HASH, DW_LAT_TYPES, dwLatHash, type DwLatType } from "@/lib/route";
 import { DW_BULL_3D_HASH, DW_BULL_TYPES, DW_CONE_3D_HASH, DW_CONE_TYPES, DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, DW_MITER_3D_HASH, DW_MITER_TYPES, DW_TEE_3D_HASH, DW_TEE_TYPES, dwBullHash, dwConeHash, dwElbowHash, dwMiterHash, dwTeeHash, type DwBullType, type DwConeType, type DwElbowConn, type DwElbowType, type DwIns, type DwMiterType, type DwTeeType } from "@/lib/route";
 import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
 
@@ -116,6 +125,17 @@ import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
  * wall rule, assumed); the outer cone at tap + 2 x insulation, the liner cone at the tap size, both ending at the same
  * height. Assumed: where the outer cone's base (tap + 2 x insulation + 2") would not fit in L (2" and 3" insulation),
  * the body is made base + 1" long (equal to the sheet's L at 1" insulation). Same size limits and defaults as the tees.
+ *
+ * And the double wall laterals (family "lateral", Brent's Laterals sheet, printed page 9): DL45 lateral 45° (A both
+ * ends, 45° branch B on top), DRL45 reducing lateral 45° (A in, branch C on top, reducer R to outlet B), DLC45 lateral
+ * cross 45° (A both ends, branches B top and C bottom, B > C) and DRLC45 reducing lateral cross 45° (A in, branches C top
+ * and D bottom, reducer R to B, C > D). L = top branch x 1.414 + 3" to the nearest 1/2" (the sheet; its DL45 prints C,
+ * read as B, the single wall L45 rule). The single wall lateral drawn twice on one branch axis (through the main's axis,
+ * the outer radius back from the centre): each branch LAT_STRAIGHT (2") past the outer main on its short side, the outer
+ * at branch + 2 x insulation, the liner at the branch size, both ending at the 2" outer collar (inner collar 2" past
+ * it); the seam where the outer branch meets the main. Bottom branch up to the top one (equal allowed, as single wall).
+ * Assumed: where the outer branch's footprint (1.414 x (branch + 2 x insulation)) would not fit in L (2" and 3"
+ * insulation), the body is made longer by the same 1.414 x 2 x (insulation - 1") (equal to the sheet's L at 1").
  * Units are inches.
  */
 
@@ -123,11 +143,11 @@ type PlayState = "idle" | "playing" | "paused" | "done";
 type ScrewItem = NonNullable<BuiltConnection["screws"]>["items"][number];
 const DEG = Math.PI / 180;
 
-type Kind = DwElbowType | DwMiterType | DwBullType | DwTeeType | DwConeType;
+type Kind = DwElbowType | DwMiterType | DwBullType | DwTeeType | DwConeType | DwLatType;
 /** The tees & crosses (sheet 4) and the conical ones (sheet 5): same pickers and rules, straight or cone taps. */
-type CrossKind = DwTeeType | DwConeType;
+type CrossKind = DwTeeType | DwConeType | DwLatType;
 /** gored: gores on R = 1.5 x A; miter: two straight legs on a 45° cut; heel: gored + the B collar on top; tee: bullhead tee; cross: tee / cross; cone: conical tee / cross. */
-type Build = "gored" | "miter" | "heel" | "tee" | "cross" | "cone";
+type Build = "gored" | "miter" | "heel" | "tee" | "cross" | "cone" | "lat";
 const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: string; build: Build; vanes?: boolean }> = {
   de90: { angle: 90, pieces: 5, name: "Gored 90° Elbow (DE90)", short: "90° 5-piece", build: "gored" },
   de60: { angle: 60, pieces: 3, name: "Gored 60° Elbow (DE60)", short: "60° 3-piece", build: "gored" },
@@ -147,6 +167,10 @@ const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: 
   drct90: { angle: 90, pieces: 0, name: "Reducing Conical Tee 90° (DRCT90)", short: "90° reducing conical tee", build: "cone" },
   dcc180: { angle: 180, pieces: 0, name: "Conical Cross 180° (DCC180)", short: "180° conical cross", build: "cone" },
   drcc180: { angle: 180, pieces: 0, name: "Reducing Conical Cross 180° (DRCC180)", short: "180° reducing conical cross", build: "cone" },
+  dl45: { angle: 45, pieces: 0, name: "Lateral 45° (DL45)", short: "45° lateral", build: "lat" },
+  drl45: { angle: 45, pieces: 0, name: "Reducing Lateral 45° (DRL45)", short: "45° reducing lateral", build: "lat" },
+  dlc45: { angle: 45, pieces: 0, name: "Lateral Cross 45° (DLC45)", short: "45° lateral cross", build: "lat" },
+  drlc45: { angle: 45, pieces: 0, name: "Reducing Lateral Cross 45° (DRLC45)", short: "45° reducing lateral cross", build: "lat" },
 };
 /**
  * Tees & crosses (sheet 4) and conical tees & crosses (sheet 5): the size selects after A, in letter order, with what
@@ -207,13 +231,49 @@ const CROSS: Record<CrossKind, { sizes: readonly { label: string; role: TeeRole;
     lRule: "largest tap + 5″",
     reducing: true,
   },
+  // Laterals (sheet 6): the single wall laterals' defaults (outlet 10", top 8", bottom 6"); bottom up to top.
+  dl45: { sizes: [{ label: "B · branch", role: "top", def: 8 }], lRule: "B × 1.414 + 3″*", reducing: false },
+  drl45: {
+    sizes: [
+      { label: "B · outlet", role: "out", def: 10 },
+      { label: "C · branch", role: "top", def: 8 },
+    ],
+    lRule: "C × 1.414 + 3″",
+    reducing: true,
+  },
+  dlc45: {
+    sizes: [
+      { label: "B · top", role: "top", def: 8 },
+      { label: "C · bottom", role: "bottom", def: 6 },
+    ],
+    lRule: "B × 1.414 + 3″",
+    reducing: false,
+  },
+  drlc45: {
+    sizes: [
+      { label: "B · outlet", role: "out", def: 10 },
+      { label: "C · top", role: "top", def: 8 },
+      { label: "D · bottom", role: "bottom", def: 6 },
+    ],
+    lRule: "C × 1.414 + 3″",
+    reducing: true,
+  },
 };
-const CROSS_KINDS: readonly CrossKind[] = [...DW_TEE_TYPES, ...DW_CONE_TYPES];
+const CROSS_KINDS: readonly CrossKind[] = [...DW_TEE_TYPES, ...DW_CONE_TYPES, ...DW_LAT_TYPES];
 const NO_XS: readonly number[] = [];
 /** Largest stock outlet under A (reducing tees / crosses: B < A). */
 const maxOutlet = (a: number) => [...STOCK_DIAMETERS].reverse().find((d) => d < a) ?? STOCK_DIAMETERS[0];
 /** Keep a tee / cross's sizes in range for main A: taps up to A, the outlet under A. */
-const clampCross = (k: CrossKind, a: number, xs: readonly number[]) => CROSS[k].sizes.map((s, i) => Math.min(xs[i] ?? s.def, s.role === "out" ? maxOutlet(a) : a));
+const clampCross = (k: CrossKind, a: number, xs: readonly number[]) => {
+  const v = CROSS[k].sizes.map((s, i) => Math.min(xs[i] ?? s.def, s.role === "out" ? maxOutlet(a) : a));
+  // Laterals: the bottom branch up to the top one (sheet B > C / C > D; equal allowed, as single wall).
+  if (ELBOW[k].build === "lat") {
+    const ti = CROSS[k].sizes.findIndex((s) => s.role === "top");
+    const bi = CROSS[k].sizes.findIndex((s) => s.role === "bottom");
+    if (bi >= 0) v[bi] = Math.min(v[bi], v[ti]);
+  }
+  return v;
+};
 /**
  * A tee / cross's outlet (A when not reducing), top and bottom taps (0 = none), the sheet's L (largest tap + 3", or + 5"
  * when conical), the L it is made to (at least the outer tap's footprint + 1": tap OD, or the cone's base tap OD + 2",
@@ -228,10 +288,18 @@ function crossDims(k: CrossKind, A: number, xs: readonly number[], t: number) {
   const top = get("top");
   const bottom = get("bottom");
   const tap = Math.max(top, bottom);
+  if (ELBOW[k].build === "lat") {
+    // Laterals: L = top x 1.414 + 3" to the nearest 1/2"; made longer (same rounding) by 1.414 x 2 x (insulation - 1")
+    // where the insulated top branch's footprint would not fit (keeps the sheet's clearance; equal at 1").
+    const Lx = top * LAT_FACTOR + LAT_EXTRA;
+    const Ls = Math.round(Lx * 2) / 2;
+    const L = Math.max(Ls, Math.round((Lx + 2 * LAT_FACTOR * (t - 1)) * 2) / 2);
+    return { out, top, bottom, Ls, L, Lx, R: reducerLength(A, out) };
+  }
   const cone = ELBOW[k].build === "cone";
   const Ls = tap + (cone ? CTEE_EXTRA : TEE_EXTRA);
   const base = tap + 2 * t + (cone ? 2 * CONE_FLARE : 0);
-  return { out, top, bottom, Ls, L: Math.max(Ls, base + 1), R: reducerLength(A, out) };
+  return { out, top, bottom, Ls, L: Math.max(Ls, base + 1), Lx: Ls, R: reducerLength(A, out) };
 }
 /**
  * Bullhead tee body length: the sheet's L = A + 3", or the outer inlet's OD + 1" when that is longer (2" and 3"
@@ -506,10 +574,54 @@ function buildDwCone(A: number, t: number, conn: DwElbowConn, m: ElbowMats, k: D
   return { group, ends, R: 0, OD };
 }
 
+/**
+ * Lateral or lateral cross (DL45 / DRL45 / DLC45 / DRLC45), as the single wall lateral: the main (outer shell and liner,
+ * open where the branches come in) and each 45° branch on one axis from (-outer radius, 0, 0), the outer at branch + 2 x
+ * insulation, the liner at the branch size, both ending LAT_STRAIGHT past the outer main on the short side, where the 2"
+ * outer collar starts; the seam where the outer branch meets the main; the left A end and the right end (reducer to B
+ * on DRL45 / DRLC45). ends[0] is the A inlet on the left, then the right end and the branches; +X out of each.
+ */
+function buildDwLat(A: number, t: number, conn: DwElbowConn, m: ElbowMats, k: DwLatType, xs: readonly number[]) {
+  const group = new THREE.Group();
+  const { out: B, top, bottom, L } = crossDims(k, A, xs, t);
+  const ri = A / 2;
+  const ro = ri + t;
+  const OD = A + 2 * t;
+  const radial = Math.min(144, 64 + Math.round(OD * 4));
+  const xc = -ro;
+  for (const g of latBody(ro, L, radial, top / 2 + t, bottom ? bottom / 2 + t : 0, xc)) group.add(new THREE.Mesh(g, m.outer.metal));
+  for (const g of latBody(ri, L, radial, top / 2, bottom ? bottom / 2 : 0, xc)) group.add(new THREE.Mesh(g, m.liner));
+  const ends = [dwRunEnd(-1, A, A, L, t, conn, m), dwRunEnd(1, A, B, L, t, conn, m)];
+  ends.forEach((f) => group.add(f));
+  const out = conn === "flange" ? COLLAR : COLLAR + STICK_OUT;
+  ([
+    [1, top],
+    [-1, bottom],
+  ] as const).forEach(([dir, d]) => {
+    if (!d) return;
+    const tOD = d + 2 * t;
+    const tr = Math.min(144, 64 + Math.round(tOD * 4));
+    const rib = Math.min(0.34, 0.04 + tOD * 0.012);
+    const sTo = latS0(tOD / 2, ro, Math.PI) + LAT_STRAIGHT;
+    group.add(new THREE.Mesh(latBranch(tOD / 2, ro, xc, sTo, dir, tr), m.outer.metal));
+    group.add(new THREE.Mesh(latBranch(d / 2, ri, xc, sTo, dir, tr), m.liner));
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new LatSaddleLoop(tOD / 2, ro, xc, rib * 0.35, dir), tr * 2, rib, 8, true), m.outer.seam));
+    const axis = new THREE.Vector3(C45, dir * C45, 0);
+    const f = new THREE.Group();
+    f.position.set(xc, 0, 0).addScaledVector(axis, sTo + out);
+    f.quaternion.setFromUnitVectors(X_AXIS, axis);
+    buildEnd(f, d, t, conn, m);
+    group.add(f);
+    ends.push(f);
+  });
+  return { group, ends, R: 0, OD };
+}
+
 function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: ElbowMats, B: number, C: number, xs: readonly number[]) {
   const { angle, pieces, build, vanes } = ELBOW[kind];
   if (build === "cross") return buildDwCross(A, t, conn, m, kind as DwTeeType, xs);
   if (build === "cone") return buildDwCone(A, t, conn, m, kind as DwConeType, xs);
+  if (build === "lat") return buildDwLat(A, t, conn, m, kind as DwLatType, xs);
   if (build === "tee") return buildDwTee(A, t, conn, m, B, C, vanes ? (vaneSpec(A)?.n ?? 0) : 0);
   const group = new THREE.Group();
   const theta = angle * DEG;
@@ -580,13 +692,13 @@ function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: El
 export default function DoubleWallElbow3D({
   onClose,
   family = "gored",
-  initialType = family === "miter" ? "dmev90" : family === "bullhead" ? "dbt90" : family === "tee" ? "dt90" : family === "conical" ? "dct90" : "de90",
+  initialType = family === "miter" ? "dmev90" : family === "bullhead" ? "dbt90" : family === "tee" ? "dt90" : family === "conical" ? "dct90" : family === "lateral" ? "dl45" : "de90",
   initialIns = 1,
   initialConn = "slip",
 }: {
   onClose: () => void;
-  /** gored: DE90 / DE60 / DE45 / DE30 (sheet 1); miter: DMEV90 / DME90 / D3P90 / D3P90H (sheet 2); bullhead: DBT90 / DBTV90 (sheet 3); tee: DT90 / DRT90 / DC180 / DRC180 (sheet 4); conical: DCT90 / DRCT90 / DCC180 / DRCC180 (sheet 5). */
-  family?: "gored" | "miter" | "bullhead" | "tee" | "conical";
+  /** gored: DE90 / DE60 / DE45 / DE30 (sheet 1); miter: DMEV90 / DME90 / D3P90 / D3P90H (sheet 2); bullhead: DBT90 / DBTV90 (sheet 3); tee: DT90 / DRT90 / DC180 / DRC180 (sheet 4); conical: DCT90 / DRCT90 / DCC180 / DRCC180 (sheet 5); lateral: DL45 / DRL45 / DLC45 / DRLC45 (sheet 6). */
+  family?: "gored" | "miter" | "bullhead" | "tee" | "conical" | "lateral";
   initialType?: Kind;
   initialIns?: DwIns;
   initialConn?: DwElbowConn;
@@ -614,10 +726,11 @@ export default function DoubleWallElbow3D({
   const od = diameter + 2 * ins;
   const gauge = dwFittingGauge(diameter);
   const spec = ELBOW[kind];
-  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : family === "bullhead" ? DW_BULL_TYPES : family === "tee" ? DW_TEE_TYPES : family === "conical" ? DW_CONE_TYPES : DW_ELBOW_TYPES;
+  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : family === "bullhead" ? DW_BULL_TYPES : family === "tee" ? DW_TEE_TYPES : family === "conical" ? DW_CONE_TYPES : family === "lateral" ? DW_LAT_TYPES : DW_ELBOW_TYPES;
   const bull = family === "bullhead";
-  const cross = family === "tee" || family === "conical";
+  const cross = family === "tee" || family === "conical" || family === "lateral";
   const conical = family === "conical";
+  const lateral = family === "lateral";
   const ck = (cross ? kind : "dt90") as CrossKind;
   const xs = cross ? crossXs[ck] : NO_XS;
   const cd = crossDims(ck, diameter, xs, ins);
@@ -642,7 +755,9 @@ export default function DoubleWallElbow3D({
   useEffect(() => setConnection(initialConn), [initialConn]);
   // Keep the address on what is shown (replace, so the back button still closes the model).
   useEffect(() => {
-    if (family === "conical") {
+    if (family === "lateral") {
+      if (location.hash.startsWith(DW_LAT_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwLatHash(kind as DwLatType, ins, connection));
+    } else if (family === "conical") {
       if (location.hash.startsWith(DW_CONE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwConeHash(kind as DwConeType, ins, connection));
     } else if (family === "tee") {
       if (location.hash.startsWith(DW_TEE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwTeeHash(kind as DwTeeType, ins, connection));
@@ -932,7 +1047,7 @@ export default function DoubleWallElbow3D({
       // As drawn on the sheet: the bottom end on the left pointing down, the turn going up and to the right (the tee: B
       // left, C right, inlet A at the bottom).
       const elbow = el.group;
-      elbow.rotation.y = ELBOW[k].build === "tee" || ELBOW[k].build === "cross" || ELBOW[k].build === "cone" ? 0 : Math.PI;
+      elbow.rotation.y = ELBOW[k].build === "tee" || ELBOW[k].build === "cross" || ELBOW[k].build === "cone" || ELBOW[k].build === "lat" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -963,7 +1078,7 @@ export default function DoubleWallElbow3D({
     api.current = {
       set: (d, t, k, c, b, cc, x) => {
         const bld = ELBOW[k].build;
-        const same = bld === "cross" || bld === "cone" ? x.join() === cur.xs.join() : (b === cur.b && cc === cur.cc) || (bld !== "heel" && bld !== "tee");
+        const same = bld === "cross" || bld === "cone" || bld === "lat" ? x.join() === cur.xs.join() : (b === cur.b && cc === cur.cc) || (bld !== "heel" && bld !== "tee");
         if (model && d === cur.d && t === cur.t && k === cur.kind && c === cur.c && same) return;
         cur = { d, t, kind: k, c, b, cc, xs: [...x] };
         build();
@@ -1028,7 +1143,7 @@ export default function DoubleWallElbow3D({
   // The bullhead tee's / tee's / cross's captions: the same steps, "tee" or "cross" for "elbow" (a step can be missing for a
   // moment as the connection changes).
   function tee(st: { title: string; text: string } | undefined) {
-    const noun = spec.angle === 180 ? "cross" : "tee";
+    const noun = spec.build === "lat" ? "lateral" : spec.angle === 180 ? "cross" : "tee";
     return (bull || cross) && st ? { ...st, text: st.text.replace(/elbow/g, noun) } : st;
   }
   function noneText() {
@@ -1041,6 +1156,14 @@ export default function DoubleWallElbow3D({
       const main = k === "dt90" ? `Main A ${diameter}″ straight through, tap B ${cd.top}″ on top` : k === "drt90" ? `${red}, tap C ${cd.top}″ on top` : k === "dc180" ? `Main A ${diameter}″ straight through, tap B ${cd.top}″ on top, tap C ${cd.bottom}″ below` : `${red}, tap D ${cd.top}″ on top, tap C ${cd.bottom}″ below`;
       const l = `L = ${CROSS[k].lRule} = ${cd.Ls}″${k === "drt90" ? " (sheet prints B + 3″)" : ""}${cd.L > cd.Ls ? `, made ${cd.L}″* so the insulated tap fits` : ""}`;
       return `Solid liner. ${main}. ${l}; taps 4″ out*. ${ends}`;
+    }
+    if (spec.build === "lat") {
+      // Laterals: L from the top branch; DL45 reads the sheet's C as B (single wall L45).
+      const k = kind as DwLatType;
+      const red = `A ${diameter}″ in on the left, reducer to B ${cd.out}″ on the right (R ${cd.R}″, reducer sheet)`;
+      const main = k === "dl45" ? `Main A ${diameter}″ straight through, 45° branch B ${cd.top}″ on top` : k === "drl45" ? `${red}, 45° branch C ${cd.top}″ on top` : k === "dlc45" ? `Main A ${diameter}″ straight through, 45° branches B ${cd.top}″ on top and C ${cd.bottom}″ below` : `${red}, 45° branches C ${cd.top}″ on top and D ${cd.bottom}″ below`;
+      const l = `L = ${CROSS[k].lRule} = ${cd.Lx.toFixed(2)}″ → ${cd.Ls}″${k === "dl45" ? " (sheet prints C × 1.414 + 3″)" : ""}${cd.L > cd.Ls ? `, made ${cd.L}″* so the insulated branch fits` : ""}`;
+      return `Solid liner. ${main}. ${l}. Each branch 2″ straight past the main on its short side, then the collars: ${ends}`;
     }
     if (spec.build === "cone") {
       // As the tees & crosses, with cone taps; this sheet puts C on top and D below on the DRCC180.
@@ -1074,7 +1197,7 @@ export default function DoubleWallElbow3D({
   const label = "text-[11px] font-medium tracking-wide text-muted uppercase";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered elbows" : bull ? "bullhead tees" : conical ? "conical tees and crosses" : cross ? "tees and crosses" : "gored elbows"}`}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered elbows" : bull ? "bullhead tees" : conical ? "conical tees and crosses" : lateral ? "laterals" : cross ? "tees and crosses" : "gored elbows"}`}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1195,12 +1318,12 @@ export default function DoubleWallElbow3D({
                 value={xs[i]}
                 onChange={(e) => {
                   const v = Number(e.target.value);
-                  setCrossXs((all) => ({ ...all, [ck]: all[ck].map((x, j) => (j === i ? v : x)) }));
+                  setCrossXs((all) => ({ ...all, [ck]: clampCross(ck, diameter, all[ck].map((x, j) => (j === i ? v : x))) }));
                 }}
                 aria-label={`Size ${s.label.replace(" · ", " (")})`}
                 className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
               >
-                {STOCK_DIAMETERS.filter((d) => (s.role === "out" ? d < diameter : d <= diameter)).map((d) => (
+                {STOCK_DIAMETERS.filter((d) => (s.role === "out" ? d < diameter : d <= diameter) && !(lateral && s.role === "bottom" && d > cd.top)).map((d) => (
                   <option key={d} value={d}>
                     {d}&Prime;
                   </option>
@@ -1247,14 +1370,17 @@ export default function DoubleWallElbow3D({
             <>
               <p className="truncate">
                 <b className="font-semibold">
-                  A {diameter}&Prime; ID · {od}&Prime; OD* · L {cd.L}&Prime;{cd.L > cd.Ls ? "*" : ""}
+                  A {diameter}&Prime; ID · {od}&Prime; OD* · L {cd.L}&Prime;{cd.L > cd.Ls || kind === "dl45" ? "*" : ""}
                   {CROSS[ck].reducing ? <> · R {cd.R}&Prime;</> : null}
                 </b>
               </p>
               <p className="truncate">
-                {gauge} ga outer · {gauge} liner* · {conical ? <>cones 5&Prime;, base +2&Prime;*</> : <>taps 4&Prime; out*</>}
+                {gauge} ga outer · {gauge} liner* · {lateral ? <>branches 45°, 2&Prime; straight</> : conical ? <>cones 5&Prime;, base +2&Prime;*</> : <>taps 4&Prime; out*</>}
               </p>
-              <p className="truncate text-muted">* assumed{cd.L > cd.Ls ? <> · sheet L {cd.Ls}&Prime;</> : null} · +2&Prime; W.G. gauges</p>
+              <p className="truncate text-muted">
+                * assumed{cd.L > cd.Ls ? <> · sheet L {cd.Ls}&Prime;</> : null}
+                {lateral && kind === "dl45" && cd.L <= cd.Ls ? <> · L from B (sheet prints C)</> : null} · +2&Prime; W.G. gauges
+              </p>
             </>
           ) : bull ? (
             <>

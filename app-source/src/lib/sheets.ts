@@ -361,12 +361,13 @@ export const DW_ROUND_SHEETS = [
 // Double Wall Fittings · Round: Brent's sheets "Gored Elbows" (DE90 / DE60 / DE45 / DE30), "Mitered Elbows" (DMEV90 /
 // DME90 / D3P90 / D3P90H; printed page 5), "Bullhead Tees" (DBT90 / DBTV90; printed page 6), "Tees and Crosses"
 // (DT90 / DRT90 / DC180 / DRC180; printed page 7, with the address banner) and "Conical Tees and Conical Crosses"
-// (DCT90 / DRCT90 / DCC180 / DRCC180; printed page 8, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// (DCT90 / DRCT90 / DCC180 / DRCC180; printed page 8, with the address banner) and "Laterals" (DL45 / DRL45 / DLC45 /
+// DRLC45; printed page 9, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
 // below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
 export const DWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
-  sizeLabel: "5.9 MB",
+  sizeLabel: "7.3 MB",
 };
 
 export const DWF_ROUND_SHEETS = [
@@ -409,6 +410,14 @@ export const DWF_ROUND_SHEETS = [
     w: 1123,
     h: 1401,
     alt: "Double Wall Round, Conical Tees and Conical Crosses. Each tap is a cone 5 inch tall from the main, then a 2 inch collar. DCT90, conical tee 90 degree: main A at both ends with a cone tap B on top, 2 inch ends, L = B + 5 inch. DRCT90, reducing conical tee 90 degree: A in on the left, cone tap C on top, reducer R down to B on the right, L = C + 5 inch, R = refer to reducer drawing. DCC180, conical cross 180 degree: A at both ends, cone tap B on top and cone tap C on the bottom, L = largest tap + 5 inch. DRCC180, reducing conical cross 180 degree: A in, cone tap C on top and cone tap D on the bottom, reducer R down to B, L = largest tap + 5 inch, R = refer to reducer drawing. Outer shell in blue, inner liner dashed.",
+  },
+  {
+    n: 6,
+    title: "Laterals",
+    src: `${base}sheets/double-wall-round-fittings-6.webp`,
+    w: 1123,
+    h: 1401,
+    alt: "Double Wall Round, Laterals. Each branch is at 45 degree, with 2 inch straight on its heel and a 2 inch collar; 2 inch ends on the main. DL45, lateral 45 degree: main A at both ends with branch B on top, L = C x 1.414 + 3 inch as printed. DRL45, reducing lateral 45 degree: A in on the left, branch C on top, reducer R down to B on the right, L = C x 1.414 + 3 inch, R = refer to reducer drawing. DLC45, lateral cross 45 degree: A at both ends, branch B on top and branch C on the bottom, L = B x 1.414 + 3 inch, B greater than C. DRLC45, reducing lateral cross 45 degree: A in, branch C on top and branch D on the bottom, reducer R down to B, L = C x 1.414 + 3 inch, C greater than D, R = refer to reducer drawing. Outer shell in blue, inner liner dashed.",
   },
 ] as const;
 

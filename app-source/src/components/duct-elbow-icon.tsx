@@ -166,6 +166,8 @@ export function DuctElbowIcon({
         <path d="M4 14 L21.6 14 L31.9 3.7 L38.3 10.1 L34.4 14 L56 14 L56 26 L34.4 26 L38.3 29.9 L31.9 36.3 L21.6 26 L4 26 Z" strokeWidth={2} />
         {/* beads on the ends and the branch collars, the branches' saddle curves */}
         <path d="M9 14 L9 26 M51 14 L51 26 M29.7 5.9 L36.2 12.2 M29.7 34.1 L36.2 27.8 M21.6 14 Q25 19.5 34.4 14 M21.6 26 Q25 20.5 34.4 26" strokeWidth={1.1} />
+        {/* inner wall (liner), hidden behind the outer one (dashed); left off for the single wall tab */}
+        {innerWall && <path d="M10 16.5 L22.6 16.5 L31.5 7.7 M34.3 10.5 L28.4 16.5 L50 16.5 M10 23.5 L22.6 23.5 L31.5 32.3 M34.3 29.5 L28.4 23.5 L50 23.5" strokeWidth={1.1} strokeDasharray="4 3" />}
       </svg>
     );
   }

@@ -129,9 +129,9 @@ export const CTEE_EXTRA = 5;
 /** Cone flare each side along the main, at the main's top line (base = tap + 2"; assumed, sheet shows no number). */
 export const CONE_FLARE = 1;
 /** Laterals (sheet): L = top branch x LAT_FACTOR + LAT_EXTRA; LAT_STRAIGHT of straight branch before its 2" collar. */
-const LAT_FACTOR = 1.414;
-const LAT_EXTRA = 3;
-const LAT_STRAIGHT = 2;
+export const LAT_FACTOR = 1.414;
+export const LAT_EXTRA = 3;
+export const LAT_STRAIGHT = 2;
 /**
  * Taps (sheet): TAP_H tall above the pipe's top line, the 2" beaded collar included. Assumed (sheet shows no number): the
  * cone runs the rest (TAP_CONE_H) and flares TAP_FLARE each side along the pipe (base A + 2"); the saddle plate reaches
@@ -1391,13 +1391,13 @@ function latDims(type: LatType, sizes: readonly number[]) {
   return { a, out, top, bottom, L: Math.round(Lx * 2) / 2, Lx, R: reducerLength(a, out), reducing: t.out !== 0 };
 }
 
-const C45 = Math.SQRT1_2;
+export const C45 = Math.SQRT1_2;
 /**
  * A 45° branch (radius rb) out of a main (radius rr): its axis runs from (xc, 0, 0) on the main's axis up and to the
  * right along (C45, C45, 0). Around the branch, phi = 0 is its upper-left (heel) side, phi = PI its lower-right side (the
  * short side, at 45° to the main), and z = rb sin(phi). s0 is how far along the axis that line meets the main's wall.
  */
-const latS0 = (rb: number, rr: number, phi: number) => (Math.sqrt(Math.max(0, rr * rr - rb * rb * Math.sin(phi) ** 2)) - rb * Math.cos(phi) * C45) / C45;
+export const latS0 = (rb: number, rr: number, phi: number) => (Math.sqrt(Math.max(0, rr * rr - rb * rb * Math.sin(phi) ** 2)) - rb * Math.cos(phi) * C45) / C45;
 
 /**
  * Lateral main (radius rr, x from -L/2 to L/2): open where the branches meet it, a top branch of radius rt and a bottom one
@@ -1406,7 +1406,7 @@ const latS0 = (rb: number, rr: number, phi: number) => (Math.sqrt(Math.max(0, rr
  * and a right strip that meet at the hole (or, where there is none, at the hole's side point); the angles are refined
  * where the hole's edge moves fast, so the saddle reads round.
  */
-function latBody(rr: number, L: number, radial: number, rt: number, rb: number, xc: number) {
+export function latBody(rr: number, L: number, radial: number, rt: number, rb: number, xc: number) {
   const side = (t: number) => (t > 0 ? xc + Math.sqrt(Math.max(0, rr * rr - t * t)) : NaN);
   const mt = side(rt);
   const mb = rb > 0 ? side(rb) : mt;
@@ -1458,7 +1458,7 @@ function latBody(rr: number, L: number, radial: number, rt: number, rb: number, 
 }
 
 /** A 45° branch (radius rb) out of the main (radius rr) on the dir side (+1 up, -1 down, mirrored): saddle to s = sTo. */
-function latBranch(rb: number, rr: number, xc: number, sTo: number, dir: 1 | -1, radial: number) {
+export function latBranch(rb: number, rr: number, xc: number, sTo: number, dir: 1 | -1, radial: number) {
   const rows = 10;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -1478,7 +1478,7 @@ function latBranch(rb: number, rr: number, xc: number, sTo: number, dir: 1 | -1,
 }
 
 /** The saddle seam where a 45° branch (radius rb) meets the main (radius rr), pushed out by k so it sits on the surface. */
-class LatSaddleLoop extends THREE.Curve<THREE.Vector3> {
+export class LatSaddleLoop extends THREE.Curve<THREE.Vector3> {
   constructor(
     private rb: number,
     private rr: number,
