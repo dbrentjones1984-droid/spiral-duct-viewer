@@ -156,6 +156,8 @@ export function DuctElbowIcon({
         <path d="M22 15 L22 3 L38 3 L38 15 M16 15 L44 15 L44 20 L16 20 Z" strokeWidth={2} />
         {/* bead 2" down from the top, the collar's curved bottom */}
         <path d="M22 7 L38 7 M22 15 A8 3.5 0 0 0 38 15" strokeWidth={1.1} />
+        {/* inner wall (liner), hidden behind the outer one (dashed); left off for the single wall tab */}
+        {innerWall && <path d="M25 9 L25 19 M35 9 L35 19" strokeWidth={1.1} strokeDasharray="3 2.5" />}
       </svg>
     );
   }

@@ -137,10 +137,10 @@ export const LAT_STRAIGHT = 2;
  * cone runs the rest (TAP_CONE_H) and flares TAP_FLARE each side along the pipe (base A + 2"); the saddle plate reaches
  * TAP_SADDLE past the tap all round (the sheet's 1").
  */
-const TAP_H = 5;
+export const TAP_H = 5;
 const TAP_CONE_H = TAP_H - COLLAR;
-const TAP_FLARE = 1;
-const TAP_SADDLE = 1;
+export const TAP_FLARE = 1;
+export const TAP_SADDLE = 1;
 /**
  * Lateral taps (sheet "Lateral Taps"): footprint along the pipe = A x LAT_FACTOR; the saddle plate is LTAP_EXTRA longer
  * (sheet: L = C x 1.414 + 3", C read as A) and reaches TAP_SADDLE past the branch across the pipe (assumed).
@@ -2108,12 +2108,12 @@ function tapDims(type: TapType, sizes: readonly number[]) {
  * A tap's shape over a pipe (axis along x): round (radius rt) at the collar, flaring along the pipe by TAP_FLARE over
  * TAP_CONE_H below the collar when conical: half-width ax(y) along x, rt across (z); slope = d(ax)/dy.
  */
-type TapShape = { rt: number; ax: (y: number) => number; slope: number };
-const tapShape = (rt: number, yTop: number, cone: boolean): TapShape =>
+export type TapShape = { rt: number; ax: (y: number) => number; slope: number };
+export const tapShape = (rt: number, yTop: number, cone: boolean): TapShape =>
   cone ? { rt, ax: (y) => rt + (TAP_FLARE * (yTop - y)) / TAP_CONE_H, slope: -TAP_FLARE / TAP_CONE_H } : { rt, ax: () => rt, slope: 0 };
 
 /** The tap's wall from where it meets a cylinder of radius rr (the pipe, or the saddle plate's top) up to y = yTop. */
-function tapWall(t: TapShape, rr: number, yTop: number, radial: number) {
+export function tapWall(t: TapShape, rr: number, yTop: number, radial: number) {
   const rows = 10;
   const pos: number[] = [];
   const nor: number[] = [];
@@ -2137,7 +2137,7 @@ function tapWall(t: TapShape, rr: number, yTop: number, radial: number) {
 }
 
 /** A closed curve from a function of u in [0, 1]. */
-class FnCurve extends THREE.Curve<THREE.Vector3> {
+export class FnCurve extends THREE.Curve<THREE.Vector3> {
   constructor(private f: (u: number, target: THREE.Vector3) => THREE.Vector3) {
     super();
   }
@@ -2151,7 +2151,7 @@ class FnCurve extends THREE.Curve<THREE.Vector3> {
  * footprint (half-widths fx along the pipe, fz across, an ellipse) out TAP_SADDLE all round. Top, underside, outer and
  * inner edges, as plan-view ellipses laid onto the pipe.
  */
-function saddlePlate(rp: number, th: number, foot: (phi: number) => [number, number], radial: number, outer?: (phi: number) => [number, number]) {
+export function saddlePlate(rp: number, th: number, foot: (phi: number) => [number, number], radial: number, outer?: (phi: number) => [number, number]) {
   const rows = 6;
   // outer edge: TAP_SADDLE past the footprint all round, unless given (lateral taps: the plate's own outline)
   const outerFoot =

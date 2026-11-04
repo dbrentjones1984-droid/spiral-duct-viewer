@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { buildFlangeScrews, JOIN_LENGTH, shell, type BuiltConnection } from "@/components/duct-connections";
-import { shadowTexture, spangleTexture } from "@/components/spiral-pipe-3d";
+import { buildPipe, shadowTexture, spangleTexture, type PipeMats } from "@/components/spiral-pipe-3d";
 import {
   buildCollar,
   buildTeeVanes,
@@ -26,6 +26,14 @@ import {
   CTEE_EXTRA,
   crimpScrews,
   JointLoop,
+  FnCurve,
+  saddlePlate,
+  TAP_FLARE,
+  TAP_H,
+  TAP_SADDLE,
+  tapShape,
+  tapWall,
+  type TapShape,
   LAT_EXTRA,
   LAT_FACTOR,
   LAT_STRAIGHT,
@@ -69,7 +77,7 @@ import {
   STEP_PAUSE_MS,
   type DwMats,
 } from "@/components/double-wall-pipe-3d";
-import { DW_LAT_3D_HASH, DW_LAT_TYPES, dwLatHash, type DwLatType } from "@/lib/route";
+import { DW_LAT_3D_HASH, DW_LAT_TYPES, dwLatHash, type DwLatType, DW_TAP_3D_HASH, DW_TAP_TYPES, dwTapHash, type DwTapType } from "@/lib/route";
 import { DW_BULL_3D_HASH, DW_BULL_TYPES, DW_CONE_3D_HASH, DW_CONE_TYPES, DW_ELBOW_3D_HASH, DW_ELBOW_TYPES, DW_INS, DW_MITER_3D_HASH, DW_MITER_TYPES, DW_TEE_3D_HASH, DW_TEE_TYPES, dwBullHash, dwConeHash, dwElbowHash, dwMiterHash, dwTeeHash, type DwBullType, type DwConeType, type DwElbowConn, type DwElbowType, type DwIns, type DwMiterType, type DwTeeType } from "@/lib/route";
 import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
 
@@ -136,6 +144,17 @@ import { dwFittingGauge, STOCK_DIAMETERS } from "@/lib/sheets";
  * it); the seam where the outer branch meets the main. Bottom branch up to the top one (equal allowed, as single wall).
  * Assumed: where the outer branch's footprint (1.414 x (branch + 2 x insulation)) would not fit in L (2" and 3"
  * insulation), the body is made longer by the same 1.414 x 2 x (insulation - 1") (equal to the sheet's L at 1").
+ *
+ * And the double wall straight & conical taps (family "tap", Brent's Straight Taps and Conical Taps sheet, printed page
+ * 11), ordered by B (tap) and P (pipe): DSST90 straight saddle tap, DCT90 conical saddle tap (id dsct90), DST90 straight
+ * tap and DCT90 conical tap, saddle not included (id dcnt90); the sheet prints DCT90 for both conical ones. The single
+ * wall SST90 / CT90 / ST90 / CT90 drawn twice: 5" tall above the pipe's outer wall (TAP_H, the 2" outer collar included,
+ * inner collar 2" past it), the outer at tap + 2 x insulation, the liner at the tap size meeting the pipe's liner, both
+ * ending where the outer collar starts; a cone flares 1" each side along the pipe (base tap + 2", the single wall rule,
+ * the outer from tap + 2 x insulation, the liner over its own longer height so its base is also tap + 2"); a saddle tap
+ * sits on a saddle plate on the pipe's outer wall, 1" past the tap all round (the sheet's 1"). The pipe P (outer shell
+ * and liner) is a see-through ghost, for reference. B up to P - 2" (saddles and cones), up to P (DST90), as single wall:
+ * insulation adds the same 2 x insulation to the tap and the pipe, so every footprint fits and nothing is lengthened.
  * Units are inches.
  */
 
@@ -143,12 +162,12 @@ type PlayState = "idle" | "playing" | "paused" | "done";
 type ScrewItem = NonNullable<BuiltConnection["screws"]>["items"][number];
 const DEG = Math.PI / 180;
 
-type Kind = DwElbowType | DwMiterType | DwBullType | DwTeeType | DwConeType | DwLatType;
+type Kind = DwElbowType | DwMiterType | DwBullType | DwTeeType | DwConeType | DwLatType | DwTapType;
 /** The tees & crosses (sheet 4) and the conical ones (sheet 5): same pickers and rules, straight or cone taps. */
-type CrossKind = DwTeeType | DwConeType | DwLatType;
+type CrossKind = DwTeeType | DwConeType | DwLatType | DwTapType;
 /** gored: gores on R = 1.5 x A; miter: two straight legs on a 45° cut; heel: gored + the B collar on top; tee: bullhead tee; cross: tee / cross; cone: conical tee / cross. */
-type Build = "gored" | "miter" | "heel" | "tee" | "cross" | "cone" | "lat";
-const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: string; build: Build; vanes?: boolean }> = {
+type Build = "gored" | "miter" | "heel" | "tee" | "cross" | "cone" | "lat" | "tap";
+const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: string; build: Build; vanes?: boolean; code?: string; sub?: string; saddle?: boolean; cone?: boolean; gap?: number }> = {
   de90: { angle: 90, pieces: 5, name: "Gored 90° Elbow (DE90)", short: "90° 5-piece", build: "gored" },
   de60: { angle: 60, pieces: 3, name: "Gored 60° Elbow (DE60)", short: "60° 3-piece", build: "gored" },
   de45: { angle: 45, pieces: 3, name: "Gored 45° Elbow (DE45)", short: "45° 3-piece", build: "gored" },
@@ -171,6 +190,11 @@ const ELBOW: Record<Kind, { angle: number; pieces: number; name: string; short: 
   drl45: { angle: 45, pieces: 0, name: "Reducing Lateral 45° (DRL45)", short: "45° reducing lateral", build: "lat" },
   dlc45: { angle: 45, pieces: 0, name: "Lateral Cross 45° (DLC45)", short: "45° lateral cross", build: "lat" },
   drlc45: { angle: 45, pieces: 0, name: "Reducing Lateral Cross 45° (DRLC45)", short: "45° reducing lateral cross", build: "lat" },
+  // Taps (sheet 7): printed codes (DCT90 twice), gap: B up to P - gap.
+  dsst90: { angle: 90, pieces: 0, name: "Straight Saddle Tap 90° (DSST90)", short: "straight saddle tap", build: "tap", code: "DSST90", sub: "saddle", saddle: true, cone: false, gap: 2 },
+  dsct90: { angle: 90, pieces: 0, name: "Conical Saddle Tap 90° (DCT90)", short: "conical saddle tap", build: "tap", code: "DCT90", sub: "saddle", saddle: true, cone: true, gap: 2 },
+  dst90: { angle: 90, pieces: 0, name: "Straight Tap 90°, No Saddle (DST90)", short: "straight tap, no saddle", build: "tap", code: "DST90", sub: "no saddle", saddle: false, cone: false, gap: 0 },
+  dcnt90: { angle: 90, pieces: 0, name: "Conical Tap 90°, No Saddle (DCT90)", short: "conical tap, no saddle", build: "tap", code: "DCT90", sub: "no saddle", saddle: false, cone: true, gap: 2 },
 };
 /**
  * Tees & crosses (sheet 4) and conical tees & crosses (sheet 5): the size selects after A, in letter order, with what
@@ -258,14 +282,19 @@ const CROSS: Record<CrossKind, { sizes: readonly { label: string; role: TeeRole;
     lRule: "C × 1.414 + 3″",
     reducing: true,
   },
+  // Taps (sheet 7): A is the pipe P here; B the tap (the drawing's A), the single wall default 8" on 14".
+  dsst90: { sizes: [{ label: "B · tap", role: "top", def: 8 }], lRule: "", reducing: false },
+  dsct90: { sizes: [{ label: "B · tap", role: "top", def: 8 }], lRule: "", reducing: false },
+  dst90: { sizes: [{ label: "B · tap", role: "top", def: 8 }], lRule: "", reducing: false },
+  dcnt90: { sizes: [{ label: "B · tap", role: "top", def: 8 }], lRule: "", reducing: false },
 };
-const CROSS_KINDS: readonly CrossKind[] = [...DW_TEE_TYPES, ...DW_CONE_TYPES, ...DW_LAT_TYPES];
+const CROSS_KINDS: readonly CrossKind[] = [...DW_TEE_TYPES, ...DW_CONE_TYPES, ...DW_LAT_TYPES, ...DW_TAP_TYPES];
 const NO_XS: readonly number[] = [];
 /** Largest stock outlet under A (reducing tees / crosses: B < A). */
 const maxOutlet = (a: number) => [...STOCK_DIAMETERS].reverse().find((d) => d < a) ?? STOCK_DIAMETERS[0];
 /** Keep a tee / cross's sizes in range for main A: taps up to A, the outlet under A. */
 const clampCross = (k: CrossKind, a: number, xs: readonly number[]) => {
-  const v = CROSS[k].sizes.map((s, i) => Math.min(xs[i] ?? s.def, s.role === "out" ? maxOutlet(a) : a));
+  const v = CROSS[k].sizes.map((s, i) => Math.min(xs[i] ?? s.def, s.role === "out" ? maxOutlet(a) : Math.max(STOCK_DIAMETERS[0], a - (ELBOW[k].gap ?? 0)))); // a tap never below the smallest stock (P is bumped to fit)
   // Laterals: the bottom branch up to the top one (sheet B > C / C > D; equal allowed, as single wall).
   if (ELBOW[k].build === "lat") {
     const ti = CROSS[k].sizes.findIndex((s) => s.role === "top");
@@ -288,6 +317,7 @@ function crossDims(k: CrossKind, A: number, xs: readonly number[], t: number) {
   const top = get("top");
   const bottom = get("bottom");
   const tap = Math.max(top, bottom);
+  if (ELBOW[k].build === "tap") return { out, top, bottom, Ls: 0, L: 0, Lx: 0, R: 0 };
   if (ELBOW[k].build === "lat") {
     // Laterals: L = top x 1.414 + 3" to the nearest 1/2"; made longer (same rounding) by 1.414 x 2 x (insulation - 1")
     // where the insulated top branch's footprint would not fit (keeps the sheet's clearance; equal at 1").
@@ -364,6 +394,9 @@ type ElbowMats = {
   flange: THREE.Material;
   vane: THREE.Material; // DMEV90 turning vanes
   vaneEdge: THREE.Material;
+  plate: THREE.Material; // tap saddle plates
+  ghost: PipeMats; // the pipe a tap goes on: outer shell, see-through
+  ghostLiner: PipeMats; // and its liner
 };
 
 /**
@@ -617,11 +650,91 @@ function buildDwLat(A: number, t: number, conn: DwElbowConn, m: ElbowMats, k: Dw
   return { group, ends, R: 0, OD };
 }
 
+/**
+ * Straight or conical tap (DSST90 / DCT90 saddle / DST90 / DCT90 no saddle) B on a pipe P along x: the single wall tap
+ * drawn twice. Outer: tap + 2 x insulation from the pipe's outer wall (or the saddle plate's top) to where its 2" outer
+ * collar starts, TAP_H above the pipe's outer wall; liner: the tap size from the pipe's liner up to the same height; a
+ * cone flares TAP_FLARE each side at each one's base. Seam where the outer meets the pipe / plate, and where a cone meets
+ * its collar; saddle plate on the outer wall. The pipe (outer shell and liner) is a faint see-through reference. ends[0]
+ * is the tap's top end, +X up.
+ */
+function buildDwTap(P: number, t: number, conn: DwElbowConn, m: ElbowMats, k: DwTapType, xs: readonly number[]) {
+  const group = new THREE.Group();
+  const { top: B } = crossDims(k, P, xs, t);
+  const { saddle, cone } = ELBOW[k];
+  const rpi = P / 2;
+  const rpo = rpi + t;
+  const tOD = B + 2 * t;
+  const radial = Math.min(144, 64 + Math.round(tOD * 4));
+  const rib = Math.min(0.34, 0.04 + tOD * 0.012);
+  const th = saddle ? Math.max(0.08, Math.max(0.05, tOD * 0.006) * 1.4) : 0;
+  const yTop = rpo + TAP_H - COLLAR; // both end where the 2" outer collar starts
+  const rr = rpo + th; // the outer meets the plate's top (or the pipe)
+  const outer = tapShape(tOD / 2, yTop, !!cone);
+  const hl = yTop - rpi; // the liner's own (longer) height
+  const liner: TapShape = cone ? { rt: B / 2, ax: (y) => B / 2 + (TAP_FLARE * (yTop - y)) / hl, slope: -TAP_FLARE / hl } : { rt: B / 2, ax: () => B / 2, slope: 0 };
+  group.add(new THREE.Mesh(tapWall(outer, rr, yTop, radial), m.outer.metal));
+  group.add(new THREE.Mesh(tapWall(liner, rpi, yTop, radial), m.liner));
+  const kk = rib * 0.35;
+  group.add(
+    new THREE.Mesh(
+      new THREE.TubeGeometry(
+        new FnCurve((u, target) => {
+          const phi = u * Math.PI * 2;
+          const z0 = outer.rt * Math.sin(phi);
+          const y0 = Math.sqrt(Math.max(0, rr * rr - z0 * z0));
+          const z = (outer.rt + kk) * Math.sin(phi);
+          const R = rr + kk;
+          return target.set((outer.ax(y0) + kk) * Math.cos(phi), Math.sqrt(Math.max(0, R * R - z * z)), z);
+        }),
+        radial * 2,
+        rib,
+        8,
+        true,
+      ),
+      m.outer.seam,
+    ),
+  );
+  if (cone) {
+    const ring = new THREE.TorusGeometry(tOD / 2 + rib * 0.2, rib * 0.8, 8, radial);
+    ring.rotateX(Math.PI / 2);
+    ring.translate(0, yTop, 0);
+    group.add(new THREE.Mesh(ring, m.outer.seam));
+  }
+  if (saddle) {
+    const foot = (phi: number): [number, number] => {
+      const z = outer.rt * Math.sin(phi);
+      const y0 = Math.sqrt(Math.max(0, rr * rr - z * z));
+      return [outer.ax(y0) * Math.cos(phi), z];
+    };
+    const plate = saddlePlate(rpo, th, foot, radial);
+    for (const g of plate.geos) group.add(new THREE.Mesh(g, m.plate));
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(plate.rim, radial * 2, th * 0.75, 6, true), m.outer.seam));
+  }
+  const out = conn === "flange" ? COLLAR : COLLAR + STICK_OUT;
+  const f = new THREE.Group();
+  f.position.set(0, yTop + out, 0);
+  f.quaternion.setFromUnitVectors(X_AXIS, new THREE.Vector3(0, 1, 0));
+  buildEnd(f, B, t, conn, m);
+  group.add(f);
+  // The pipe P (outer shell and liner): a short see-through length, for reference only.
+  const span = tOD + (cone ? 2 * TAP_FLARE : 0) + (saddle ? 2 * TAP_SADDLE : 0);
+  const len = Math.max(P + 2 * t + 4, Math.ceil(span) + 8);
+  for (const g of [buildPipe(P + 2 * t, m.ghost, len), buildPipe(P, m.ghostLiner, len)]) {
+    g.traverse((o) => {
+      o.renderOrder = 1;
+    });
+    group.add(g);
+  }
+  return { group, ends: [f], R: 0, OD: tOD };
+}
+
 function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: ElbowMats, B: number, C: number, xs: readonly number[]) {
   const { angle, pieces, build, vanes } = ELBOW[kind];
   if (build === "cross") return buildDwCross(A, t, conn, m, kind as DwTeeType, xs);
   if (build === "cone") return buildDwCone(A, t, conn, m, kind as DwConeType, xs);
   if (build === "lat") return buildDwLat(A, t, conn, m, kind as DwLatType, xs);
+  if (build === "tap") return buildDwTap(A, t, conn, m, kind as DwTapType, xs);
   if (build === "tee") return buildDwTee(A, t, conn, m, B, C, vanes ? (vaneSpec(A)?.n ?? 0) : 0);
   const group = new THREE.Group();
   const theta = angle * DEG;
@@ -692,13 +805,13 @@ function buildDwElbow(A: number, t: number, kind: Kind, conn: DwElbowConn, m: El
 export default function DoubleWallElbow3D({
   onClose,
   family = "gored",
-  initialType = family === "miter" ? "dmev90" : family === "bullhead" ? "dbt90" : family === "tee" ? "dt90" : family === "conical" ? "dct90" : family === "lateral" ? "dl45" : "de90",
+  initialType = family === "miter" ? "dmev90" : family === "bullhead" ? "dbt90" : family === "tee" ? "dt90" : family === "conical" ? "dct90" : family === "lateral" ? "dl45" : family === "tap" ? "dsst90" : "de90",
   initialIns = 1,
   initialConn = "slip",
 }: {
   onClose: () => void;
   /** gored: DE90 / DE60 / DE45 / DE30 (sheet 1); miter: DMEV90 / DME90 / D3P90 / D3P90H (sheet 2); bullhead: DBT90 / DBTV90 (sheet 3); tee: DT90 / DRT90 / DC180 / DRC180 (sheet 4); conical: DCT90 / DRCT90 / DCC180 / DRCC180 (sheet 5); lateral: DL45 / DRL45 / DLC45 / DRLC45 (sheet 6). */
-  family?: "gored" | "miter" | "bullhead" | "tee" | "conical" | "lateral";
+  family?: "gored" | "miter" | "bullhead" | "tee" | "conical" | "lateral" | "tap"; // tap: DSST90 / DCT90 / DST90 / DCT90 (sheet 7)
   initialType?: Kind;
   initialIns?: DwIns;
   initialConn?: DwElbowConn;
@@ -712,7 +825,7 @@ export default function DoubleWallElbow3D({
     play: () => void;
   } | null>(null);
   const [play, setPlay] = useState<PlayState>("idle");
-  const [diameter, setDiameter] = useState(12);
+  const [diameter, setDiameter] = useState(family === "tap" ? 14 : 12); // taps: pipe P (single wall default 14")
   const [kind, setKind] = useState<Kind>(initialType);
   const [bDia, setBDia] = useState(() => (family === "bullhead" ? teeRun(12) : defaultB(12)));
   const [cDia, setCDia] = useState(() => teeRun(12)); // bullhead tee outlet C (B is bDia)
@@ -726,9 +839,10 @@ export default function DoubleWallElbow3D({
   const od = diameter + 2 * ins;
   const gauge = dwFittingGauge(diameter);
   const spec = ELBOW[kind];
-  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : family === "bullhead" ? DW_BULL_TYPES : family === "tee" ? DW_TEE_TYPES : family === "conical" ? DW_CONE_TYPES : family === "lateral" ? DW_LAT_TYPES : DW_ELBOW_TYPES;
+  const types: readonly Kind[] = family === "miter" ? DW_MITER_TYPES : family === "bullhead" ? DW_BULL_TYPES : family === "tee" ? DW_TEE_TYPES : family === "conical" ? DW_CONE_TYPES : family === "lateral" ? DW_LAT_TYPES : family === "tap" ? DW_TAP_TYPES : DW_ELBOW_TYPES;
   const bull = family === "bullhead";
-  const cross = family === "tee" || family === "conical" || family === "lateral";
+  const cross = family === "tee" || family === "conical" || family === "lateral" || family === "tap";
+  const taps = family === "tap";
   const conical = family === "conical";
   const lateral = family === "lateral";
   const ck = (cross ? kind : "dt90") as CrossKind;
@@ -750,12 +864,17 @@ export default function DoubleWallElbow3D({
   // A reducing tee / cross needs an outlet under A: the smallest A is the second stock size.
   useEffect(() => {
     if (cross && CROSS[kind as CrossKind]?.reducing && diameter <= STOCK_DIAMETERS[0]) setCrossA(STOCK_DIAMETERS[1]);
+    // Taps: P has to take the smallest tap (saddles and cones: B up to P - 2").
+    const gap = ELBOW[kind].gap ?? 0;
+    if (cross && gap && diameter < STOCK_DIAMETERS[0] + gap) setCrossA(STOCK_DIAMETERS.find((d) => d >= STOCK_DIAMETERS[0] + gap)!);
   }, [cross, kind, diameter]);
   useEffect(() => setIns(initialIns), [initialIns]);
   useEffect(() => setConnection(initialConn), [initialConn]);
   // Keep the address on what is shown (replace, so the back button still closes the model).
   useEffect(() => {
-    if (family === "lateral") {
+    if (family === "tap") {
+      if (location.hash.startsWith(DW_TAP_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwTapHash(kind as DwTapType, ins, connection));
+    } else if (family === "lateral") {
       if (location.hash.startsWith(DW_LAT_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwLatHash(kind as DwLatType, ins, connection));
     } else if (family === "conical") {
       if (location.hash.startsWith(DW_CONE_3D_HASH)) history.replaceState(history.state, "", location.pathname + location.search + dwConeHash(kind as DwConeType, ins, connection));
@@ -819,7 +938,20 @@ export default function DoubleWallElbow3D({
     // DMEV90 turning vanes: the single wall MEV90's.
     const vaneMat = new THREE.MeshStandardMaterial({ color: 0xf4f7fa, map: spangleE, metalness: 0.5, roughness: 0.42, envMapIntensity: 1, side: THREE.DoubleSide });
     const vaneEdge = new THREE.MeshStandardMaterial({ color: 0x5f6b77, metalness: 0.6, roughness: 0.45, envMapIntensity: 0.8 });
-    const allMats = [metalE, seamE, insideE, collarE, linerE, vaneMat, vaneEdge, outer, seam, edge, insul, insulCut, linerSolid, linerSeam, couplingMat, screwMat, gasketMat];
+    // Taps: the saddle plate (same metal, toned down) and the pipe P they go on, faint and see-through (reference only).
+    const plateMat = metalE.clone();
+    plateMat.color.set(0xc9d0d8);
+    plateMat.envMapIntensity = 0.7;
+    const see = (mt: THREE.MeshStandardMaterial, opacity: number) => {
+      const g = mt.clone();
+      g.transparent = true;
+      g.opacity = opacity;
+      g.depthWrite = false;
+      return g;
+    };
+    const ghost: PipeMats = { metal: see(metalE, 0.16), inside: see(insideE, 0.08), seam: see(seamE, 0.22), rim: see(seamE, 0.6) };
+    const ghostLiner: PipeMats = { metal: see(linerE, 0.12), inside: see(insideE, 0.06), seam: see(seamE, 0.16), rim: see(seamE, 0.5) };
+    const allMats = [metalE, seamE, insideE, collarE, linerE, vaneMat, vaneEdge, outer, seam, edge, insul, insulCut, linerSolid, linerSeam, couplingMat, screwMat, gasketMat, plateMat, ...Object.values(ghost), ...Object.values(ghostLiner)];
 
     const shadowTex = shadowTexture();
     const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
@@ -958,12 +1090,15 @@ export default function DoubleWallElbow3D({
         disposeGroup(model);
       }
       const { d, t, kind: k, c, b, cc, xs: x } = cur;
-      const OD = d + 2 * t;
-      const ri = d / 2;
+      // The connection goes on end 0 at its own size: the main A (elbows, tees, laterals) or, on a tap, the tap B (P is
+      // the pipe it sits on, not what joins it).
+      const dc = ELBOW[k].build === "tap" ? crossDims(k as CrossKind, d, x, t).top : d;
+      const OD = dc + 2 * t;
+      const ri = dc / 2;
       const ro = ri + t;
       const w = drawWall(OD);
       const segs = segsFor(OD);
-      spangleE.repeat.set(Math.max(2, Math.round((Math.PI * OD) / 10)), TEX_LENGTH / 10);
+      spangleE.repeat.set(Math.max(2, Math.round((Math.PI * (d + 2 * t)) / 10)), TEX_LENGTH / 10);
       const el = buildDwElbow(d, t, k, c, {
         outer: { metal: metalE, inside: insideE, seam: seamE },
         liner: linerE,
@@ -973,6 +1108,9 @@ export default function DoubleWallElbow3D({
         flange: couplingMat,
         vane: vaneMat,
         vaneEdge,
+        plate: plateMat,
+        ghost,
+        ghostLiner,
       }, b, cc, x);
       const ductMats: DwMats = { outer, seam, edge, insul, insulCut, liner: linerSolid, linerSeam };
       steps = [];
@@ -993,16 +1131,16 @@ export default function DoubleWallElbow3D({
         const stopO = -STICK_OUT + CRIMP_X - 0.03;
         const lead = stopI - stopO; // the duct liner sticks out this far past its outer shell when assembled
         const back = 4; // outer shell pulled back this far (the inner screws show)
-        const gap = d <= 8 ? 1.5 : d <= 16 ? 2 : 2.5;
+        const gap = dc <= 8 ? 1.5 : dc <= 16 ? 2 : 2.5;
         const D = new THREE.Group();
         D.position.x = gap;
         f.add(D);
-        D.add(buildSection(d, t, ductMats, { liner: [0, JOIN_LENGTH], win: [] }));
-        const dO = buildSection(d, t, ductMats, { outer: [-lead, JOIN_LENGTH], ins: [0.05, JOIN_LENGTH], win: [] });
+        D.add(buildSection(dc, t, ductMats, { liner: [0, JOIN_LENGTH], win: [] }));
+        const dO = buildSection(dc, t, ductMats, { outer: [-lead, JOIN_LENGTH], ins: [0.05, JOIN_LENGTH], win: [] });
         dO.position.x = back;
         D.add(dO);
         const sx = (CRIMP_X + CRIMP_TAPER) / 2 - 0.15; // over the crimp, as the single wall slip joint
-        const innerS = crimpScrews(d, sx, screwMat);
+        const innerS = crimpScrews(dc, sx, screwMat);
         const outerS = crimpScrews(OD, -STICK_OUT + sx, screwMat);
         f.add(innerS.group, outerS.group);
         allScrews = [...innerS.items, ...outerS.items];
@@ -1026,7 +1164,7 @@ export default function DoubleWallElbow3D({
         B.position.x = S;
         f.add(B);
         const b0 = gt + ft;
-        B.add(buildSection(d, t, ductMats, { liner: [b0, b0 + JOIN_LENGTH], outer: [b0, b0 + JOIN_LENGTH], ins: [b0, b0 + JOIN_LENGTH], win: [] }));
+        B.add(buildSection(dc, t, ductMats, { liner: [b0, b0 + JOIN_LENGTH], outer: [b0, b0 + JOIN_LENGTH], ins: [b0, b0 + JOIN_LENGTH], win: [] }));
         B.add(flatRing(r0, rf, gt, b0, segs, couplingMat, true));
         const gasket = flatRing(r0 + 0.02, rf - 0.03, 0, gt, segs, gasketMat, false);
         gasket.position.x = S / 2;
@@ -1047,7 +1185,7 @@ export default function DoubleWallElbow3D({
       // As drawn on the sheet: the bottom end on the left pointing down, the turn going up and to the right (the tee: B
       // left, C right, inlet A at the bottom).
       const elbow = el.group;
-      elbow.rotation.y = ELBOW[k].build === "tee" || ELBOW[k].build === "cross" || ELBOW[k].build === "cone" || ELBOW[k].build === "lat" ? 0 : Math.PI;
+      elbow.rotation.y = ELBOW[k].build === "tee" || ELBOW[k].build === "cross" || ELBOW[k].build === "cone" || ELBOW[k].build === "lat" || ELBOW[k].build === "tap" ? 0 : Math.PI;
       elbow.updateMatrixWorld(true);
       elbow.position.sub(new THREE.Box3().setFromObject(elbow).getCenter(new THREE.Vector3()));
       model = new THREE.Group();
@@ -1055,7 +1193,7 @@ export default function DoubleWallElbow3D({
       scene.add(model);
       renderer.domElement.setAttribute(
         "aria-label",
-        `3D double wall ${ELBOW[k].name.toLowerCase()}, solid liner, ${d} inch inside, ${t} inch insulation, ${OD} inch outside, ${c === "none" ? "no connection" : c === "slip" ? "slip joint" : "flanged"}. Drag to turn, pinch to zoom.`,
+        `3D double wall ${ELBOW[k].name.toLowerCase()}, solid liner, ${d} inch inside, ${t} inch insulation, ${d + 2 * t} inch outside, ${c === "none" ? "no connection" : c === "slip" ? "slip joint" : "flanged"}. Drag to turn, pinch to zoom.`,
       );
       frame(OD);
     };
@@ -1078,7 +1216,7 @@ export default function DoubleWallElbow3D({
     api.current = {
       set: (d, t, k, c, b, cc, x) => {
         const bld = ELBOW[k].build;
-        const same = bld === "cross" || bld === "cone" || bld === "lat" ? x.join() === cur.xs.join() : (b === cur.b && cc === cur.cc) || (bld !== "heel" && bld !== "tee");
+        const same = bld === "cross" || bld === "cone" || bld === "lat" || bld === "tap" ? x.join() === cur.xs.join() : (b === cur.b && cc === cur.cc) || (bld !== "heel" && bld !== "tee");
         if (model && d === cur.d && t === cur.t && k === cur.kind && c === cur.c && same) return;
         cur = { d, t, kind: k, c, b, cc, xs: [...x] };
         build();
@@ -1143,7 +1281,7 @@ export default function DoubleWallElbow3D({
   // The bullhead tee's / tee's / cross's captions: the same steps, "tee" or "cross" for "elbow" (a step can be missing for a
   // moment as the connection changes).
   function tee(st: { title: string; text: string } | undefined) {
-    const noun = spec.build === "lat" ? "lateral" : spec.angle === 180 ? "cross" : "tee";
+    const noun = spec.build === "tap" ? "tap" : spec.build === "lat" ? "lateral" : spec.angle === 180 ? "cross" : "tee";
     return (bull || cross) && st ? { ...st, text: st.text.replace(/elbow/g, noun) } : st;
   }
   function noneText() {
@@ -1156,6 +1294,11 @@ export default function DoubleWallElbow3D({
       const main = k === "dt90" ? `Main A ${diameter}″ straight through, tap B ${cd.top}″ on top` : k === "drt90" ? `${red}, tap C ${cd.top}″ on top` : k === "dc180" ? `Main A ${diameter}″ straight through, tap B ${cd.top}″ on top, tap C ${cd.bottom}″ below` : `${red}, tap D ${cd.top}″ on top, tap C ${cd.bottom}″ below`;
       const l = `L = ${CROSS[k].lRule} = ${cd.Ls}″${k === "drt90" ? " (sheet prints B + 3″)" : ""}${cd.L > cd.Ls ? `, made ${cd.L}″* so the insulated tap fits` : ""}`;
       return `Solid liner. ${main}. ${l}; taps 4″ out*. ${ends}`;
+    }
+    if (spec.build === "tap") {
+      const body = spec.cone ? `2″ collar, then a 3″ cone flaring to B + 2″* along the pipe` : `Straight collar`;
+      const seat = spec.saddle ? `on a saddle plate 1″ past the tap` : `cut to the pipe's curve, saddle not included`;
+      return `Solid liner. ${body}, B ${cd.top}″ on pipe P ${diameter}″, 5″ tall ${seat}. Pipe shown for reference. ${ends}`;
     }
     if (spec.build === "lat") {
       // Laterals: L from the top branch; DL45 reads the sheet's C as B (single wall L45).
@@ -1197,7 +1340,7 @@ export default function DoubleWallElbow3D({
   const label = "text-[11px] font-medium tracking-wide text-muted uppercase";
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered elbows" : bull ? "bullhead tees" : conical ? "conical tees and crosses" : lateral ? "laterals" : cross ? "tees and crosses" : "gored elbows"}`}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#eef2f6] to-[#bcc7d3]" role="dialog" aria-modal="true" aria-label={`3D model: double wall round ${family === "miter" ? "mitered elbows" : bull ? "bullhead tees" : conical ? "conical tees and crosses" : lateral ? "laterals" : taps ? "straight and conical taps" : cross ? "tees and crosses" : "gored elbows"}`}>
       <header className="flex items-center gap-2 bg-accent px-3 py-2 text-accent-ink" style={{ paddingTop: "max(0.5rem, env(safe-area-inset-top))" }}>
         <div className="min-w-0 flex-1">
           <p className="font-display text-xl leading-none tracking-wide">3D MODEL</p>
@@ -1232,8 +1375,16 @@ export default function DoubleWallElbow3D({
             {bull ? "Tee" : cross ? "Type" : "Elbow"} · {spec.short}
           </span>
           {types.map((k) => (
-            <button key={k} type="button" role="radio" aria-checked={kind === k} aria-label={`${k.toUpperCase()}, ${ELBOW[k].short}`} onClick={() => setKind(k)} className={`${radio} px-0`}>
-              {k.toUpperCase()}
+            <button key={k} type="button" role="radio" aria-checked={kind === k} aria-label={`${ELBOW[k].code ?? k.toUpperCase()}, ${ELBOW[k].short}`} onClick={() => setKind(k)} className={`${radio} px-0`}>
+              {ELBOW[k].sub ? (
+                // Taps: the printed code (DCT90 twice) over saddle / no saddle.
+                <span className="flex flex-col items-center leading-none">
+                  <span className="text-base leading-none">{ELBOW[k].code}</span>
+                  <span className="font-sans text-[9px] leading-none tracking-wide uppercase opacity-80">{ELBOW[k].sub}</span>
+                </span>
+              ) : (
+                k.toUpperCase()
+              )}
             </button>
           ))}
         </div>
@@ -1302,9 +1453,9 @@ export default function DoubleWallElbow3D({
         // Tee / cross sizes: main A (inside), then B, C, D as on the sheet; taps up to A, the outlet B under A.
         <div className={`grid ${["", "", "grid-cols-2", "grid-cols-3", "grid-cols-4"][CROSS[ck].sizes.length + 1]} gap-1.5 bg-surface/90 px-3 pt-2`} data-testid="cross-sizes">
           <label className="flex min-w-0 flex-col">
-            <span className={`${label} truncate`}>{CROSS[ck].reducing ? "A · inlet" : "A · main"}</span>
+            <span className={`${label} truncate`}>{taps ? "P · pipe" : CROSS[ck].reducing ? "A · inlet" : "A · main"}</span>
             <select value={diameter} onChange={(e) => setCrossA(Number(e.target.value))} aria-label="Inner diameter" className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg">
-              {STOCK_DIAMETERS.filter((d) => !CROSS[ck].reducing || d > STOCK_DIAMETERS[0]).map((d) => (
+              {STOCK_DIAMETERS.filter((d) => (!CROSS[ck].reducing || d > STOCK_DIAMETERS[0]) && d >= STOCK_DIAMETERS[0] + (spec.gap ?? 0)).map((d) => (
                 <option key={d} value={d}>
                   {d}&Prime; ID
                 </option>
@@ -1323,7 +1474,7 @@ export default function DoubleWallElbow3D({
                 aria-label={`Size ${s.label.replace(" · ", " (")})`}
                 className="btn-raised btn-raised-sm mt-1 h-10 min-w-0 rounded-[0.65rem] px-2 font-display text-lg"
               >
-                {STOCK_DIAMETERS.filter((d) => (s.role === "out" ? d < diameter : d <= diameter) && !(lateral && s.role === "bottom" && d > cd.top)).map((d) => (
+                {STOCK_DIAMETERS.filter((d) => (s.role === "out" ? d < diameter : d <= diameter - (spec.gap ?? 0)) && !(lateral && s.role === "bottom" && d > cd.top)).map((d) => (
                   <option key={d} value={d}>
                     {d}&Prime;
                   </option>
@@ -1366,7 +1517,19 @@ export default function DoubleWallElbow3D({
           </label>
         )}
         <div className="min-w-0 flex-1 text-[11px] leading-snug whitespace-nowrap text-ink" data-testid="dw-readout">
-          {cross ? (
+          {taps ? (
+            <>
+              <p className="truncate">
+                <b className="font-semibold">
+                  B {cd.top}&Prime; on P {diameter}&Prime; · outer {cd.top + 2 * ins}&Prime; · 5&Prime; tall
+                </b>
+              </p>
+              <p className="truncate">
+                {gauge} ga · {spec.cone ? <>cone, base B + 2&Prime;*</> : <>straight</>} · {spec.saddle ? <>saddle 1&Prime; lip</> : <>no saddle</>}
+              </p>
+              <p className="truncate text-muted">* assumed · B up to P{spec.gap ? <> − {spec.gap}&Prime;</> : null} · gauge by B, +2&Prime; W.G.*</p>
+            </>
+          ) : cross ? (
             <>
               <p className="truncate">
                 <b className="font-semibold">

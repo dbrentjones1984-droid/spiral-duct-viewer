@@ -7,7 +7,7 @@
      older sdv- cache (never touches other apps on this github.io origin, e.g. the NWCC map). Precaching is best-effort per file, so one slow or failed download (e.g. the big catalogue PDF
      on cellular) never stops the service worker from installing.
    VERSION and PRECACHE are filled in at build time by the sw plugin in vite.config.ts (content hash of the build). */
-const VERSION = '9d6189efb5';
+const VERSION = '83c88a0934';
 const SHELL = 'sdv-shell-' + VERSION;
 const RUNTIME = 'sdv-runtime-' + VERSION;
 const PRECACHE = [
@@ -18,21 +18,21 @@ const PRECACHE = [
   "assets/barlow-condensed-latin-600-normal-DepVgxBB.woff2",
   "assets/barlow-condensed-latin-700-normal-Dmwat-ge.woff",
   "assets/barlow-condensed-latin-700-normal-v1xN8_Wq.woff2",
-  "assets/double-wall-elbow-3d-avmk3e2s.js",
-  "assets/double-wall-pipe-3d-B-KxfXRO.js",
-  "assets/gored-elbow-3d-DcNtY2bz.js",
+  "assets/double-wall-elbow-3d-cnqVfu-U.js",
+  "assets/double-wall-pipe-3d-Crnef5WL.js",
+  "assets/gored-elbow-3d-Bup1BfZ2.js",
   "assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2",
   "assets/ibm-plex-sans-latin-400-normal-CYLoc0-x.woff",
   "assets/ibm-plex-sans-latin-500-normal-6ng42L7E.woff2",
   "assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff",
   "assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff",
   "assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2",
-  "assets/index-D_YwXigJ.css",
-  "assets/index-mGQYogXO.js",
-  "assets/model-subtitle-CvTMnEzn.js",
-  "assets/oval-elbow-3d-U99e63YJ.js",
-  "assets/oval-pipe-3d-C43p8127.js",
-  "assets/spiral-pipe-3d-p0xrO1tI.js",
+  "assets/index-By76y37X.css",
+  "assets/index-D7cROQza.js",
+  "assets/model-subtitle-ipDMgkph.js",
+  "assets/oval-elbow-3d-C6S7Xi-M.js",
+  "assets/oval-pipe-3d-B9WKhtvx.js",
+  "assets/spiral-pipe-3d-D2bCC08P.js",
   "blueprint.png",
   "icons/apple-touch-icon-v2.png",
   "icons/favicon-16-v2.png",
@@ -56,6 +56,7 @@ const PRECACHE = [
   "sheets/double-wall-round-fittings-4.webp",
   "sheets/double-wall-round-fittings-5.webp",
   "sheets/double-wall-round-fittings-6.webp",
+  "sheets/double-wall-round-fittings-7.webp",
   "sheets/single-wall-oval-1.webp",
   "sheets/single-wall-oval-2.webp",
   "sheets/single-wall-oval-3.webp",
