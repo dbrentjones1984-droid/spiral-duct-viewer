@@ -145,7 +145,7 @@ export const TAP_SADDLE = 1;
  * Lateral taps (sheet "Lateral Taps"): footprint along the pipe = A x LAT_FACTOR; the saddle plate is LTAP_EXTRA longer
  * (sheet: L = C x 1.414 + 3", C read as A) and reaches TAP_SADDLE past the branch across the pipe (assumed).
  */
-const LTAP_EXTRA = 3;
+export const LTAP_EXTRA = 3;
 /**
  * Concentric reducer length R from A down to B (sheet "Concentric and Eccentric Reducer", CR table): by the reduction
  * A - B, 1"-4" -> 4", 5"-8" -> 8", 9"-12" -> 12", 13"-16" -> 16". Past the table (17"+, assumed) it goes on in the same

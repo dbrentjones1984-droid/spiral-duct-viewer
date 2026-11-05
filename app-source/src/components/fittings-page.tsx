@@ -3,7 +3,7 @@ import { Box, ChevronLeft } from "lucide-react";
 import { HEADER_SLOT, HomeButton } from "@/components/home-button";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import type { CapType, CteeType, LatType, LtapType, RedType, TapType, TeeType, WyeType, OsType, HangerType, GrilleType, OvalBend, OvalElbowType, OvalTeeType, OvalCteeType, OvalLlteeType, OvalLatType, OvalRedType, OvalWyeType, OvalCapType, OvalOsType } from "@/lib/route";
-import type { DwBullType, DwConeType, DwElbowConn, DwLatType, DwTapType, DwElbowType, DwIns, DwMiterType, DwTeeType } from "@/lib/route";
+import type { DwBullType, DwConeType, DwElbowConn, DwLatType, DwTapType, DwLtapType, DwElbowType, DwIns, DwMiterType, DwTeeType } from "@/lib/route";
 
 // three.js is only downloaded when a model is opened (it is still precached for offline use).
 const GoredElbow3D = lazy(() => import("@/components/gored-elbow-3d"));
@@ -495,6 +495,12 @@ const DW_FITTINGS = [
     text: "90° taps on pipe P, 5″ tall · saddle or no saddle · straight or conical",
     source: "Sheet 7 · Straight Taps and Conical Taps",
   },
+  {
+    id: "ltap",
+    name: "Lateral Taps (DLST45 / DLT45)",
+    text: "45° taps on pipe P · saddle (L = A × 1.414 + 3″) or no saddle (L = A × 1.414)",
+    source: "Sheet 8 · Laterals Taps",
+  },
 ] as const;
 
 /**
@@ -510,11 +516,12 @@ export function DoubleWallFittingsPage({
   dwCone,
   dwLat,
   dwTap,
+  dwLtap,
   onBack,
   onOpen3d,
   onClose3d,
 }: {
-  model3d: "elbow" | "miter" | "bullhead" | "tee" | "conical" | "lateral" | "tap" | null;
+  model3d: "elbow" | "miter" | "bullhead" | "tee" | "conical" | "lateral" | "tap" | "ltap" | null;
   dwElbow: { type: DwElbowType; ins: DwIns; conn: DwElbowConn };
   dwMiter: { type: DwMiterType; ins: DwIns; conn: DwElbowConn };
   dwBull: { type: DwBullType; ins: DwIns; conn: DwElbowConn };
@@ -522,11 +529,12 @@ export function DoubleWallFittingsPage({
   dwCone: { type: DwConeType; ins: DwIns; conn: DwElbowConn };
   dwLat: { type: DwLatType; ins: DwIns; conn: DwElbowConn };
   dwTap: { type: DwTapType; ins: DwIns; conn: DwElbowConn };
+  dwLtap: { type: DwLtapType; ins: DwIns; conn: DwElbowConn };
   onBack: () => void;
-  onOpen3d: (id: "elbow" | "miter" | "bullhead" | "tee" | "conical" | "lateral" | "tap") => void;
+  onOpen3d: (id: "elbow" | "miter" | "bullhead" | "tee" | "conical" | "lateral" | "tap" | "ltap") => void;
   onClose3d: () => void;
 }) {
-  const open = model3d === "miter" ? dwMiter : model3d === "bullhead" ? dwBull : model3d === "tee" ? dwTee : model3d === "conical" ? dwCone : model3d === "lateral" ? dwLat : model3d === "tap" ? dwTap : dwElbow;
+  const open = model3d === "miter" ? dwMiter : model3d === "bullhead" ? dwBull : model3d === "tee" ? dwTee : model3d === "conical" ? dwCone : model3d === "lateral" ? dwLat : model3d === "tap" ? dwTap : model3d === "ltap" ? dwLtap : dwElbow;
   return (
     <main className="flex min-h-svh flex-col bg-paper text-ink">
       <div className="sticky top-0 z-30 shadow-[0_2px_10px_rgb(0_28_64/0.25)]">
@@ -556,7 +564,7 @@ export function DoubleWallFittingsPage({
           <li key={f.id} className="flex h-full flex-col gap-3 rounded-card border border-[#8e9bab]/60 bg-surface p-3 shadow-[0_2px_10px_rgb(0_28_64/0.12)]">
             <div className="flex items-start gap-3">
               <span className="grid size-20 shrink-0 place-items-center rounded-[0.65rem] bg-paper text-accent ring-1 ring-[#c5d0db]" aria-hidden="true">
-                <DuctElbowIcon className="h-12 w-auto" gores={f.id === "elbow"} miter={f.id === "miter"} tee={f.id === "bullhead"} cross={f.id === "tee" || f.id === "conical"} conical={f.id === "conical"} lateral={f.id === "lateral"} tap={f.id === "tap"} />
+                <DuctElbowIcon className="h-12 w-auto" gores={f.id === "elbow"} miter={f.id === "miter"} tee={f.id === "bullhead"} cross={f.id === "tee" || f.id === "conical"} conical={f.id === "conical"} lateral={f.id === "lateral"} tap={f.id === "tap"} ltap={f.id === "ltap"} />
               </span>
               <div className="min-w-0 flex-1">
                 <h2 className="line-clamp-2 font-display text-xl leading-tight text-accent">{f.name}</h2>
@@ -592,7 +600,7 @@ export function DoubleWallFittingsPage({
         >
           <DoubleWallElbow3D
             key={`dw${model3d}`}
-            family={model3d === "miter" ? "miter" : model3d === "bullhead" ? "bullhead" : model3d === "tee" ? "tee" : model3d === "conical" ? "conical" : model3d === "lateral" ? "lateral" : model3d === "tap" ? "tap" : "gored"}
+            family={model3d === "miter" ? "miter" : model3d === "bullhead" ? "bullhead" : model3d === "tee" ? "tee" : model3d === "conical" ? "conical" : model3d === "lateral" ? "lateral" : model3d === "tap" ? "tap" : model3d === "ltap" ? "ltap" : "gored"}
             initialType={open.type}
             initialIns={open.ins}
             initialConn={open.conn}

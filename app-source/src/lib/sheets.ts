@@ -363,12 +363,12 @@ export const DW_ROUND_SHEETS = [
 // (DT90 / DRT90 / DC180 / DRC180; printed page 7, with the address banner) and "Conical Tees and Conical Crosses"
 // (DCT90 / DRCT90 / DCC180 / DRCC180; printed page 8, with the address banner) and "Laterals" (DL45 / DRL45 / DLC45 /
 // DRLC45; printed page 9, with the address banner) and "Straight Taps and Conical Taps" (DSST90 / DCT90 saddle / DST90 / DCT90
-// no saddle; printed page 11, with the address banner), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
+// no saddle; printed page 11, with the address banner) and "Laterals Taps" (DLST45 / DLT45, printed "LT45", shown as DLT45 per Brent; printed page 12), each with its own 3D model, kept as sent. More fitting sheets get added here the same way (public/sheets/double-wall-round-fittings-<n>.webp, listed
 // below, and one page each in the PDF). The PDF is the image on a letter page, pixels unchanged (lossless).
 export const DWF_ROUND_PDF = {
   href: `${base}docs/Spiral-Systems-Double-Wall-Round-Fittings.pdf`,
   fileName: "Spiral-Systems-Double-Wall-Round-Fittings.pdf",
-  sizeLabel: "8.5 MB",
+  sizeLabel: "9.6 MB",
 };
 
 export const DWF_ROUND_SHEETS = [
@@ -427,6 +427,14 @@ export const DWF_ROUND_SHEETS = [
     w: 1122,
     h: 1402,
     alt: "Double Wall Round, Straight Taps and Conical Taps. Each tap A sits on top of pipe P, 5 inch tall with a 2 inch collar at the top; to order list B and P (pipe size). DSST90, straight saddle tap 90 degree: a straight collar on a saddle, with a 1 inch dimension at the saddle. DCT90, saddle tap 90 degree: a conical collar on a saddle. DST90, tap 90 degree, saddle not included: a straight collar. DCT90, tap 90 degree, saddle not included: a conical collar. Outer shell in blue, inner liner and pipe dashed in red.",
+  },
+  {
+    n: 8,
+    title: "Laterals Taps",
+    src: `${base}sheets/double-wall-round-fittings-8.webp`,
+    w: 1123,
+    h: 1401,
+    alt: "Double Wall Round, Laterals Taps. Each tap leans at 45 degree on pipe P, with a 2 inch outer collar and the inner collar 2 inch beyond it; to order list A and P (pipe size); the tap is labelled C on the drawing. DLST45, lateral saddle tap 45 degree: on a saddle plate, L = C x 1.414 + 3 inch. DLT45, lateral tap 45 degree, saddle not included (printed LT45): L = C x 1.414. Outer shell in blue, inner liner and pipe dashed in red.",
   },
 ] as const;
 
