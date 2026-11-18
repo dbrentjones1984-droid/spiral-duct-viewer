@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 
 /**
  * Tiny hash router (works on GitHub Pages with no server config; the phone's back button walks the history).
- *   ""                         home (tabs)
+ *   ""                         homepage (the Spiral Systems website front page, src/home/home-page.tsx)
+ *   "#/catalog"                catalog home (the four tabs + Submittal Sheets); was "" before the homepage
  *   "#/single-wall/round"      Single Wall Duct · Round catalog sheets
  *   "#/single-wall/round/3d"   same, with the 3D model open on top
  *   "#/single-wall/oval"       Single Wall Duct · Oval gauge charts
@@ -103,6 +104,7 @@ import { useEffect, useState } from "react";
  */
 export type Route =
   | { page: "home" }
+  | { page: "catalog" }
   | { page: "sw-round"; model3d: boolean }
   | { page: "sw-oval"; model3d: boolean }
   | { page: "dw-round"; model3d: boolean; dwType: DwType; dwIns: DwIns; dwConn: DwConn }
@@ -225,6 +227,8 @@ export type OvalOsType = (typeof OVAL_OS_TYPES)[number];
 export const OVAL_BENDS = ["hard", "easy"] as const;
 export type OvalBend = (typeof OVAL_BENDS)[number];
 
+/** Catalog home (the four tabs). The app's start page ("" / no hash) is the homepage. */
+export const CATALOG_HASH = "#/catalog";
 export const SW_ROUND_HASH = "#/single-wall/round";
 export const SW_ROUND_3D_HASH = "#/single-wall/round/3d";
 export const SW_OVAL_HASH = "#/single-wall/oval";
@@ -366,6 +370,7 @@ export const ovalOsHash = (t: OvalOsType = "os") => (t !== "os" ? `${SWFO_OS_3D_
 
 function parse(hash: string): Route {
   const h = hash.replace(/\/+$/, "");
+  if (h === CATALOG_HASH) return { page: "catalog" };
   if (h === SW_ROUND_3D_HASH) return { page: "sw-round", model3d: true };
   if (h === SW_ROUND_HASH) return { page: "sw-round", model3d: false };
   if (h === SW_OVAL_3D_HASH) return { page: "sw-oval", model3d: true };
@@ -507,41 +512,100 @@ function parse(hash: string): Route {
   return { page: "home" };
 }
 
-// How many in-app steps we have pushed, so Back/Close can use history.back() (keeps the phone's back stack
-// tidy) and fall back to replacing the hash when the page was opened directly from a link.
-let pushed = 0;
+// In-app history. Every entry the app pushes carries { sdv: depth, trail } in history.state, where trail is the list of
+// hashes from the first entry the app saw (depth 0) up to this one. Because it lives in history.state it stays right
+// when the phone's own back button is used, so Back/Close can use history.back() (keeps the phone's back stack tidy)
+// and Home / Catalog can jump straight back to the entry they want instead of piling up new ones.
+type NavState = { sdv: number; trail: string[] };
+const HOME_HASH = "";
+const norm = (h: string) => {
+  const x = h.replace(/\/+$/, "");
+  return x === "#" ? "" : x;
+};
+function navState(): NavState {
+  const st = history.state as Partial<NavState> | null;
+  if (st && typeof st.sdv === "number" && Array.isArray(st.trail)) return st as NavState;
+  return { sdv: 0, trail: [norm(location.hash)] };
+}
+// Tag the entry the app was opened on (keeps any other state keys).
+try {
+  if (typeof (history.state as Partial<NavState> | null)?.sdv !== "number") {
+    history.replaceState({ ...(history.state ?? {}), ...navState() }, "");
+  }
+} catch {
+  /* history blocked in some in-app viewers */
+}
+
+function emit() {
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+function urlFor(hash: string) {
+  return location.pathname + location.search + hash;
+}
+/** Replace the current entry with hash, keeping its place in the trail. */
+function replaceWith(hash: string) {
+  const st = navState();
+  const trail = st.trail.slice(0, st.sdv + 1);
+  trail[st.sdv] = norm(hash);
+  history.replaceState({ sdv: st.sdv, trail }, "", urlFor(hash));
+  emit();
+}
+function push(hash: string) {
+  const st = navState();
+  const trail = [...st.trail.slice(0, st.sdv + 1), norm(hash)];
+  history.pushState({ sdv: st.sdv + 1, trail }, "", urlFor(hash));
+  emit();
+}
+/** Step back n entries, then run then() once the browser has landed there. */
+function stepBack(n: number, then?: () => void) {
+  if (n <= 0) {
+    then?.();
+    return;
+  }
+  if (then) window.addEventListener("popstate", () => then(), { once: true });
+  history.go(-n);
+}
 
 export function navigate(hash: string) {
-  pushed++;
-  location.hash = hash;
+  push(hash);
+}
+
+/** Jump back to the nearest earlier entry showing target; if there is none, use fallback() from the first entry. */
+function jumpTo(target: string, fallback: (st: NavState) => void) {
+  const st = navState();
+  const idx = st.trail.slice(0, st.sdv + 1).lastIndexOf(target);
+  if (idx >= 0) {
+    stepBack(st.sdv - idx, idx === st.sdv ? emit : undefined);
+    return;
+  }
+  fallback(st);
 }
 
 /**
- * Home button: to the start page (no hash) from anywhere, closing any open 3D model. Steps back over the in-app history
- * first (so the phone's back button doesn't walk through the pages again), then makes that entry the start page.
+ * Home button on the catalog pages / 3D models: back to the catalog home (#/catalog), closing any open 3D model.
+ * Steps back over the in-app history to it when it was visited (so the phone's back button doesn't walk through the
+ * pages again). Opened from the homepage (e.g. a product card): steps back to the homepage and opens the catalog from
+ * there, so phone-back from the catalog still lands on the homepage. Opened straight from a link: the first entry
+ * becomes the catalog home.
  */
 export function goHome() {
-  const toRoot = () => {
-    history.replaceState(null, "", location.pathname + location.search);
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
-  };
-  if (pushed > 0) {
-    const n = pushed;
-    pushed = 0;
-    window.addEventListener("popstate", toRoot, { once: true });
-    history.go(-n);
-  } else {
-    toRoot();
-  }
+  jumpTo(CATALOG_HASH, (st) => {
+    const homeIdx = st.trail.slice(0, st.sdv + 1).lastIndexOf(HOME_HASH);
+    if (homeIdx >= 0) stepBack(st.sdv - homeIdx, () => push(CATALOG_HASH));
+    else stepBack(st.sdv, () => replaceWith(CATALOG_HASH));
+  });
+}
+
+/** Back to the homepage (the website front page) from the catalog home. */
+export function goHomepage() {
+  jumpTo(HOME_HASH, (st) => stepBack(st.sdv, () => replaceWith(HOME_HASH)));
 }
 
 export function goBack(fallbackHash: string) {
-  if (pushed > 0) {
-    pushed--;
+  if (navState().sdv > 0) {
     history.back();
   } else {
-    history.replaceState(null, "", location.pathname + location.search + fallbackHash);
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    replaceWith(fallbackHash);
   }
 }
 

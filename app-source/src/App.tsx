@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { House } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { InstallButton } from "@/components/install-button";
 import { SubmittalSheetsButton } from "@/components/submittal-sheets";
@@ -6,9 +7,10 @@ import { DoubleWallDuctIcon } from "@/components/double-wall-duct-icon";
 import { DuctElbowIcon } from "@/components/duct-elbow-icon";
 import { SpiralDuctIcon } from "@/components/spiral-duct-icon";
 import { SheetPage } from "@/components/sheet-page";
+import { HomePage } from "@/home/home-page";
 import { DoubleWallFittingsPage, FittingsPage, OvalFittingsPage } from "@/components/fittings-page";
 import { HOME_BUTTONS, SHAPES, type HomeButtonId, type Shape } from "@/lib/catalog";
-import { goBack, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, DWF_ROUND_3D_HASH, dwBullHash, dwElbowHash, dwMiterHash, dwConeHash, dwLatHash, dwLtapHash, dwTapHash, dwTeeHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
+import { CATALOG_HASH, goBack, goHomepage, navigate, SWF_BT90_3D_HASH, SWF_CAP_3D_HASH, SWF_CTEE_3D_HASH, SWF_DS90_3D_HASH, SWF_E90_3D_HASH, SWF_LAT_3D_HASH, SWF_LTAP_3D_HASH, SWF_ME90_3D_HASH, SWF_RED_3D_HASH, SWF_MODELS_HASH, SWF_ROUND_HASH, SWF_TAP_3D_HASH, SWF_TEE_3D_HASH, SW_OVAL_3D_HASH, SW_OVAL_HASH, SW_ROUND_3D_HASH, SW_ROUND_HASH, SWF_WYE_3D_HASH, SWF_OS_3D_HASH, SWF_HANGER_3D_HASH, SWF_GRILLE_3D_HASH, SWF_OVAL_HASH, SWFO_MODELS_HASH, DW_ROUND_HASH, dwRoundHash, DWF_ROUND_HASH, DWF_ROUND_3D_HASH, dwBullHash, dwElbowHash, dwMiterHash, dwConeHash, dwLatHash, dwLtapHash, dwTapHash, dwTeeHash, ovalElbowHash, ovalCteeHash, ovalLatHash, ovalLlteeHash, ovalRedHash, ovalWyeHash, ovalCapHash, ovalOsHash, ovalMiterHash, ovalTeeHash, useHashRoute } from "@/lib/route";
 import { DW_ROUND_DOC, DWF_ROUND_DOC, SW_OVAL_DOC, SW_ROUND_DOC, SWF_OVAL_DOC, SWF_ROUND_DOC } from "@/lib/sheets";
 
 function SingleWallElbowIcon({ className }: { className?: string }) {
@@ -48,7 +50,7 @@ export default function App() {
       <SheetPage
         doc={SW_ROUND_DOC}
         model3d={route.model3d}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(SW_ROUND_3D_HASH)}
         onClose3d={() => goBack(SW_ROUND_HASH)}
       />
@@ -60,7 +62,7 @@ export default function App() {
         key="sw-oval"
         doc={SW_OVAL_DOC}
         model3d={route.model3d}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(SW_OVAL_3D_HASH)}
         onClose3d={() => goBack(SW_OVAL_HASH)}
       />
@@ -74,7 +76,7 @@ export default function App() {
         doc={DW_ROUND_DOC}
         model3d={route.model3d}
         dw={{ type: route.dwType, ins: route.dwIns, conn: route.dwConn }}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(dwRoundHash())}
         onClose3d={() => goBack(DW_ROUND_HASH)}
       />
@@ -87,7 +89,7 @@ export default function App() {
         key="dwf-round"
         doc={DWF_ROUND_DOC}
         model3d={false}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(DWF_ROUND_3D_HASH)}
         onClose3d={() => {}}
       />
@@ -118,7 +120,7 @@ export default function App() {
         key="swf-round"
         doc={SWF_ROUND_DOC}
         model3d={false}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(SWF_MODELS_HASH)}
         onClose3d={() => {}}
       />
@@ -131,7 +133,7 @@ export default function App() {
         key="swf-oval"
         doc={SWF_OVAL_DOC}
         model3d={false}
-        onBack={() => goBack("")}
+        onBack={() => goBack(CATALOG_HASH)}
         onOpen3d={() => navigate(SWFO_MODELS_HASH)}
         onClose3d={() => {}}
       />
@@ -178,6 +180,7 @@ export default function App() {
       />
     );
   }
+  if (route.page === "home") return <HomePage />;
   return <CatalogPage group={group} setGroup={setGroup} shape={shape} setShape={setShape} />;
 }
 
@@ -238,7 +241,10 @@ function CatalogPage({
             alt=""
             className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-70"
           />
-          <BrandLogo className="relative h-auto w-48 max-w-full sm:w-56" />
+          {/* Logo: back to the homepage (the website front page). */}
+          <button type="button" onClick={goHomepage} aria-label="Spiral Systems homepage" className="relative">
+            <BrandLogo className="h-auto w-48 max-w-full sm:w-56" />
+          </button>
           {/* Header buttons on the blueprint, either side of the logo (Brent's sketch): install left, submittals right. */}
           <div className="absolute top-3 left-2 sm:top-4 sm:left-4">
             <InstallButton />
@@ -247,7 +253,18 @@ function CatalogPage({
             <SubmittalSheetsButton />
           </div>
         </div>
-        <div className="bg-accent px-4 py-2.5 text-center">
+        <div className="relative bg-accent px-4 py-2.5 text-center">
+          {/* Home: back to the homepage, on the left of the banner (same look as the sheet pages' Back / Home pills;
+              just the house below 400px wide, like theirs, so PRODUCT CATALOG keeps its room on a 360 phone). */}
+          <button
+            type="button"
+            onClick={goHomepage}
+            className="absolute top-1/2 left-2 flex size-9 -translate-y-1/2 items-center justify-center gap-1 rounded-full bg-white/15 font-display text-base leading-none text-accent-ink active:bg-white/25 min-[400px]:h-8 min-[400px]:w-auto min-[400px]:pr-2.5 min-[400px]:pl-2 sm:left-4"
+            aria-label="Home: back to the Spiral Systems homepage"
+          >
+            <House className="size-5 shrink-0 min-[400px]:size-4" />
+            <span className="hidden min-[400px]:inline">Home</span>
+          </button>
           <p className="font-display text-3xl leading-none tracking-wide text-accent-ink">PRODUCT CATALOG</p>
         </div>
         <p className="py-2 text-center text-xs font-medium tracking-widest text-accent">

@@ -57,7 +57,7 @@ try {
 } catch {
   /* storage blocked in some in-app viewers */
 }
-if (/[?&]r=\d+/.test(location.search)) history.replaceState(null, "", location.pathname + location.hash);
+if (/[?&]r=\d+/.test(location.search)) history.replaceState(history.state, "", location.pathname + location.hash);
 
 const MIN_SPLASH_MS = 1500;
 const MAX_WAIT_MS = 3000;
